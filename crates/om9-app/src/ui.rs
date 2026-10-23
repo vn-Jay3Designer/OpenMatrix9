@@ -19,6 +19,7 @@ use om9_scene::{
     scene::PickIntent,
     workspace::ViewId,
 };
+mod addons_window;
 mod chrome;
 mod command;
 mod icon_resize_audit;
@@ -205,6 +206,8 @@ pub struct MatrixApp {
     file_error: String,
     /// Pending Rhino 3DM picker: `Some(true)` export, `Some(false)` import.
     three_dm_request: Option<bool>,
+    /// Tools › Add-ons… window and pending Install from Disk.
+    addons_ui: addons_window::AddonsUi,
     file_ime_composing: bool,
     file_f6_rects: BTreeMap<crate::file_lifecycle::FileKind, Rect>,
     /// Window title owned by this document's path/name and dirty marker.
@@ -588,6 +591,7 @@ impl MatrixApp {
             file_prompt_token: None,
             file_error: String::with_capacity(512),
             three_dm_request: None,
+            addons_ui: Default::default(),
             file_ime_composing: false,
             file_f6_rects: BTreeMap::new(),
             window_title: String::new(),
@@ -751,6 +755,9 @@ impl MatrixApp {
         }
     }
     fn feedback(&mut self, result: Result<()>) {
+        for message in self.controller.take_addon_messages() {
+            self.transcript.append_history(&message);
+        }
         match result {
             Ok(()) => {
                 self.status.complete_success();
@@ -1556,6 +1563,7 @@ impl MatrixApp {
             self.nav_frame_started = std::time::Instant::now();
         }
         self.passes += 1;
+        self.addons_frame(ui.ctx());
         if self
             .camera_audit
             .as_ref()
@@ -4011,6 +4019,7 @@ impl eframe::App for MatrixApp {
         self.service_file_close_probe(ui.ctx(), frame);
         self.service_native_file_picker(ui.ctx(), frame);
         self.service_three_dm_picker(ui.ctx(), frame);
+        self.service_addon_picker(ui.ctx(), frame);
     }
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
         self.nav_frame_started = std::time::Instant::now();
@@ -4306,6 +4315,10 @@ fn launch_with(mut app: MatrixApp, config: &crate::startup::AppConfig) -> Result
         std::fs::create_dir_all(directory).map_err(|e| Error::Io(e.to_string()))?;
     }
     app.audit = config.audit_dir.clone().map(UiAudit::new);
+    // Add-ons read the user's configuration; audits stay deterministic without them.
+    if app.audit.is_none() {
+        app.attach_addons();
+    }
     if app.dock_layout_path().is_none()
         && let Some(path) = &config.layout_path
     {

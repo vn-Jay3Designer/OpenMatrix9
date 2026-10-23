@@ -1628,11 +1628,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "om9-addon-abi"
+version = "0.1.0"
+
+[[package]]
+name = "om9-addon-gem-on-curve"
+version = "0.3.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addons",
+]
+
+[[package]]
+name = "om9-addons"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "om9-addon-abi",
+]
+
+[[package]]
 name = "om9-app"
 version = "0.1.0"
 dependencies = [
  "eframe",
  "image",
+ "om9-addon-abi",
+ "om9-addon-gem-on-curve",
+ "om9-addons",
  "om9-archive",
  "om9-core",
  "om9-exchange",

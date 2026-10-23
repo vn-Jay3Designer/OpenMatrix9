@@ -1,0 +1,9 @@
+[package]
+name = "om9-addon-abi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "Stable C ABI between OM9 and native add-ons, plus a safe SDK for add-on authors. No dependencies."
+
+[dependencies]

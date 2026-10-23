@@ -164,6 +164,24 @@ impl MatrixApp {
                                 ui.close();
                             }
                         }
+                        ui.separator();
+                        let has_host = self.controller.addon_host().is_some();
+                        if ui
+                            .add_enabled(has_host, egui::Button::new("Add-ons…"))
+                            .on_hover_text("Install, enable and configure OM9 add-ons")
+                            .clicked()
+                        {
+                            self.addons_ui.open = true;
+                            ui.close();
+                        }
+                        if ui
+                            .add_enabled(has_host, egui::Button::new("Install Add-on from Disk…"))
+                            .on_hover_text("Choose an OM9 add-on .zip (or drag it onto the window)")
+                            .clicked()
+                        {
+                            self.addons_ui.install_request = true;
+                            ui.close();
+                        }
                     }
                     "File" => {
                         for kind in crate::file_lifecycle::FileKind::ALL {
@@ -342,7 +360,7 @@ impl MatrixApp {
                                     .cloned()
                                     .collect();
                                 for f in items {
-                                    let available = Controller::availability(&f.id).is_ok();
+                                    let available = self.controller.is_available(&f.id);
                                     if ui
                                         .add_enabled(available, egui::Button::new(&f.name))
                                         .on_hover_text(if available {
@@ -534,12 +552,12 @@ impl MatrixApp {
             .as_ref()
             .and_then(|id| self.features.iter().find(|f| &f.id == id).cloned());
         if let Some(actual) = actual {
-            let enabled = Controller::availability(&actual).is_ok();
+            let enabled = self.controller.is_available(&actual);
             let help = feature.as_ref().map_or(name, |f| f.name.as_str());
             let right = feature
                 .as_ref()
                 .and_then(|f| f.right_click.as_deref())
-                .filter(|command| Controller::availability(command).is_ok());
+                .filter(|command| self.controller.is_available(command));
             if self.icon_slot(ui, name, enabled, help, right).clicked() {
                 self.invoke(&actual, InvocationOrigin::Menu);
             }

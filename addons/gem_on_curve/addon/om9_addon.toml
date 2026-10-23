@@ -1,0 +1,88 @@
+# Manifest của gói add-on. tools/ci/build-addons-windows.ps1 điền @ENTRY@/@PLATFORM@ theo nền tảng build.
+schema_version = "1.0.0"
+id = "gem_on_curve"
+version = "0.3.0"
+name = "Gem On Curve"
+tagline = "Rải đá tròn đều theo đường cong (halo, ring rail)"
+maintainer = "OpenMatrix9 contributors"
+type = "add-on"
+license = ["SPDX:LGPL-2.1-or-later"]
+om9_version_min = "0.1.0"
+platforms = ["@PLATFORM@"]
+runtime = "native"
+entry = "@ENTRY@"
+tags = ["Gems"]
+
+[[commands]]
+id = "BuilderGemOnCrv"
+label = "Gem On Crv"
+handler = "om9_addon_invoke"
+icon = "icons/gem_on_crv.svg"
+shortcut = "Ctrl+Shift+G"
+
+[[commands]]
+id = "BuilderGemCountOnCrv"
+label = "Gem Count On Crv"
+handler = "om9_addon_invoke"
+
+[[settings]]
+key = "diameter"
+type = "length"
+label = "Đường kính đá"
+default = 1.5
+min = 0.3
+max = 30.0
+step = 0.05
+
+[[settings]]
+key = "spacing"
+type = "length"
+label = "Spacing (khe tối thiểu)"
+default = 0.2
+min = 0.0
+max = 5.0
+step = 0.01
+
+[[settings]]
+key = "start"
+type = "percent"
+label = "Start Position"
+default = 0.0
+min = 0.0
+max = 100.0
+step = 1.0
+
+[[settings]]
+key = "end"
+type = "percent"
+label = "End Position"
+default = 100.0
+min = 0.0
+max = 100.0
+step = 1.0
+
+[[settings]]
+key = "z_offset"
+type = "length"
+label = "Z Offset"
+description = "Nâng/hạ tâm gờ đá theo pháp tuyến mặt bàn"
+default = 0.0
+min = -10.0
+max = 10.0
+step = 0.01
+
+[[settings]]
+key = "layout"
+type = "enum"
+label = "Cách chia"
+description = "fit: dàn đều cho khít; fixed_gap: giữ đúng Spacing, phần dư ở cuối"
+choices = ["fit", "fixed_gap"]
+default = "fit"
+
+[[settings]]
+key = "orientation"
+type = "enum"
+label = "Hướng mặt bàn đá"
+description = "plane: theo pháp tuyến CPlane (halo); outward: hướng ra ngoài tâm (eternity)"
+choices = ["plane", "outward"]
+default = "plane"

@@ -14,6 +14,7 @@ pub mod gumball_numeric;
 pub mod stress;
 mod subobjects;
 pub use subobjects::SelectedSubobject;
+mod addon_command;
 mod files;
 mod gumball;
 mod layer_dialogs;
@@ -105,6 +106,12 @@ pub struct Controller {
     /// `Arc`, so recording costs an `Arc` clone, never a document copy.
     published: Option<std::sync::Arc<Document>>,
     pub workspace: Workspace,
+    /// Installed add-ons (Preferences › Add-ons). `None` in tests and audits.
+    addons: Option<crate::addons::SharedHost>,
+    /// lowercase command name / feature id / catalog code → catalog code an add-on provides.
+    addon_names: std::collections::BTreeMap<String, String>,
+    /// Messages add-on commands produced, drained into the CMD history by the UI.
+    addon_messages: Vec<String>,
 }
 impl Controller {
     pub fn capture_view_menu(
@@ -228,6 +235,9 @@ impl Controller {
             changes: VecDeque::new(),
             published: None,
             workspace: Workspace::new(),
+            addons: None,
+            addon_names: std::collections::BTreeMap::new(),
+            addon_messages: Vec::new(),
         })
     }
     pub fn coordinator(&self) -> &TransactionCoordinator {
@@ -419,6 +429,11 @@ impl Controller {
             .map(|_| DispatchOutcome::Command)
     }
     fn dispatch_geometry(&mut self, feature: &str, _origin: InvocationOrigin) -> Result<()> {
+        if Self::availability(feature).is_err()
+            && let Some(code) = self.addon_code(feature)
+        {
+            return self.run_addon_command(&code);
+        }
         Self::availability(feature)?;
         if self.is_running() {
             return Err(Error::Busy);
@@ -629,6 +644,11 @@ impl Controller {
                     .map(str::to_owned)
                     .ok_or(Error::Missing("previous repeatable command"))?;
                 return self.dispatch(&repeat, InvocationOrigin::Cmd);
+            }
+            if Self::resolve_alias(text).is_none()
+                && let Some(code) = self.addon_code(text)
+            {
+                return self.run_addon_command(&code);
             }
             return match Self::resolve_alias(text) {
                 Some(LINE) => self.dispatch(LINE, InvocationOrigin::Cmd),
