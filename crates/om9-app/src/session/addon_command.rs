@@ -34,6 +34,16 @@ impl Controller {
         self.addons = Some(host);
         self.refresh_addon_names(features);
     }
+    /// Carry the add-on host and its name table onto a replacement controller
+    /// (File › New / Open / Revert). Messages not yet shown move with them.
+    pub(super) fn adopt_addons(&mut self, previous: &mut Self) {
+        if self.addons.is_none() {
+            self.addons = previous.addons.take();
+            self.addon_names = std::mem::take(&mut previous.addon_names);
+        }
+        self.addon_messages
+            .append(&mut std::mem::take(&mut previous.addon_messages));
+    }
     pub fn addon_host(&self) -> Option<&SharedHost> {
         self.addons.as_ref()
     }

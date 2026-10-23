@@ -11,6 +11,7 @@ use om9_addons::manifest::RuntimeKind;
 use om9_addons::runtime::{CommandInput, CommandOutput, LoadRequest, MeshOutput, Runtime};
 use om9_addons::settings::SettingValue;
 use om9_app::addons::FeatureName;
+use om9_app::file_lifecycle::{FileKind, FileOutcome, FilePhase, UnsavedDecision};
 use om9_app::session::{Controller, InvocationOrigin};
 use om9_core::budget::Limits;
 use om9_core::geometry::{Curve, Geometry};
@@ -263,6 +264,40 @@ fn gem_on_crv_runs_from_cmd_and_menu_with_one_undo() {
         .filter(|e| e.extension(GEM_EXTENSION_SLOT).is_some())
         .count();
     assert_eq!(gems, 24, "Ø2.0 on Ø17.35 rail");
+
+    // File › Open replaces the document controller; installed add-ons stay attached
+    // (regression: the first Windows run reported "unknown command" after Open).
+    let saved = tmp.join("ring.om9");
+    let (ring, _) = ring_document();
+    om9_archive::Archive::save(
+        &saved,
+        &ring,
+        &Limits::default(),
+        &om9_core::transaction::Cancellation::default(),
+    )
+    .unwrap();
+    c.begin_file_operation(FileKind::Open).unwrap();
+    if c.file_operation()
+        .is_some_and(|op| op.phase() == FilePhase::Unsaved)
+    {
+        let t = c.file_operation().unwrap().token();
+        c.decide_unsaved(t, UnsavedDecision::Discard).unwrap();
+    }
+    let t = c.file_operation().unwrap().token();
+    assert_eq!(
+        c.accept_file_path(t, &saved).unwrap(),
+        FileOutcome::Replaced
+    );
+    assert!(c.is_available("OM9-GEM-002"), "add-on survives File › Open");
+    let opened_rail = *c.document().entities.keys().next().unwrap();
+    c.select_objects(&[opened_rail]).unwrap();
+    c.submit("gvGemCountOnCrv").unwrap();
+    assert!(
+        c.take_addon_messages()
+            .iter()
+            .any(|m| m.contains("24 viên")),
+        "Ø2.0 setting kept"
+    );
 
     // Disabling the add-on turns the command off again.
     c.addon_host()
