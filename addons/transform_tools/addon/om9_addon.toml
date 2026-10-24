@@ -339,6 +339,6 @@ id = "TransformSolidPtOn"
 label = "Solid Points ON"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["SolidPtOn"]
+aliases = ["TransformSolidPoints"]
 summary = "Bật điểm điều khiển của khối: dùng nút Edit Points / Control Points của Top 11."
 steps = ["Gọi lệnh: hướng dẫn cách bật điểm."]

@@ -48,6 +48,9 @@ pub struct AddonSession {
     hover_at: Option<Point3>,
     /// The command reads the triangles of selected meshes (`mesh_data = true`).
     mesh_data: bool,
+    /// Every object selected at some step: a command that asks for two groups (Boolean
+    /// Difference: first the objects, then the cutters) may change all of them.
+    seen: std::collections::BTreeSet<om9_core::identity::ObjectId>,
 }
 
 impl AddonSession {
@@ -830,6 +833,7 @@ impl Controller {
             selection_seen: self.selection_revision,
             hover_at: None,
             mesh_data,
+            seen: Default::default(),
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -879,6 +883,13 @@ impl Controller {
                 (key, json)
             })
             .collect();
+        let current: Vec<_> = self.selection.iter().copied().collect();
+        if let Some(s) = self.addon_session.as_mut() {
+            s.seen.extend(current);
+        }
+        let Some(session) = self.addon_session.as_ref() else {
+            return Err(Error::Missing("interactive command"));
+        };
         let event = Event {
             command: session.code.clone(),
             input,
@@ -927,12 +938,12 @@ impl Controller {
         }
         self.addon_messages.extend(reply.messages.iter().cloned());
         if reply.done {
-            let (code, label) = {
+            let (code, label, seen) = {
                 let s = self.addon_session.as_ref().expect("session");
-                (s.code.clone(), s.label.clone())
+                (s.code.clone(), s.label.clone(), s.seen.clone())
             };
             self.addon_session = None;
-            let created = self.commit_session_result(&code, &label, &reply)?;
+            let created = self.commit_session_result(&code, &label, &reply, &seen)?;
             // The command's panel closes with it, however it was finished (Enter in the
             // command line, right-click, Accept); its values become the next defaults.
             if let Some(b) = self
@@ -1135,7 +1146,13 @@ impl Controller {
     }
 
     /// Create the geometry and apply the transform of a finished session, in one transaction.
-    fn commit_session_result(&mut self, code: &str, label: &str, reply: &Reply) -> Result<usize> {
+    fn commit_session_result(
+        &mut self,
+        code: &str,
+        label: &str,
+        reply: &Reply,
+        seen: &std::collections::BTreeSet<om9_core::identity::ObjectId>,
+    ) -> Result<usize> {
         let k = self.document().page_unit.factor();
         let layer = self.document().current_layer;
         let mut mutations = Vec::new();
@@ -1169,8 +1186,10 @@ impl Controller {
         let selected = |id: &str| -> Result<om9_core::identity::ObjectId> {
             self.selection
                 .iter()
+                .chain(seen.iter())
                 .copied()
                 .find(|o| o.to_string() == id)
+                .filter(|o| self.document().entities.contains_key(o))
                 .ok_or(Error::Invalid("add-on result names an object that is not selected"))
         };
         if let Some(op) = reply.transform.as_ref().filter(|op| !op.per_object.is_empty()) {

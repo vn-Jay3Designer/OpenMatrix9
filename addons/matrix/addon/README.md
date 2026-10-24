@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 84 lệnh.
+Tổng cộng: 114 lệnh.
 
 ## Curve (13 lệnh)
 
@@ -68,6 +68,41 @@ Tổng cộng: 84 lệnh.
 | `BuilderHead` | [Head Builder](commands/Settings/BuilderHead.md) | Settings #1 |
 | `BuilderBeadOnCrv` | [Bead on Curve](commands/Settings/BuilderBeadOnCrv.md) | Settings #11 |
 | `BuilderChannelBorderCurve` | [Channel Border Curve](commands/Settings/BuilderChannelBorderCurve.md) | Settings #12 |
+
+## Solid (30 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `SolidUnion` | [Boolean Union](commands/Solid/SolidUnion.md) | Solid #1 |
+| `SolidDifference` | [Boolean Difference](commands/Solid/SolidDifference.md) | Solid #2 |
+| `SolidIntersection` | [Boolean Intersection](commands/Solid/SolidIntersection.md) | Solid #3 |
+| `SolidBooleanTwoObjects` | [Boolean Two Objects](commands/Solid/SolidBooleanTwoObjects.md) | Solid #4 |
+| `SolidCapPlanarHoles` | [Cap Planar Holes](commands/Solid/SolidCapPlanarHoles.md) | Solid #5 |
+| `SolidExtractSurface` | [Extract Surface](commands/Solid/SolidExtractSurface.md) | Solid #6 |
+| `SolidFilletEdgeFilletEdge` | [Fillet Edge](commands/Solid/SolidFilletEdgeFilletEdge.md) | Solid #7 |
+| `SolidText` | [Text](commands/Solid/SolidText.md) | Solid #8 |
+| `SolidExtrudePlanarCurveStraight` | [Extrude Planar Curve](commands/Solid/SolidExtrudePlanarCurveStraight.md) | Solid #9 |
+| `SolidGVDAllExtrude` | [Extrude All](commands/Solid/SolidGVDAllExtrude.md) | Solid #10 |
+| `SolidPipe` | [Pipe](commands/Solid/SolidPipe.md) | Solid #11 |
+| `SolidBoxCornertoCornerHeight` | [Box](commands/Solid/SolidBoxCornertoCornerHeight.md) | Solid #12 |
+| `SolidSphereCenterRadius` | [Sphere](commands/Solid/SolidSphereCenterRadius.md) | Solid #13 |
+| `SolidEllipsoidFromCenter` | [Ellipsoid](commands/Solid/SolidEllipsoidFromCenter.md) | Solid #14 |
+| `SolidTorus` | [Torus](commands/Solid/SolidTorus.md) | Solid #15 |
+| `SolidCylinder` | [Cylinder](commands/Solid/SolidCylinder.md) | Solid #16 |
+| `SolidTube` | [Tube](commands/Solid/SolidTube.md) | Solid #17 |
+| `SolidPyramid` | [Pyramid](commands/Solid/SolidPyramid.md) | Solid #18 |
+| `SolidCone` | [Cone](commands/Solid/SolidCone.md) | Solid #19 |
+| `SolidTruncatedCone` | [Truncated Cone](commands/Solid/SolidTruncatedCone.md) | Solid #20 |
+| `SolidBoss` | [Boss](commands/Solid/SolidBoss.md) | Solid #21 |
+| `SolidRib` | [Rib](commands/Solid/SolidRib.md) | Solid #22 |
+| `SolidSlab` | [Slab](commands/Solid/SolidSlab.md) | Solid #23 |
+| `SolidSolidEditToolsHolesMakeHole` | [Make Hole](commands/Solid/SolidSolidEditToolsHolesMakeHole.md) | Solid #24 |
+| `SolidSolidEditToolsHolesArrayHole` | [Array Hole](commands/Solid/SolidSolidEditToolsHolesArrayHole.md) | Solid #25 |
+| `SolidSolidEditToolsHolesArrayHolePolar` | [Array Hole Polar](commands/Solid/SolidSolidEditToolsHolesArrayHolePolar.md) | Solid #26 |
+| `SolidSolidEditToolsHolesMoveHole` | [Move Hole](commands/Solid/SolidSolidEditToolsHolesMoveHole.md) | Solid #27 |
+| `SolidSolidEditToolsFacesMoveFace` | [Move Face](commands/Solid/SolidSolidEditToolsFacesMoveFace.md) | Solid #28 |
+| `SolidShell` | [Shell](commands/Solid/SolidShell.md) | Solid #29 |
+| `SolidPtOn` | [Solid Points On](commands/Solid/SolidPtOn.md) | Solid #30 |
 
 ## Transform (44 lệnh)
 

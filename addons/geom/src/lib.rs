@@ -10,9 +10,12 @@
 use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub, unit};
 
 pub mod cmd;
+pub mod csg;
 pub mod gems;
 pub mod mesh;
 pub mod path;
+pub mod sdf;
+pub mod shapes;
 
 pub const EPS: f64 = 1e-9;
 

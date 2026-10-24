@@ -236,6 +236,16 @@ fn generate() -> Generated {
     }
 }
 
+/// (code, aliases) of every command of a manifest.
+fn cmds_of(manifest: &str) -> Vec<(String, Vec<String>)> {
+    let parsed = toml::parse(manifest).unwrap();
+    let Some(Value::Array(cmds)) = parsed.get("commands") else { return Vec::new() };
+    cmds.iter()
+        .filter_map(Value::as_table)
+        .map(|t| (s(t, "id").unwrap().to_owned(), strs(t, "aliases")))
+        .collect()
+}
+
 #[test]
 fn package_files_match_the_menu_crates() {
     let g = generate();
@@ -263,6 +273,17 @@ fn package_files_match_the_menu_crates() {
     assert_eq!(read(&addon.join("README.md")), g.readme);
     for (p, text) in &g.pages {
         assert_eq!(&read(&addon.join(p)), text, "{}", p.display());
+    }
+    // A typed name calls one command only.
+    let mut names = std::collections::BTreeMap::<String, String>::new();
+    for c in cmds_of(&g.manifest) {
+        for n in std::iter::once(c.0.clone()).chain(c.1.iter().cloned()) {
+            if let Some(other) = names.insert(n.to_ascii_lowercase(), c.0.clone())
+                && other != c.0
+            {
+                panic!("{n} names both {other} and {}", c.0);
+            }
+        }
     }
     // Every package command is routed, and every routed command is in the package.
     let parsed = toml::parse(&g.manifest).unwrap();
