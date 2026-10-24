@@ -14,7 +14,9 @@ pub mod gumball_numeric;
 pub mod stress;
 mod subobjects;
 pub use subobjects::SelectedSubobject;
+mod addon_builder;
 mod addon_command;
+pub use addon_builder::{AddonBuilder, BuilderPreview, display_value};
 mod files;
 mod gumball;
 mod layer_dialogs;
@@ -112,6 +114,10 @@ pub struct Controller {
     addon_names: std::collections::BTreeMap<String, String>,
     /// Messages add-on commands produced, drained into the CMD history by the UI.
     addon_messages: Vec<String>,
+    /// catalog code → typed Matrix command name.
+    addon_typed: std::collections::BTreeMap<String, String>,
+    /// The open builder of an add-on command, if any.
+    addon_builder: Option<addon_builder::AddonBuilder>,
 }
 impl Controller {
     pub fn capture_view_menu(
@@ -238,6 +244,8 @@ impl Controller {
             addons: None,
             addon_names: std::collections::BTreeMap::new(),
             addon_messages: Vec::new(),
+            addon_typed: Default::default(),
+            addon_builder: None,
         })
     }
     pub fn coordinator(&self) -> &TransactionCoordinator {
@@ -438,6 +446,8 @@ impl Controller {
         if self.is_running() {
             return Err(Error::Busy);
         }
+        // One command at a time: a built-in command closes an open add-on builder.
+        self.cancel_addon_builder();
         let feature = match feature {
             LINE => LINE,
             POINT => POINT,
@@ -525,6 +535,15 @@ impl Controller {
             },
         }
     }
+    /// The command-line prompt, including an open add-on builder's.
+    pub fn prompt_text(&self) -> String {
+        if !self.is_running()
+            && let Some(p) = self.builder_prompt()
+        {
+            return p;
+        }
+        self.prompt().to_owned()
+    }
     fn validate_session(&self) -> Result<&CommandSession> {
         let s = self
             .session
@@ -546,6 +565,7 @@ impl Controller {
         Ok(())
     }
     pub fn cancel(&mut self) {
+        self.cancel_addon_builder();
         if let Some(s) = self.session.take() {
             self.events.emit(
                 crate::command_events::EventKind::Finished,
@@ -586,6 +606,10 @@ impl Controller {
             return Err(Error::Budget("command input"));
         }
         let text = text.trim();
+        // An open add-on builder reads its options first (`Size=2`, Enter = accept).
+        if !self.is_running() && self.addon_builder.is_some() && self.submit_builder_text(text)? {
+            return Ok(());
+        }
         if let Some(command) = parse_gumball_placement(text) {
             match command {
                 GumballPlacement::Origin(origin) => self.relocate_gumball(Some(origin)),

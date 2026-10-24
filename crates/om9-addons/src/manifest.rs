@@ -53,6 +53,9 @@ pub struct CommandSpec {
     /// Lệnh mới không có trong catalog Matrix 9 (phải ghi rõ nhóm menu).
     pub is_new: bool,
     pub group: Option<String>,
+    /// `builder = true`: the command opens its builder (command-line options, builder panel and
+    /// live preview) and only creates geometry on Enter/Accept. Otherwise it runs at once.
+    pub builder: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -380,6 +383,7 @@ pub fn from_table(t: &Table, chk: &Check) -> Result<Manifest, Vec<String>> {
         let shortcut = cr.str_opt("shortcut");
         let group = cr.str_opt("group");
         let is_new = matches!(c.get("new"), Some(Value::Bool(true)));
+        let builder = matches!(c.get("builder"), Some(Value::Bool(true)));
         let mut errs: Vec<String> = cr.errs.into_iter().map(|e| format!("{ctx}: {e}")).collect();
         if !valid_cmd(&cid) {
             errs.push(format!("{ctx}: mã lệnh không hợp lệ {cid:?}"));
@@ -430,6 +434,7 @@ pub fn from_table(t: &Table, chk: &Check) -> Result<Manifest, Vec<String>> {
             shortcut,
             is_new,
             group,
+            builder,
         });
     }
     if addon_type == AddonType::AddOn && commands.is_empty() {
@@ -440,11 +445,18 @@ pub fn from_table(t: &Table, chk: &Check) -> Result<Manifest, Vec<String>> {
     // [[settings]]
     let mut settings = Vec::new();
     let mut skeys = BTreeSet::new();
+    let mut options = BTreeSet::new();
     for (i, s) in r.tables("settings").into_iter().enumerate() {
         let mut e = Vec::new();
         if let Some(spec) = SettingSpec::from_table(s, i, &mut e) {
             if !skeys.insert(spec.key.clone()) {
                 e.push(format!("settings.{}: key lặp", spec.key));
+            }
+            if !options.insert(spec.option.to_ascii_lowercase()) {
+                e.push(format!(
+                    "settings.{}: option {:?} trùng với setting khác",
+                    spec.key, spec.option
+                ));
             }
             settings.push(spec);
         }

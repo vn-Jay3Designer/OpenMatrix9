@@ -29,6 +29,18 @@ pub struct CommandInput {
     pub settings: BTreeMap<String, SettingValue>,
 }
 
+impl Default for CommandInput {
+    /// No curves, world-Z plane normal.
+    fn default() -> Self {
+        CommandInput {
+            command: String::new(),
+            curves: Vec::new(),
+            plane_normal: [0.0, 0.0, 1.0],
+            settings: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MeshOutput {
     pub name: String,

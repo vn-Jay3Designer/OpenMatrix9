@@ -393,7 +393,6 @@ impl Addon for GemOnCurve {
             return Err(format!("lệnh {} không thuộc add-on này", r.command));
         }
         let (local_v, local_t) = round_gem_mesh(p.diameter, GEM_SEGMENTS);
-        let mut total = 0usize;
         for (ci, c) in Self::curves(r)?.iter().enumerate() {
             let path = Path::new(&c.points, c.closed)?;
             let lay = layout(&path, &p, r.plane_normal)?;
@@ -429,13 +428,9 @@ impl Addon for GemOnCurve {
                     )?;
                 }
             }
-            total += lay.gems.len();
         }
-        if place {
-            out.message(&format!(
-                "Gem On Crv: đã đặt {total} viên (một lần Undo gỡ tất cả)"
-            ));
-        }
+        // The host reports what it actually inserted ("đã đặt N viên"); the add-on only
+        // describes the layout, so a builder preview never claims that anything was placed.
         Ok(())
     }
 }

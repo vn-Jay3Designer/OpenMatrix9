@@ -20,6 +20,7 @@ use om9_scene::{
     workspace::ViewId,
 };
 mod addons_window;
+mod builder_panel;
 mod chrome;
 mod command;
 mod icon_resize_audit;
@@ -208,6 +209,7 @@ pub struct MatrixApp {
     three_dm_request: Option<bool>,
     /// Tools › Add-ons… window and pending Install from Disk.
     addons_ui: addons_window::AddonsUi,
+    builder_ui: builder_panel::BuilderUi,
     file_ime_composing: bool,
     file_f6_rects: BTreeMap<crate::file_lifecycle::FileKind, Rect>,
     /// Window title owned by this document's path/name and dirty marker.
@@ -592,6 +594,7 @@ impl MatrixApp {
             file_error: String::with_capacity(512),
             three_dm_request: None,
             addons_ui: Default::default(),
+            builder_ui: Default::default(),
             file_ime_composing: false,
             file_f6_rects: BTreeMap::new(),
             window_title: String::new(),
@@ -768,7 +771,7 @@ impl MatrixApp {
                 self.status.error(&message);
             }
         }
-        self.transcript.set_prompt(self.controller.prompt());
+        self.transcript.set_prompt(&self.controller.prompt_text());
         self.focus_cmd = true;
     }
     /// Attach the application-scoped layout store. The real app uses
@@ -1041,7 +1044,11 @@ impl MatrixApp {
         self.note_dock_diagnostics(&diagnostics);
     }
     fn invoke(&mut self, id: &str, origin: InvocationOrigin) {
+        let builder_before = self.controller.addon_builder().map(|b| b.code.clone());
         let result = self.controller.dispatch_effect(id, origin);
+        if result.is_ok() {
+            self.echo_builder_start(builder_before);
+        }
         if result.is_ok() && !self.f6_pinned {
             self.f6_open = false;
         }
@@ -1061,7 +1068,7 @@ impl MatrixApp {
             self.focus_cmd = true;
             return;
         }
-        let prompt = self.controller.prompt();
+        let prompt = self.controller.prompt_text();
         self.transcript.append_history(&format!("{prompt}{draft}"));
         let result = self.controller.submit_effect(&draft);
         if result.is_ok() {
@@ -1086,7 +1093,7 @@ impl MatrixApp {
                 let message = format!("unknown command: {name}");
                 self.transcript.append_history(&message);
                 self.status.error(&message);
-                self.transcript.set_prompt(self.controller.prompt());
+                self.transcript.set_prompt(&self.controller.prompt_text());
                 self.focus_cmd = true;
             }
             other => self.feedback(other.map(|_| ())),
@@ -1564,6 +1571,7 @@ impl MatrixApp {
         }
         self.passes += 1;
         self.addons_frame(ui.ctx());
+        self.builder_frame();
         if self
             .camera_audit
             .as_ref()
@@ -1775,7 +1783,7 @@ impl MatrixApp {
                 self.controller.cancel();
                 self.hover = None;
                 self.transcript.set_draft("");
-                self.transcript.set_prompt(self.controller.prompt());
+                self.transcript.set_prompt(&self.controller.prompt_text());
                 self.focus_cmd = true;
             }
         }
@@ -2526,6 +2534,7 @@ impl MatrixApp {
                 1.5,
             );
         }
+        self.paint_builder_preview(&painter, &view.camera, viewport);
         let title_width = ui.fonts_mut(|fonts| {
             fonts
                 .layout_no_wrap(

@@ -198,41 +198,94 @@ fn gem_on_crv_runs_from_cmd_and_menu_with_one_undo() {
         "Gem On Surface stays disabled"
     );
 
-    // Nothing selected: the add-on refuses with its reason, the document is untouched.
+    let gems_in = |c: &Controller| {
+        c.document()
+            .entities
+            .values()
+            .filter(|e| e.extension(GEM_EXTENSION_SLOT).is_some())
+            .count()
+    };
     let before = c.document().entities.len();
-    let e = c.submit("gvGemOnCrv").unwrap_err().to_string();
-    assert!(e.contains("Chọn ít nhất một đường cong"), "{e}");
-    assert_eq!(c.document().entities.len(), before);
+    assert_eq!(c.addon_typed_name("BuilderGemOnCrv"), Some("gvGemOnCrv"));
 
-    c.select_objects(&[rail]).unwrap();
-    // Count only reports.
-    c.submit("gvGemCountOnCrv").unwrap();
-    let msgs = c.take_addon_messages();
-    assert!(
-        msgs.iter()
-            .any(|m| m.contains("32 viên") && m.contains("0.203")),
-        "{msgs:?}"
-    );
-    assert_eq!(c.document().entities.len(), before);
-
-    // Typed in CMD.
-    let undo_before = c.coordinator().undo_len();
+    // Gem On Crv opens its builder instead of running: nothing is created yet.
     c.submit("gvGemOnCrv").unwrap();
-    let gems: Vec<_> = c
-        .document()
-        .entities
-        .values()
-        .filter(|e| e.extension(GEM_EXTENSION_SLOT).is_some())
-        .collect();
-    assert_eq!(gems.len(), 32);
-    assert!(gems.iter().all(|g| matches!(g.geometry, Geometry::Mesh(_))));
+    let b = c.addon_builder().expect("builder open");
+    assert_eq!(b.code, "BuilderGemOnCrv");
     assert!(
-        gems[0]
-            .extension(GEM_EXTENSION_SLOT)
-            .unwrap()
-            .payload
-            .contains("\"diameter_mm\":1.5")
+        c.prompt_text().contains("chọn đường cong"),
+        "{}",
+        c.prompt_text()
     );
+    let tokens: Vec<String> = b.tokens().into_iter().map(|(_, t)| t).collect();
+    assert_eq!(tokens[0], "Size=1.5", "{tokens:?}");
+    assert!(tokens.contains(&"Layout=Dàn đều".to_string()), "{tokens:?}");
+    assert!(
+        b.preview
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("Chọn ít nhất một đường cong"))
+    );
+    // Enter without a curve: nothing to create, the builder stays open.
+    assert!(c.submit("").is_err());
+    assert!(c.addon_builder().is_some());
+    assert_eq!(c.document().entities.len(), before);
+
+    // Picking the curve while the builder is open previews 32 stones; still no document change.
+    c.select_objects(&[rail]).unwrap();
+    c.refresh_builder_preview();
+    let b = c.addon_builder().unwrap();
+    assert_eq!(b.preview.count, 32);
+    assert!(!b.preview.edges.is_empty(), "preview outline");
+    assert!(
+        b.preview
+            .messages
+            .iter()
+            .any(|m| m.contains("32 viên") && m.contains("0.203"))
+    );
+    assert!(
+        c.prompt_text().contains("Enter = đặt 32 viên"),
+        "{}",
+        c.prompt_text()
+    );
+    assert_eq!(
+        c.document().entities.len(),
+        before,
+        "a preview is never a document object"
+    );
+
+    // Command-line options: Size=2 → 24 stones; a bad value is refused and changes nothing.
+    c.submit("Size=2").unwrap();
+    c.refresh_builder_preview();
+    assert_eq!(c.addon_builder().unwrap().preview.count, 24);
+    assert!(c.submit("Size=99").is_err());
+    assert_eq!(c.addon_builder().unwrap().tokens()[0].1, "Size=2");
+    // A bare choice option steps to the next choice; a label can be typed too.
+    c.submit("Layout").unwrap();
+    assert!(
+        c.addon_builder()
+            .unwrap()
+            .tokens()
+            .iter()
+            .any(|(_, t)| t == "Layout=Giữ khe")
+    );
+    c.submit("layout=Dàn đều").unwrap();
+    assert!(
+        c.addon_builder()
+            .unwrap()
+            .tokens()
+            .iter()
+            .any(|(_, t)| t == "Layout=Dàn đều")
+    );
+    // Option names match case-insensitively and by unique prefix.
+    c.submit("spa=0,2").unwrap();
+    assert!(c.submit("Nope=1").is_err());
+
+    // Enter accepts: one transaction, the builder closes, the values become the defaults.
+    let undo_before = c.coordinator().undo_len();
+    c.submit("").unwrap();
+    assert!(c.addon_builder().is_none());
+    assert_eq!(gems_in(&c), 24);
     assert_eq!(
         c.coordinator().undo_len(),
         undo_before + 1,
@@ -241,7 +294,31 @@ fn gem_on_crv_runs_from_cmd_and_menu_with_one_undo() {
     assert!(
         c.take_addon_messages()
             .iter()
-            .any(|m| m.contains("đã đặt 32 viên"))
+            .any(|m| m.contains("đã đặt 24 viên"))
+    );
+    let gem = c
+        .document()
+        .entities
+        .values()
+        .find(|e| e.extension(GEM_EXTENSION_SLOT).is_some())
+        .unwrap();
+    assert!(
+        gem.extension(GEM_EXTENSION_SLOT)
+            .unwrap()
+            .payload
+            .contains("\"diameter_mm\":2")
+    );
+    let stored = c
+        .addon_host()
+        .unwrap()
+        .lock()
+        .unwrap()
+        .settings("gem_on_curve")
+        .unwrap();
+    assert!(
+        stored
+            .iter()
+            .any(|(s, v)| s.key == "diameter" && v.display() == "2")
     );
 
     // One Undo removes every gem; the rail stays.
@@ -249,21 +326,33 @@ fn gem_on_crv_runs_from_cmd_and_menu_with_one_undo() {
     assert_eq!(c.document().entities.len(), before);
     assert!(c.document().entities.contains_key(&rail));
 
-    // From the menu/icon path (feature id), with a changed setting.
-    c.addon_host()
-        .unwrap()
-        .lock()
-        .unwrap()
-        .set_setting("gem_on_curve", "diameter", "2")
-        .unwrap();
+    // From the menu/icon path the same builder opens with the remembered Ø2.0;
+    // Esc closes it and creates nothing.
     c.dispatch("OM9-GEM-002", InvocationOrigin::Menu).unwrap();
-    let gems = c
-        .document()
-        .entities
-        .values()
-        .filter(|e| e.extension(GEM_EXTENSION_SLOT).is_some())
-        .count();
-    assert_eq!(gems, 24, "Ø2.0 on Ø17.35 rail");
+    assert_eq!(c.addon_builder().unwrap().tokens()[0].1, "Size=2");
+    c.cancel();
+    assert!(c.addon_builder().is_none());
+    assert_eq!(c.document().entities.len(), before);
+
+    // Widget path (builder panel): set a value, reset to defaults.
+    c.dispatch("OM9-GEM-002", InvocationOrigin::Menu).unwrap();
+    c.set_builder_value("diameter", om9_addons::settings::SettingValue::Float(1.3))
+        .unwrap();
+    c.refresh_builder_preview();
+    assert_eq!(c.addon_builder().unwrap().preview.count, 36, "Ø1.3 → 36");
+    assert!(
+        c.set_builder_value("diameter", om9_addons::settings::SettingValue::Float(0.0))
+            .is_err()
+    );
+    c.reset_builder_defaults();
+    assert_eq!(c.addon_builder().unwrap().tokens()[0].1, "Size=1.5");
+    // Typing another command closes the builder and runs that command.
+    c.submit("gvGemCountOnCrv").unwrap();
+    assert!(c.addon_builder().is_none());
+    // Gem Count On Crv is not a builder: it reports at once with the stored values (Ø2.0).
+    let msgs = c.take_addon_messages();
+    assert!(msgs.iter().any(|m| m.contains("24 viên")), "{msgs:?}");
+    assert_eq!(c.document().entities.len(), before);
 
     // File › Open replaces the document controller; installed add-ons stay attached
     // (regression: the first Windows run reported "unknown command" after Open).

@@ -8,7 +8,8 @@ All three resolve to one catalog code (`BuilderGemOnCrv`).
 ## Using add-ons
 
 - **Tools › Add-ons…** lists installed add-ons. From there you can enable or disable an add-on,
-  grant the permissions it asks for, edit its settings and uninstall it.
+  grant the permissions it asks for, start its commands and uninstall it. Parameters are not
+  edited there: they are set while the command runs (see *Builders* below).
 - **Tools › Install Add-on from Disk…**, or drag a `.zip` onto the window, installs a package.
   Install is atomic: a failed install leaves the previous version in place.
 - Add-on output goes into one transaction, so one Undo removes everything a command created.
@@ -16,6 +17,36 @@ All three resolve to one catalog code (`BuilderGemOnCrv`).
 - `OM9_SAFE_MODE=1` starts OM9 without enabling any add-on.
 - `OM9_CONFIG_DIR` overrides the per-version config folder. That folder holds `userprefs.toml`
   and `extensions/user/`. An `addons/` folder beside `om9.exe` is a read-only system repository.
+
+## Builders: parameters while the command runs
+
+A command declared with `builder = true` does not create anything when it starts. It opens a
+builder instead:
+
+- The **command line** shows the prompt and the options as tokens, for example
+  `Size=1.5  Spacing=0.2  Start=0  End=100  ZOffset=0  Layout=Dàn đều  Orient=Theo CPlane`.
+  - Type `Size=2` to change a value. Option names match case-insensitively or by a unique
+    prefix (`spa=0,25`).
+  - A choice or flag steps to its next value when you type its bare name (`Layout`) or click it.
+  - Clicking a number token puts `Size=` in the line.
+- The **BUILDERS** panel below the Project Manager shows the command thumbnail (its menu icon
+  and a sketch of the current diameter and gap), the live result, Accept / Cancel / Defaults,
+  every parameter as a draggable or typable field, and one slider for the selected parameter.
+- The **viewports** show the result as a cyan outline for the selected curves. The outline is
+  not a document object. You can pick or change the curve while the builder is open.
+- **Enter** or **✔ Đặt** creates the result in one transaction (one Undo). The accepted values
+  become the add-on's defaults for next time.
+- **Esc** or **✖ Huỷ** closes the builder; nothing is created or stored. Starting another
+  command also closes it.
+
+Manifest keys used by builders:
+
+- `[[commands]] builder = true`.
+- `[[settings]] option = "Size"`: the command-line name. It defaults to the key in PascalCase.
+- `[[settings]] choice_labels = [...]`: display text for enum choices.
+
+Commands without `builder = true` (for example Gem Count On Crv) run at once with the
+remembered values.
 
 ## Package layout
 
@@ -52,7 +83,7 @@ boundary. The host checks every returned mesh before it touches the document.
 
 | Package | Commands | Notes |
 |---|---|---|
-| `addons/gem_on_curve` | Gem On Crv, Gem Count On Crv | Round brilliant stones spaced along curves.<br>Closed curve: `n = ⌊L/(d+g)⌋`, `g' = L/n − d`.<br>Open curve: `n = ⌊(L+g)/(d+g)⌋`.<br>Settings: diameter, spacing, start/end %, Z offset, fit or fixed gap, plane or outward orientation. |
+| `addons/gem_on_curve` | Gem On Crv, Gem Count On Crv | Round brilliant stones spaced along curves.<br>Closed curve: `n = ⌊L/(d+g)⌋`, `g' = L/n − d`.<br>Open curve: `n = ⌊(L+g)/(d+g)⌋`.<br>Gem On Crv opens a builder; Gem Count On Crv reports at once.<br>Options: Size, Spacing, Start/End %, ZOffset, Layout (fit or fixed gap), Orient (CPlane or outward). |
 | `addons/ring_sizes` | — | Data library: US and ISO 8653 ring size tables. |
 
 Check value: a Ø17.35 mm ring rail with Ø1.5 mm stones and 0.2 mm spacing gives 32 stones with a

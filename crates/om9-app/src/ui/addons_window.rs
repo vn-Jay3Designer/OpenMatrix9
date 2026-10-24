@@ -5,7 +5,6 @@ use crate::addons::FeatureName;
 use crate::session::InvocationOrigin;
 use eframe::egui::{self, Color32, RichText};
 use om9_addons::host::{AddonStatus, InstallOptions, RepoKind};
-use om9_addons::settings::{Kind, SettingSpec, SettingValue};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -16,9 +15,6 @@ pub(crate) struct AddonsUi {
     pub install_request: bool,
     /// (ok, text) shown at the top of the window.
     pub notice: Option<(bool, String)>,
-    /// Text being typed into a numeric/string setting before it is applied.
-    pub drafts: BTreeMap<(String, String), String>,
-    pub draft_errors: BTreeMap<(String, String), String>,
     /// The add-on whose enable is waiting for the user to accept its permissions.
     pub pending_grant: Option<String>,
 }
@@ -30,11 +26,8 @@ enum Action {
     },
     Disable(String),
     Uninstall(String),
-    Set {
-        id: String,
-        key: String,
-        value: String,
-    },
+    /// Start one of the add-on's commands (same path as its menu icon).
+    Run(String),
     InstallFromDisk,
 }
 
@@ -47,7 +40,6 @@ struct RowView {
     status: AddonStatus,
     commands: Vec<(String, String, Option<String>)>,
     permissions: Vec<(String, String)>,
-    settings: Vec<(SettingSpec, SettingValue)>,
 }
 
 impl MatrixApp {
@@ -222,7 +214,6 @@ impl MatrixApp {
                         })
                         .collect(),
                     permissions: r.permissions.clone().into_iter().collect(),
-                    settings: h.settings(&r.id).unwrap_or_default(),
                     id: r.id,
                     name: r.name,
                     version: r.version.unwrap_or_else(|| "?".into()),
@@ -323,109 +314,37 @@ impl MatrixApp {
                     });
                 }
             }
-            egui::CollapsingHeader::new("Commands and settings")
+            egui::CollapsingHeader::new("Commands")
                 .id_salt(("addon-details", &row.id))
                 .default_open(self.addons_ui.pending_grant.as_deref() == Some(&row.id) || enabled)
                 .show(ui, |ui| {
                     for (code, label, keys) in &row.commands {
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(label).strong());
+                            let run = ui
+                                .add_enabled(
+                                    enabled,
+                                    egui::Button::new(RichText::new(label).strong()),
+                                )
+                                .on_hover_text("Run the command (same as its menu icon)");
+                            if run.clicked() {
+                                actions.push(Action::Run(code.clone()));
+                            }
                             ui.weak(code);
                             if let Some(k) = keys {
                                 ui.label(format!("[{k}]"));
                             }
                         });
                     }
-                    if !row.settings.is_empty() {
-                        ui.separator();
-                        egui::Grid::new(("addon-settings", &row.id))
-                            .num_columns(2)
-                            .striped(true)
-                            .show(ui, |ui| {
-                                for (spec, value) in &row.settings {
-                                    self.setting_row(ui, &row.id, spec, value, actions);
-                                    ui.end_row();
-                                }
-                            });
-                    }
+                    ui.weak(
+                        "Parameters are set while the command runs: on the command line \
+                         (Size=1.5 …) and in the BUILDERS panel below Projects. The values you \
+                         accept become the defaults for next time.",
+                    );
                     if row.repo == RepoKind::User && ui.button("Uninstall").clicked() {
                         actions.push(Action::Uninstall(row.id.clone()));
                     }
                 });
             ui.separator();
-        }
-    }
-
-    fn setting_row(
-        &mut self,
-        ui: &mut egui::Ui,
-        id: &str,
-        spec: &SettingSpec,
-        value: &SettingValue,
-        actions: &mut Vec<Action>,
-    ) {
-        let label = ui.label(&spec.label);
-        if let Some(d) = &spec.description {
-            label.on_hover_text(d);
-        }
-        let key = (id.to_owned(), spec.key.clone());
-        match (&spec.kind, value) {
-            (Kind::Bool, SettingValue::Bool(b)) => {
-                let mut v = *b;
-                if ui.checkbox(&mut v, "").changed() {
-                    actions.push(Action::Set {
-                        id: id.into(),
-                        key: spec.key.clone(),
-                        value: v.to_string(),
-                    });
-                }
-            }
-            (Kind::Enum { choices }, SettingValue::Str(current)) => {
-                let mut chosen = current.clone();
-                egui::ComboBox::from_id_salt(("addon-enum", id, &spec.key))
-                    .selected_text(&chosen)
-                    .show_ui(ui, |ui| {
-                        for c in choices {
-                            ui.selectable_value(&mut chosen, c.clone(), c);
-                        }
-                    });
-                if &chosen != current {
-                    actions.push(Action::Set {
-                        id: id.into(),
-                        key: spec.key.clone(),
-                        value: chosen,
-                    });
-                }
-            }
-            _ => {
-                let suffix = match &spec.kind {
-                    Kind::Float { unit, .. } => unit.suffix().trim().to_owned(),
-                    _ => String::new(),
-                };
-                ui.vertical(|ui| {
-                    ui.horizontal(|ui| {
-                        let draft = self
-                            .addons_ui
-                            .drafts
-                            .entry(key.clone())
-                            .or_insert_with(|| value.display());
-                        let response = ui.add(egui::TextEdit::singleline(draft).desired_width(90.));
-                        if !suffix.is_empty() {
-                            ui.label(&suffix);
-                        }
-                        if response.lost_focus() {
-                            actions.push(Action::Set {
-                                id: id.into(),
-                                key: spec.key.clone(),
-                                value: draft.clone(),
-                            });
-                        }
-                    });
-                    if let Some(e) = self.addons_ui.draft_errors.get(&key) {
-                        ui.colored_label(Color32::from_rgb(170, 40, 40), e);
-                    }
-                });
-            }
         }
     }
 
@@ -476,18 +395,12 @@ impl MatrixApp {
                         Err(e) => (false, format!("{id}: {e}")),
                     });
                 }
-                Action::Set { id, key, value } => {
-                    let k = (id.clone(), key.clone());
-                    match h.set_setting(&id, &key, &value) {
-                        Ok(v) => {
-                            self.addons_ui.drafts.remove(&k);
-                            self.addons_ui.draft_errors.remove(&k);
-                            self.status.info(&format!("{id}: {key} = {}", v.display()));
-                        }
-                        Err(e) => {
-                            self.addons_ui.draft_errors.insert(k, e);
-                        }
-                    }
+                Action::Run(code) => {
+                    drop(h);
+                    self.addons_ui.open = false;
+                    self.refresh_addons();
+                    self.invoke(&code, InvocationOrigin::Menu);
+                    return;
                 }
             }
         }

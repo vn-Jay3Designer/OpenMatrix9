@@ -1633,7 +1633,7 @@ version = "0.1.0"
 
 [[package]]
 name = "om9-addon-gem-on-curve"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "om9-addon-abi",
  "om9-addons",

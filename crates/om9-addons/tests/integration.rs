@@ -6,7 +6,7 @@ use om9_addons::host::{
 };
 use om9_addons::inflate::inflate;
 use om9_addons::manifest::RuntimeKind;
-use om9_addons::runtime::{LoadRequest, Runtime};
+use om9_addons::runtime::{CommandInput, CommandOutput, LoadRequest, Runtime};
 use om9_addons::semver::Version;
 use om9_addons::settings::SettingValue;
 use om9_addons::sha256::{hex, sha256};
@@ -155,6 +155,17 @@ impl Runtime for Fake {
     }
     fn settings_changed(&mut self, id: &str, s: &BTreeMap<String, SettingValue>) {
         self.0.lock().unwrap().settings.push((id.into(), s.clone()));
+    }
+    fn invoke(&mut self, _id: &str, input: &CommandInput) -> Result<CommandOutput, String> {
+        // Echo the settings the host passed, so a test can see overrides vs stored values.
+        Ok(CommandOutput {
+            meshes: Vec::new(),
+            messages: input
+                .settings
+                .iter()
+                .map(|(k, v)| format!("{k}={}", v.display()))
+                .collect(),
+        })
     }
 }
 
@@ -321,6 +332,72 @@ fn settings_validate_persist_and_notify() {
         .collect();
     assert_eq!(s["gap"], SettingValue::Float(0.35));
     assert_eq!(s["diameter"], SettingValue::Float(1.5));
+}
+
+#[test]
+fn builder_overrides_are_per_call_and_accepted_values_persist() {
+    let env = Env::new("builder");
+    let mut h = env.host();
+    h.install_zip(
+        &env.good("gem_on_curve"),
+        &InstallOptions {
+            enable: true,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    let info = h.command_info("BuilderGemOnCrv").unwrap();
+    assert_eq!(info.owner, "gem_on_curve");
+    assert!(info.settings.iter().any(|(s, _)| s.key == "diameter"));
+    assert!(h.command_info("BuilderHalo").is_none(), "unbound command");
+
+    let over = BTreeMap::from([("diameter".to_string(), SettingValue::Float(2.0))]);
+    let out = h
+        .invoke_with("BuilderGemOnCrv", CommandInput::default(), &over)
+        .unwrap();
+    assert!(
+        out.messages.contains(&"diameter=2".to_string()),
+        "{:?}",
+        out.messages
+    );
+    // The override was for that call only.
+    let out = h
+        .invoke("BuilderGemOnCrv", CommandInput::default())
+        .unwrap();
+    assert!(out.messages.contains(&"diameter=1.5".to_string()));
+    // Overrides are validated against the schema.
+    let bad = BTreeMap::from([("diameter".to_string(), SettingValue::Float(999.0))]);
+    assert!(
+        h.invoke_with("BuilderGemOnCrv", CommandInput::default(), &bad)
+            .is_err()
+    );
+    let unknown = BTreeMap::from([("nope".to_string(), SettingValue::Float(1.0))]);
+    assert!(
+        h.invoke_with("BuilderGemOnCrv", CommandInput::default(), &unknown)
+            .is_err()
+    );
+
+    // Accepting a builder stores all its values at once; an invalid one stores nothing.
+    let mixed = BTreeMap::from([
+        ("diameter".to_string(), SettingValue::Float(1.3)),
+        ("gap".to_string(), SettingValue::Float(99.0)),
+    ]);
+    assert!(h.store_settings("gem_on_curve", &mixed).is_err());
+    let ok = BTreeMap::from([
+        ("diameter".to_string(), SettingValue::Float(1.3)),
+        ("gap".to_string(), SettingValue::Float(0.25)),
+    ]);
+    h.store_settings("gem_on_curve", &ok).unwrap();
+    drop(h);
+    let h = env.host();
+    let s: BTreeMap<String, SettingValue> = h
+        .settings("gem_on_curve")
+        .unwrap()
+        .into_iter()
+        .map(|(k, v)| (k.key, v))
+        .collect();
+    assert_eq!(s["diameter"], SettingValue::Float(1.3));
+    assert_eq!(s["gap"], SettingValue::Float(0.25));
 }
 
 #[test]

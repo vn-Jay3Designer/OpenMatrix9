@@ -3,7 +3,7 @@
 
 use crate::catalog::Catalog;
 use crate::keymap;
-use crate::manifest::{self, Check, Manifest, RuntimeKind};
+use crate::manifest::{self, Check, CommandSpec, Manifest, RuntimeKind};
 use crate::prefs::Prefs;
 use crate::runtime::{CommandInput, CommandOutput, DataRuntime, LoadRequest, Runtime};
 use crate::semver::Version;
@@ -160,6 +160,14 @@ pub enum AddonStatus {
     Invalid(Vec<String>),
     Incompatible(String),
     Failed(String),
+}
+
+#[derive(Debug, Clone)]
+pub struct CommandInfo {
+    pub owner: String,
+    pub addon_name: String,
+    pub command: CommandSpec,
+    pub settings: Vec<(SettingSpec, SettingValue)>,
 }
 
 #[derive(Debug, Clone)]
@@ -1158,7 +1166,76 @@ impl Host {
 
     /// Chạy một lệnh: host điền mã lệnh và settings hiệu lực của add-on sở hữu,
     /// runtime chạy, rồi kết quả được kiểm tra lại trước khi trả về.
-    pub fn invoke(&mut self, code: &str, mut input: CommandInput) -> Result<CommandOutput, String> {
+    pub fn invoke(&mut self, code: &str, input: CommandInput) -> Result<CommandOutput, String> {
+        self.invoke_with(code, input, &BTreeMap::new())
+    }
+
+    /// A bound command's declaration and its owner's settings (schema + effective values),
+    /// for the builder (command-line options and builder panel).
+    pub fn command_info(&self, code: &str) -> Option<CommandInfo> {
+        let owner = self.bindings.get(code)?;
+        let manifest = self.installed.get(owner)?.manifest.as_ref()?;
+        let command = manifest.commands.iter().find(|c| c.id == code)?.clone();
+        let settings = self.settings(owner).ok()?;
+        Some(CommandInfo {
+            owner: owner.clone(),
+            addon_name: manifest.name.clone(),
+            command,
+            settings,
+        })
+    }
+
+    /// Persist several setting values of one add-on at once (one write of `userprefs.toml`),
+    /// e.g. the values a builder was accepted with. Every value is validated first; nothing is
+    /// stored if one is invalid.
+    pub fn store_settings(
+        &mut self,
+        id: &str,
+        values: &BTreeMap<String, SettingValue>,
+    ) -> Result<(), String> {
+        let specs = self
+            .installed
+            .get(id)
+            .and_then(|i| i.manifest.as_ref())
+            .map(|m| m.settings.clone())
+            .ok_or_else(|| format!("add-on {id:?} chưa được cài"))?;
+        let mut checked = Vec::new();
+        for (key, v) in values {
+            let spec = specs
+                .iter()
+                .find(|s| &s.key == key)
+                .ok_or_else(|| format!("{id} không có setting {key:?}"))?;
+            checked.push((
+                key.clone(),
+                spec.validate(v)
+                    .map_err(|e| format!("{}: {e}", spec.label))?,
+            ));
+        }
+        let entry = self.prefs.addons.entry(id.to_string()).or_default();
+        for (k, v) in &checked {
+            entry.settings.insert(k.clone(), v.clone());
+        }
+        if let Some(a) = self.active.get_mut(id) {
+            for (k, v) in checked {
+                a.settings.insert(k, v);
+            }
+            let s = a.settings.clone();
+            let rt = a.runtime;
+            if let Some(r) = self.runtimes.get_mut(&rt) {
+                r.settings_changed(id, &s);
+            }
+        }
+        self.save()
+    }
+
+    /// Like [`Host::invoke`], with some settings replaced for this call only (a builder
+    /// previewing values that are not stored yet). Overrides are validated against the schema.
+    pub fn invoke_with(
+        &mut self,
+        code: &str,
+        mut input: CommandInput,
+        overrides: &BTreeMap<String, SettingValue>,
+    ) -> Result<CommandOutput, String> {
         let owner = self
             .bindings
             .get(code)
@@ -1170,6 +1247,24 @@ impl Host {
             .ok_or_else(|| format!("add-on {owner} không còn bật"))?;
         input.command = code.to_owned();
         input.settings = active.settings.clone();
+        if !overrides.is_empty() {
+            let specs = self
+                .installed
+                .get(&owner)
+                .and_then(|i| i.manifest.as_ref())
+                .map(|m| m.settings.clone())
+                .unwrap_or_default();
+            for (key, v) in overrides {
+                let spec = specs
+                    .iter()
+                    .find(|s| &s.key == key)
+                    .ok_or_else(|| format!("{owner} không có setting {key:?}"))?;
+                let v = spec
+                    .validate(v)
+                    .map_err(|e| format!("{}: {e}", spec.label))?;
+                input.settings.insert(key.clone(), v);
+            }
+        }
         let kind = active.runtime;
         let rt = self
             .runtimes

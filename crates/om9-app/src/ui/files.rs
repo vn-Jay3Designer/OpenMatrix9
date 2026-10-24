@@ -240,7 +240,7 @@ impl MatrixApp {
                 ) {
                     self.hover = None;
                     self.transcript.set_draft("");
-                    self.transcript.set_prompt(self.controller.prompt());
+                    self.transcript.set_prompt(&self.controller.prompt_text());
                     self.view_menu_capture = None;
                     self.file_picker_request = None;
                     self.file_picker_attempted = None;
@@ -256,7 +256,7 @@ impl MatrixApp {
                         self.transcript.append_history(diagnostic);
                     }
                 }
-                self.transcript.set_prompt(self.controller.prompt());
+                self.transcript.set_prompt(&self.controller.prompt_text());
                 self.focus_cmd = self.controller.file_operation().is_none();
                 ctx.request_repaint();
                 Ok(())

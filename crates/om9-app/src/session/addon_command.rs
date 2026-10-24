@@ -8,13 +8,15 @@
 //! extension so Tools › Super Select: Gems finds them.
 use super::Controller;
 use crate::addons::{FeatureName, SharedHost};
-use om9_addons::runtime::{CommandInput, CurveInput};
+use om9_addons::runtime::{CommandInput, CommandOutput, CurveInput};
+use om9_addons::settings::SettingValue;
 use om9_core::{
     Error, Result,
     geometry::{Geometry, Mesh},
     model::{Entity, Extension, GEM_EXTENSION_SLOT},
     transaction::{Mutation, TransactionRequest},
 };
+use std::collections::BTreeMap;
 
 /// Samples per selected curve. 1025 = 2^10 + 1 keeps polycurve seams exact for
 /// power-of-two segment counts; the tangent error at this density is far below 0.01°.
@@ -40,6 +42,7 @@ impl Controller {
         if self.addons.is_none() {
             self.addons = previous.addons.take();
             self.addon_names = std::mem::take(&mut previous.addon_names);
+            self.addon_typed = std::mem::take(&mut previous.addon_typed);
         }
         self.addon_messages
             .append(&mut std::mem::take(&mut previous.addon_messages));
@@ -56,6 +59,29 @@ impl Controller {
             },
             None => Default::default(),
         };
+        // code → the Matrix name typed in CMD, echoed when the command starts from a menu.
+        self.addon_typed = self
+            .addon_names
+            .values()
+            .filter_map(|code| {
+                let feature = crate::icons::feature_for(code)?;
+                features
+                    .iter()
+                    .find(|f| f.id == feature)
+                    .and_then(|f| f.command)
+                    .map(|cmd| (code.clone(), cmd.trim().to_owned()))
+            })
+            .collect();
+        // A builder whose command is no longer provided (add-on disabled) closes.
+        if let Some(b) = &self.addon_builder
+            && !self.addon_names.contains_key(&b.code.to_ascii_lowercase())
+        {
+            self.addon_builder = None;
+        }
+    }
+    /// The Matrix command name an add-on command is typed as (`gvGemOnCrv`).
+    pub fn addon_typed_name(&self, code: &str) -> Option<&str> {
+        self.addon_typed.get(code).map(String::as_str)
     }
     /// The catalog code an add-on provides for a typed name, feature id or code.
     pub fn addon_code(&self, name: &str) -> Option<String> {
@@ -72,11 +98,39 @@ impl Controller {
         std::mem::take(&mut self.addon_messages)
     }
 
-    /// Run an add-on command against the current selection.
+    /// Run an add-on command: a builder command opens its builder, any other runs at once
+    /// with the add-on's remembered values.
     pub(super) fn run_addon_command(&mut self, code: &str) -> Result<()> {
         if self.is_running() {
             return Err(Error::Busy);
         }
+        let host = self
+            .addons
+            .clone()
+            .ok_or(Error::Unsupported("add-on host"))?;
+        let info = host
+            .lock()
+            .map_err(|_| Error::Io("add-on host poisoned".into()))?
+            .command_info(code);
+        if info.as_ref().is_some_and(|i| i.command.builder) {
+            return self.start_addon_builder(code);
+        }
+        // Any other command closes an open builder first: one command at a time.
+        self.cancel_addon_builder();
+        let label = info
+            .map(|i| i.command.label)
+            .unwrap_or_else(|| code.to_owned());
+        self.run_addon_with(code, &BTreeMap::new(), &label)
+            .map(|_| ())
+    }
+
+    /// The selected curves sampled in world millimetres, the active CPlane normal, and the
+    /// add-on's answer for `values` (overriding its stored settings for this call only).
+    pub(super) fn addon_invocation(
+        &self,
+        code: &str,
+        values: &BTreeMap<String, SettingValue>,
+    ) -> Result<CommandOutput> {
         let host = self
             .addons
             .clone()
@@ -114,28 +168,38 @@ impl Controller {
             plane_normal: cross(plane.x, plane.y),
             settings: Default::default(),
         };
+        host.lock()
+            .map_err(|_| Error::Io("add-on host poisoned".into()))?
+            .invoke_with(code, input, values)
+            .map_err(Error::Io)
+    }
+
+    /// Invoke and insert the result in one transaction. Returns the number of objects created.
+    pub(super) fn run_addon_with(
+        &mut self,
+        code: &str,
+        values: &BTreeMap<String, SettingValue>,
+        label: &str,
+    ) -> Result<usize> {
         self.events.emit(
             crate::command_events::EventKind::Started,
             code,
             "add-on command",
             None,
         );
-        let output = host
-            .lock()
-            .map_err(|_| Error::Io("add-on host poisoned".into()))?
-            .invoke(code, input);
-        let output = match output {
+        let output = match self.addon_invocation(code, values) {
             Ok(output) => output,
-            Err(message) => {
+            Err(error) => {
                 self.events.emit(
                     crate::command_events::EventKind::Finished,
                     code,
                     "add-on refused",
                     Some(crate::command_events::EventOutcome::Refused),
                 );
-                return Err(Error::Io(message));
+                return Err(error);
             }
         };
+        let to_mm = self.document().page_unit.factor();
         self.addon_messages.extend(output.messages.iter().cloned());
         if output.meshes.is_empty() {
             self.events.emit(
@@ -144,7 +208,7 @@ impl Controller {
                 "reported",
                 None,
             );
-            return Ok(());
+            return Ok(0);
         }
         let layer = self.document().current_layer;
         let mut mutations = Vec::with_capacity(output.meshes.len());
@@ -178,14 +242,17 @@ impl Controller {
         }
         let created = mutations.len();
         let held = self.scene_cache_usage()?;
-        let label = crate::icons::icon_name(code).unwrap_or(code).to_owned();
+        let undo_label = crate::icons::icon_name(code).unwrap_or(label).to_owned();
         let prepared = self
             .coordinator
-            .prepare_with_held_usage(TransactionRequest::new(&label, mutations), held)?;
+            .prepare_with_held_usage(TransactionRequest::new(&undo_label, mutations), held)?;
         let receipt = self.coordinator.commit(prepared)?;
         if receipt.published {
             self.refresh_scene()?;
             self.sync_published(om9_core::changes::ChangeCause::Edit);
+            self.addon_messages.push(format!(
+                "{label}: đã đặt {created} viên (một lần Undo gỡ tất cả)"
+            ));
         }
         self.events.emit(
             crate::command_events::EventKind::Finished,
@@ -197,6 +264,6 @@ impl Controller {
                 crate::command_events::EventOutcome::Refused
             }),
         );
-        Ok(())
+        Ok(created)
     }
 }

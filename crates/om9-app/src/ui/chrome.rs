@@ -931,6 +931,11 @@ impl MatrixApp {
     /// BUILDERS: the reserved area in the space below the Project Manager. M04
     /// owns the real builder; M01 keeps the slot visible and non-interactive.
     fn builder_slot_ui(&mut self, ui: &mut egui::Ui) {
+        // An open add-on builder (Gem On Crv …) takes the slot.
+        if self.builder_panel_ui(ui) {
+            self.builder_slot_rect = Some(ui.min_rect());
+            return;
+        }
         ui.horizontal_wrapped(|ui| {
             let response = ui
                 .add_enabled(false, egui::Button::new("Builder (reserved)"))

@@ -95,6 +95,31 @@ pub struct SettingSpec {
     pub description: Option<String>,
     pub kind: Kind,
     pub default: SettingValue,
+    /// Command-line option name (`Size` in `Size=1.5`). Defaults to the key in PascalCase.
+    pub option: String,
+    /// Display text for each enum choice, same order as `choices` (empty = show the choice).
+    pub choice_labels: Vec<String>,
+}
+
+/// `z_offset` → `ZOffset`.
+pub fn pascal(key: &str) -> String {
+    key.split('_')
+        .filter(|p| !p.is_empty())
+        .map(|p| {
+            let mut c = p.chars();
+            c.next()
+                .map(|f| f.to_ascii_uppercase().to_string() + c.as_str())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+fn valid_option(o: &str) -> bool {
+    let b = o.as_bytes();
+    !b.is_empty()
+        && b.len() <= 32
+        && b[0].is_ascii_alphabetic()
+        && b.iter().all(u8::is_ascii_alphanumeric)
 }
 
 pub const TYPES: &[&str] = &[
@@ -228,12 +253,42 @@ impl SettingSpec {
             .get("description")
             .and_then(Value::as_str)
             .map(str::to_string);
+        let option = match t.get("option") {
+            None => pascal(&key),
+            Some(Value::Str(o)) if valid_option(o) => o.clone(),
+            Some(_) => {
+                errs.push(format!(
+                    "{ctx}: option phải là tên lệnh-dòng 1–32 ký tự chữ/số, bắt đầu bằng chữ"
+                ));
+                String::new()
+            }
+        };
+        let choice_labels: Vec<String> = match t.get("choice_labels") {
+            None => Vec::new(),
+            Some(Value::Array(a)) => a
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            Some(_) => {
+                errs.push(format!("{ctx}: choice_labels phải là danh sách chuỗi"));
+                Vec::new()
+            }
+        };
+        if !choice_labels.is_empty()
+            && !matches!(&kind, Kind::Enum { choices } if choices.len() == choice_labels.len())
+        {
+            errs.push(format!(
+                "{ctx}: choice_labels chỉ dùng cho enum và phải có đúng số phần tử như choices"
+            ));
+        }
         let mut spec = SettingSpec {
             key,
             label,
             description,
             kind,
             default: SettingValue::Bool(false),
+            option,
+            choice_labels,
         };
         match t.get("default").and_then(SettingValue::from_toml) {
             None => errs.push(format!("{ctx}: thiếu default")),
@@ -405,6 +460,19 @@ mod tests {
         let t = parse(src).unwrap();
         let mut e = Vec::new();
         SettingSpec::from_table(&t, 0, &mut e).ok_or(e)
+    }
+
+    #[test]
+    fn command_line_option_names_and_choice_labels() {
+        let s = spec("key='z_offset'\ntype='length'\ndefault=0").unwrap();
+        assert_eq!(s.option, "ZOffset", "PascalCase of the key by default");
+        let s = spec("key='diameter'\ntype='length'\ndefault=1\noption='Size'").unwrap();
+        assert_eq!(s.option, "Size");
+        assert!(spec("key='a'\ntype='bool'\ndefault=true\noption='bad name'").is_err());
+        let s = spec("key='layout'\ntype='enum'\nchoices=['fit','fixed_gap']\nchoice_labels=['Fit','Fixed']\ndefault='fit'").unwrap();
+        assert_eq!(s.choice_labels, ["Fit", "Fixed"]);
+        assert!(spec("key='layout'\ntype='enum'\nchoices=['fit','fixed_gap']\nchoice_labels=['Fit']\ndefault='fit'").is_err());
+        assert!(spec("key='n'\ntype='int'\ndefault=1\nchoice_labels=['x']").is_err());
     }
 
     #[test]

@@ -32,7 +32,7 @@ Copy-Item (Join-Path $release 'gem_on_curve.dll') (Join-Path $stage 'gem_on_curv
 Copy-Item (Join-Path $gem 'icons/*') (Join-Path $stage 'gem_on_curve/icons')
 
 $packages = @(
-    @{ src = Join-Path $stage 'gem_on_curve'; out = 'gem_on_curve-0.3.0-windows-x64.zip' },
+    @{ src = Join-Path $stage 'gem_on_curve'; out = 'gem_on_curve-0.4.0-windows-x64.zip' },
     @{ src = Join-Path $source 'addons/ring_sizes'; out = 'ring_sizes-1.0.0.zip' }
 )
 foreach ($p in $packages) {
@@ -45,7 +45,7 @@ foreach ($p in $packages) {
 
 # Smoke test in a throw-away config: install, enable (native DLL really loads), list, uninstall.
 $config = Join-Path $OutDir 'smoke-config'
-& $tool --catalog $catalog --config $config install (Join-Path $OutDir 'gem_on_curve-0.3.0-windows-x64.zip') --enable --yes
+& $tool --catalog $catalog --config $config install (Join-Path $OutDir 'gem_on_curve-0.4.0-windows-x64.zip') --enable --yes
 if ($LASTEXITCODE -ne 0) { throw 'gem_on_curve install/enable smoke test failed' }
 & $tool --catalog $catalog --config $config menu Gems
 if ($LASTEXITCODE -ne 0) { throw 'gem_on_curve command listing failed' }
