@@ -99,6 +99,16 @@ pub struct SettingSpec {
     pub option: String,
     /// Display text for each enum choice, same order as `choices` (empty = show the choice).
     pub choice_labels: Vec<String>,
+    /// The commands this setting belongs to (their builder panel and command-line options).
+    /// Empty: every command of the add-on.
+    pub commands: Vec<String>,
+}
+
+impl SettingSpec {
+    /// Whether this setting is one of `command`'s parameters.
+    pub fn applies_to(&self, command: &str) -> bool {
+        self.commands.is_empty() || self.commands.iter().any(|c| c == command)
+    }
 }
 
 /// `z_offset` → `ZOffset`.
@@ -274,6 +284,17 @@ impl SettingSpec {
                 Vec::new()
             }
         };
+        let commands: Vec<String> = match t.get("commands") {
+            None => Vec::new(),
+            Some(Value::Array(a)) if a.iter().all(|v| v.as_str().is_some()) => a
+                .iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect(),
+            Some(_) => {
+                errs.push(format!("{ctx}: commands phải là danh sách mã lệnh"));
+                Vec::new()
+            }
+        };
         if !choice_labels.is_empty()
             && !matches!(&kind, Kind::Enum { choices } if choices.len() == choice_labels.len())
         {
@@ -289,6 +310,7 @@ impl SettingSpec {
             default: SettingValue::Bool(false),
             option,
             choice_labels,
+            commands,
         };
         match t.get("default").and_then(SettingValue::from_toml) {
             None => errs.push(format!("{ctx}: thiếu default")),

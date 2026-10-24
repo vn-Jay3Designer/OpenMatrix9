@@ -24,6 +24,8 @@ use serde_json::Value;
 const PREVIEW_SAMPLES: usize = 129;
 /// Most selected objects described to an add-on per step.
 const MAX_SELECTION: usize = 20_000;
+/// Most triangles sent with the selection to a `mesh_data` command per step.
+const MAX_SELECTION_TRIANGLES: usize = 2_000_000;
 
 #[derive(Debug, Clone)]
 pub struct AddonSession {
@@ -44,6 +46,8 @@ pub struct AddonSession {
     selection_seen: u64,
     /// The pointer position last sent as a hover event; the UI reports it every frame.
     hover_at: Option<Point3>,
+    /// The command reads the triangles of selected meshes (`mesh_data = true`).
+    mesh_data: bool,
 }
 
 impl AddonSession {
@@ -320,14 +324,160 @@ fn gem_in_world(mut g: Value, placement: &Transform, k: f64) -> Value {
         }
     }
     // Uniform scale changes the stone size too.
-    if let Some(dia) = g.get("diameter_mm").and_then(Value::as_f64) {
-        let m = placement.0;
-        let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
-            - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
-            + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
-        g["diameter_mm"] = serde_json::json!(dia * det.abs().cbrt());
+    let m = placement.0;
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    for key in ["diameter_mm", "length_mm", "width_mm", "depth_mm"] {
+        if let Some(v) = g.get(key).and_then(Value::as_f64) {
+            g[key] = serde_json::json!(v * det.abs().cbrt());
+        }
     }
     g
+}
+
+/// Inverse of an object placement (3×4, row-major), for world → local.
+fn inverse(placement: &Transform) -> Result<[[f64; 4]; 3]> {
+    let m = placement.0;
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    if det.abs() < 1e-12 {
+        return Err(Error::Invalid("object placement"));
+    }
+    let c = |r: usize, col: usize| {
+        let (r1, r2) = ((r + 1) % 3, (r + 2) % 3);
+        let (c1, c2) = ((col + 1) % 3, (col + 2) % 3);
+        m[r1][c1] * m[r2][c2] - m[r1][c2] * m[r2][c1]
+    };
+    let mut inv = [[0.0; 4]; 3];
+    for i in 0..3 {
+        for j in 0..3 {
+            inv[i][j] = c(j, i) / det;
+        }
+    }
+    for i in 0..3 {
+        inv[i][3] = -(0..3).map(|j| inv[i][j] * m[j][3]).sum::<f64>();
+    }
+    Ok(inv)
+}
+
+/// World add-on geometry (mm) in an object's local frame (still mm).
+fn geo_in_local(g: &Geo, placement: &Transform, k: f64) -> Result<Geo> {
+    let inv = inverse(placement)?;
+    let p = |v: s::Vec3| -> s::Vec3 {
+        let d = doc(v, k);
+        let l: [f64; 3] = std::array::from_fn(|i| {
+            inv[i][0] * d[0] + inv[i][1] * d[1] + inv[i][2] * d[2] + inv[i][3]
+        });
+        mm(l, k)
+    };
+    let v = |d: s::Vec3| -> s::Vec3 {
+        std::array::from_fn(|i| inv[i][0] * d[0] + inv[i][1] * d[1] + inv[i][2] * d[2])
+    };
+    let sc = s::norm(v([1.0, 0.0, 0.0]));
+    Ok(match g {
+        Geo::Point { point } => Geo::Point { point: p(*point) },
+        Geo::Line { start, end } => Geo::Line {
+            start: p(*start),
+            end: p(*end),
+        },
+        Geo::Polyline { points, closed } => Geo::Polyline {
+            points: points.iter().map(|q| p(*q)).collect(),
+            closed: *closed,
+        },
+        Geo::Circle {
+            center,
+            x,
+            y,
+            radius,
+        } => Geo::Circle {
+            center: p(*center),
+            x: s::unit(v(*x)),
+            y: s::unit(v(*y)),
+            radius: radius * sc,
+        },
+        Geo::Arc {
+            center,
+            x,
+            y,
+            radius,
+            angle,
+        } => Geo::Arc {
+            center: p(*center),
+            x: s::unit(v(*x)),
+            y: s::unit(v(*y)),
+            radius: radius * sc,
+            angle: *angle,
+        },
+        Geo::Nurbs {
+            degree,
+            points,
+            weights,
+            knots,
+        } => Geo::Nurbs {
+            degree: *degree,
+            points: points.iter().map(|q| p(*q)).collect(),
+            weights: weights.clone(),
+            knots: knots.clone(),
+        },
+        Geo::Mesh {
+            name,
+            vertices,
+            triangles,
+            meta,
+            layer,
+        } => Geo::Mesh {
+            name: name.clone(),
+            vertices: vertices.iter().map(|q| p(*q)).collect(),
+            triangles: triangles.clone(),
+            meta: meta.clone(),
+            layer: layer.clone(),
+        },
+        other => other.clone(),
+    })
+}
+
+/// A world gem record back into the object's own frame (inverse of [`gem_in_world`]).
+fn record_in_local(mut g: Value, placement: &Transform, k: f64) -> Result<Value> {
+    let m = placement.0;
+    let det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+        - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+        + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    if det.abs() < 1e-12 {
+        return Err(Error::Invalid("object placement"));
+    }
+    // Inverse of the 3×3 part by cofactors.
+    let c = |r: usize, col: usize| {
+        let (r1, r2) = ((r + 1) % 3, (r + 2) % 3);
+        let (c1, c2) = ((col + 1) % 3, (col + 2) % 3);
+        m[r1][c1] * m[r2][c2] - m[r1][c2] * m[r2][c1]
+    };
+    let inv: [[f64; 3]; 3] = std::array::from_fn(|i| std::array::from_fn(|j| c(j, i) / det));
+    let mul = |v: [f64; 3]| -> [f64; 3] {
+        std::array::from_fn(|i| (0..3).map(|j| inv[i][j] * v[j]).sum())
+    };
+    let read = |v: &Value| -> Option<[f64; 3]> {
+        let a = v.as_array()?;
+        Some([a.first()?.as_f64()?, a.get(1)?.as_f64()?, a.get(2)?.as_f64()?])
+    };
+    if let Some(cw) = g.get("center").and_then(read) {
+        let w = doc(cw, k);
+        let d = [w[0] - m[0][3], w[1] - m[1][3], w[2] - m[2][3]];
+        g["center"] = serde_json::json!(mm(mul(d), k));
+    }
+    for key in ["axis", "x"] {
+        if let Some(d) = g.get(key).and_then(read) {
+            g[key] = serde_json::json!(s::unit(mul(d)));
+        }
+    }
+    let scale = det.abs().cbrt();
+    for key in ["diameter_mm", "length_mm", "width_mm", "depth_mm"] {
+        if let Some(v) = g.get(key).and_then(Value::as_f64) {
+            g[key] = serde_json::json!(v / scale);
+        }
+    }
+    Ok(g)
 }
 
 impl Controller {
@@ -343,9 +493,10 @@ impl Controller {
     }
 
     /// The selection as add-ons see it (world millimetres).
-    fn session_selection(&self, k: f64) -> Vec<Selected> {
+    fn session_selection(&self, k: f64, mesh_data: bool) -> Vec<Selected> {
         use om9_scene::scene::RenderBuffers;
         let mut out: Vec<Selected> = Vec::new();
+        let mut triangles_sent = 0usize;
         let Some(scene) = self.scene.as_ref() else {
             return out;
         };
@@ -378,6 +529,7 @@ impl Controller {
                     points: Vec::new(),
                     closed: false,
                     gem,
+                    mesh: None,
                 });
                 out.len() - 1
             });
@@ -390,6 +542,24 @@ impl Controller {
                 RenderBuffers::Mesh { vertices, .. } => (vertices, false),
             };
             let sel = &mut out[slot];
+            if mesh_data
+                && let RenderBuffers::Mesh { triangles, .. } = object.buffers.as_ref()
+                && triangles_sent + triangles.len() <= MAX_SELECTION_TRIANGLES
+            {
+                triangles_sent += triangles.len();
+                let mesh = sel.mesh.get_or_insert_with(Default::default);
+                let base = mesh.vertices.len() as u32;
+                mesh.vertices.extend(
+                    points
+                        .iter()
+                        .map(|p| t.point(*p).map(|w| mm(w, k)).unwrap_or(mm(*p, k))),
+                );
+                mesh.triangles.extend(
+                    triangles
+                        .iter()
+                        .map(|(tri, _)| [tri[0] + base, tri[1] + base, tri[2] + base]),
+                );
+            }
             for p in points {
                 let Ok(w) = t.point(*p) else { continue };
                 let w = mm(w, k);
@@ -503,6 +673,11 @@ impl Controller {
                     .and_then(|h| h.owner_of(code).map(str::to_owned))
             })
             .ok_or(Error::Unsupported("add-on command"))?;
+        let mesh_data = self
+            .addons
+            .as_ref()
+            .and_then(|h| h.lock().ok()?.command_info(code))
+            .is_some_and(|i| i.command.mesh_data);
         self.cancel();
         self.addon_session = Some(AddonSession {
             code: code.to_owned(),
@@ -516,6 +691,7 @@ impl Controller {
             last_point: None,
             selection_seen: self.selection_revision,
             hover_at: None,
+            mesh_data,
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -574,7 +750,7 @@ impl Controller {
                 x: plane.x,
                 y: plane.y,
             },
-            selection: self.session_selection(k),
+            selection: self.session_selection(k, session.mesh_data),
             settings,
         };
         let bytes = serde_json::to_vec(&event).map_err(|e| Error::Io(e.to_string()))?;
@@ -852,7 +1028,83 @@ impl Controller {
                 entity,
             });
         }
-        if let Some(op) = &reply.transform {
+        let selected = |id: &str| -> Result<om9_core::identity::ObjectId> {
+            self.selection
+                .iter()
+                .copied()
+                .find(|o| o.to_string() == id)
+                .ok_or(Error::Invalid("add-on result names an object that is not selected"))
+        };
+        if let Some(op) = reply.transform.as_ref().filter(|op| !op.per_object.is_empty()) {
+            for item in &op.per_object {
+                let id = selected(&item.id)?;
+                let t = to_transform(&item.matrix, k)?;
+                let entity = self
+                    .document()
+                    .entities
+                    .get(&id)
+                    .ok_or(Error::Missing("object"))?
+                    .clone();
+                if op.keep_original {
+                    let mut copy =
+                        Entity::new(&entity.label, entity.geometry.clone(), entity.attributes.layer);
+                    copy.attributes = entity.attributes.clone();
+                    copy.extensions = entity.extensions.clone();
+                    copy.placement = t.compose(entity.placement)?;
+                    created_ids.push(copy.id);
+                    mutations.push(Mutation::Insert {
+                        document: self.document,
+                        entity: copy,
+                    });
+                } else {
+                    mutations.push(Mutation::Placement {
+                        source: self.document().stamp(id)?,
+                        placement: t.compose(entity.placement)?,
+                    });
+                }
+            }
+        }
+        for r in &reply.replace {
+            let id = selected(&r.id)?;
+            let placement = self
+                .document()
+                .entities
+                .get(&id)
+                .ok_or(Error::Missing("object"))?
+                .placement;
+            // The object keeps its placement: the world geometry goes into its own frame.
+            let local = geo_in_local(&r.geo, &placement, k)?;
+            let (geometry, _, _) = to_geometry(&local, k)?;
+            mutations.push(Mutation::Geometry {
+                source: self.document().stamp(id)?,
+                geometry,
+            });
+        }
+        for u in &reply.records {
+            let id = selected(&u.id)?;
+            let entity = self
+                .document()
+                .entities
+                .get(&id)
+                .ok_or(Error::Missing("object"))?;
+            let local = record_in_local(u.record.clone(), &entity.placement, k)?;
+            let mut extensions = entity.extensions.clone();
+            extensions.insert(
+                GEM_EXTENSION_SLOT.to_owned(),
+                Extension::new(1, local.to_string())?,
+            );
+            mutations.push(Mutation::Extensions {
+                source: self.document().stamp(id)?,
+                extensions,
+            });
+        }
+        for id in &reply.delete {
+            let id = selected(id)?;
+            mutations.push(Mutation::Delete {
+                source: self.document().stamp(id)?,
+            });
+        }
+        if let Some(op) = reply.transform.as_ref().filter(|op| op.per_object.is_empty()) {
             let transforms: Vec<Transform> = op
                 .matrices
                 .iter()

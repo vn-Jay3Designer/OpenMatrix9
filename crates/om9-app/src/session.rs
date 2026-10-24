@@ -1295,9 +1295,13 @@ impl Controller {
             .map(|_| DispatchOutcome::Command)
     }
     fn dispatch_geometry(&mut self, feature: &str, _origin: InvocationOrigin) -> Result<()> {
-        if Self::availability(feature).is_err()
-            && let Some(code) = self.addon_code(feature)
-        {
+        // An enabled add-on that provides the command (by its code, or by the catalog code of
+        // the icon bound to this built-in feature) runs instead of the built-in.
+        if let Some(code) = self.addon_code(feature).or_else(|| {
+            crate::icons::command_key_for(feature)
+                .filter(|_| Self::availability(feature).is_ok())
+                .and_then(|key| self.addon_code(key))
+        }) {
             return self.run_addon_command(&code);
         }
         Self::availability(feature)?;
@@ -3151,9 +3155,9 @@ impl Controller {
                     .ok_or(Error::Missing("previous repeatable command"))?;
                 return self.dispatch(&repeat, InvocationOrigin::Cmd);
             }
-            if Self::resolve_alias(text).is_none()
-                && let Some(code) = self.addon_code(text)
-            {
+            // An installed, enabled add-on takes the command name over from OM9's own command
+            // (disable or remove the add-on to get the built-in back).
+            if let Some(code) = self.addon_code(text) {
                 return self.run_addon_command(&code);
             }
             return match Self::resolve_alias(text) {

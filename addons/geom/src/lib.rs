@@ -9,6 +9,10 @@
 //! - de Boor evaluation, used by previews and tests.
 use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub, unit};
 
+pub mod cmd;
+pub mod gems;
+pub mod mesh;
+
 pub const EPS: f64 = 1e-9;
 
 /// Clamped uniform knots for `n` poles of `degree` (`n + degree + 1` values).

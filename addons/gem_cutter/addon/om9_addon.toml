@@ -89,7 +89,7 @@ max = 200.0
 step = 1.0
 
 [[settings]]
-key = "z_offset"
+key = "cutter_z_offset"
 type = "percent"
 option = "ZOffset"
 label = "Nâng/hạ (Z Offset)"

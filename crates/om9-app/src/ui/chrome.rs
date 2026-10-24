@@ -1316,6 +1316,11 @@ impl MatrixApp {
                                     name,
                                 );
                             }
+                            // Toolbar slots (Move, Rotate, Mirror …) run the installed
+                            // add-on that provides the command, ahead of OM9's own.
+                            _ if self.controller.icon_addon(name).is_some() => {
+                                self.feature_icon(ui, "", name);
+                            }
                             _ if tab == "Top 11" => {
                                 let Some(action) = om9_core::top11::Top11Action::from_icon(name)
                                 else {
@@ -1335,11 +1340,6 @@ impl MatrixApp {
                                 if self.icon(ui, name, state.enabled, &tooltip).clicked() {
                                     self.top11_action(name);
                                 }
-                            }
-                            // Toolbar slots (Move, Rotate, Mirror …) run the installed
-                            // add-on that provides the command; others stay inactive.
-                            _ if self.controller.icon_addon(name).is_some() => {
-                                self.feature_icon(ui, "", name);
                             }
                             _ => {
                                 self.icon(ui, name, false, name);

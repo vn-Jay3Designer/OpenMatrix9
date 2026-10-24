@@ -75,6 +75,55 @@ pub struct Selected {
     /// The `om9.gem` record of a gem (cut, diameter, frame …), when the object is one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gem: Option<Value>,
+    /// World triangles of a mesh or solid, for commands with `mesh_data = true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mesh: Option<SelectedMesh>,
+}
+
+/// Triangles of a selected object in world millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct SelectedMesh {
+    pub vertices: Vec<Vec3>,
+    pub triangles: Vec<[u32; 3]>,
+}
+
+impl SelectedMesh {
+    /// Enclosed volume (mm³) by the divergence theorem; meaningful for closed meshes.
+    pub fn volume(&self) -> f64 {
+        self.triangles
+            .iter()
+            .filter_map(|t| {
+                let p = |i: u32| self.vertices.get(i as usize).copied();
+                Some(dot(p(t[0])?, cross(p(t[1])?, p(t[2])?)))
+            })
+            .sum::<f64>()
+            / 6.0
+    }
+    /// Surface area (mm²).
+    pub fn area(&self) -> f64 {
+        self.triangles
+            .iter()
+            .filter_map(|t| {
+                let p = |i: u32| self.vertices.get(i as usize).copied();
+                let (a, b, c) = (p(t[0])?, p(t[1])?, p(t[2])?);
+                Some(norm(cross(sub(b, a), sub(c, a))) / 2.0)
+            })
+            .sum()
+    }
+    /// Edges used by one triangle only (holes), and by more than two (non-manifold).
+    pub fn open_and_nonmanifold_edges(&self) -> (usize, usize) {
+        let mut edges = std::collections::BTreeMap::<(u32, u32), u32>::new();
+        for t in &self.triangles {
+            for k in 0..3 {
+                let (a, b) = (t[k], t[(k + 1) % 3]);
+                *edges.entry((a.min(b), a.max(b))).or_insert(0) += 1;
+            }
+        }
+        (
+            edges.values().filter(|&&n| n == 1).count(),
+            edges.values().filter(|&&n| n > 2).count(),
+        )
+    }
 }
 
 /// What happened.
@@ -276,6 +325,17 @@ pub struct TransformOp {
     /// `false` with one matrix: move the originals (Move, Rotate, Scale, Mirror with Copy=No).
     /// `true`: keep the originals and add one transformed copy per matrix (Copy, Array).
     pub keep_original: bool,
+    /// One matrix per selected object (by [`Selected::id`]) instead of `matrices`: each stone
+    /// flipped about its own girdle, each ring resized about its own axis …
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub per_object: Vec<ObjectMatrix>,
+}
+
+/// A transform for one selected object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObjectMatrix {
+    pub id: String,
+    pub matrix: [f64; 16],
 }
 
 /// The add-on's answer to one [`Event`].
@@ -311,6 +371,31 @@ pub struct Reply {
     /// The input was refused (bad value); the command keeps going.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// With `done`: selected objects (by [`Selected::id`]) to delete in the same transaction
+    /// (a stone replaced by another cut, a curve consumed by the command …).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delete: Vec<String>,
+    /// With `done`: new world geometry for selected objects (Bend, Twist, Taper …). The object
+    /// keeps its id, layer and attributes.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replace: Vec<Replacement>,
+    /// With `done`: new `om9.gem` records (world frame) for selected objects, e.g. a material.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub records: Vec<RecordUpdate>,
+}
+
+/// New geometry for one selected object.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Replacement {
+    pub id: String,
+    pub geo: Geo,
+}
+
+/// A new gem record for one selected object, in world millimetres.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RecordUpdate {
+    pub id: String,
+    pub record: Value,
 }
 
 impl Reply {
@@ -368,6 +453,10 @@ pub trait Interactive {
     /// Catalog codes handled by [`Interactive::step`].
     const SESSION_COMMANDS: &'static [&'static str];
     fn step(event: &Event) -> Result<Reply, String>;
+    /// Whether `command` is one of this add-on's interactive commands.
+    fn accepts(command: &str) -> bool {
+        Self::SESSION_COMMANDS.contains(&command)
+    }
 }
 
 /// Largest event or reply accepted across the boundary.
@@ -383,7 +472,7 @@ pub fn session_json<T: Interactive>(input: &[u8]) -> (i32, Vec<u8>) {
             Ok(e) => e,
             Err(e) => return Err((crate::INVOKE_BAD_INPUT, format!("event: {e}"))),
         };
-        if !T::SESSION_COMMANDS.contains(&event.command.as_str()) {
+        if !T::accepts(&event.command) {
             return Err((
                 crate::INVOKE_ERROR,
                 format!("lệnh {} không tương tác", event.command),

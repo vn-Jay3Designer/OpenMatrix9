@@ -19,6 +19,7 @@ export = []
 [dependencies]
 om9-addon-abi = { path = "../../crates/om9-addon-abi", features = ["session"] }
 serde_json = { workspace = true }
+om9-addon-geom = { path = "../geom" }
 
 [dev-dependencies]
 om9-addons = { path = "../../crates/om9-addons", features = ["native"] }

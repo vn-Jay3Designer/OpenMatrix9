@@ -1200,7 +1200,12 @@ impl Host {
         let owner = self.bindings.get(code)?;
         let manifest = self.installed.get(owner)?.manifest.as_ref()?;
         let command = manifest.commands.iter().find(|c| c.id == code)?.clone();
-        let settings = self.settings(owner).ok()?;
+        let settings = self
+            .settings(owner)
+            .ok()?
+            .into_iter()
+            .filter(|(spec, _)| spec.applies_to(code))
+            .collect();
         Some(CommandInfo {
             owner: owner.clone(),
             addon_name: manifest.name.clone(),

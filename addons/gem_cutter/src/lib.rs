@@ -9,7 +9,7 @@
 //!
 //! The cutter is a closed triangle mesh on the `Cutting` layer; the gems are not changed.
 use om9_addon_abi::session::{
-    Event, Geo, Input, Interactive, Reply, Selected, Vec3, Want, add, cross, dot, fmt, norm, scale,
+    Event, Geo, Input, Interactive, Reply, Selected, Vec3, Want, add, cross, dot, norm, scale,
     sub, unit,
 };
 use serde_json::{Value, json};
@@ -51,7 +51,7 @@ impl Params {
         Params {
             girdle_scale: e.number("girdle_scale", d.girdle_scale),
             girdle_width: e.number("girdle_width", d.girdle_width),
-            z_offset: e.number("z_offset", d.z_offset),
+            z_offset: e.number("cutter_z_offset", d.z_offset),
             top_height: e.number("top_height", d.top_height),
             seat_size: e.number("seat_size", d.seat_size),
             lower_depth: e.number("lower_depth", d.lower_depth),
@@ -152,23 +152,49 @@ pub fn gem_frame(s: &Selected, fallback_axis: Vec3) -> Option<(Vec3, Vec3, Vec3,
     (d > 0.0 && norm(axis) > 0.0).then_some((center, unit(axis), x, d))
 }
 
+/// The cutter of one stone: round stones revolve the profile; fancy cuts (oval, pear,
+/// emerald …) and custom stones scale their girdle outline through the same stations.
+pub fn cutter_for(g: &om9_addon_geom::gems::PlacedGem, p: &Params) -> Geo {
+    let d = g.gem.base();
+    let stations = profile(d, p);
+    let name = format!("Gem Cutter {}", g.gem.size_label());
+    let (vertices, triangles) = if g.gem.cut == om9_addon_geom::gems::Cut::Round {
+        revolve(g.frame.origin, g.frame.z, g.frame.x, &stations, SEGMENTS)
+    } else {
+        let o = g.gem.outline(64);
+        let rings: Vec<Vec<Vec3>> = stations
+            .iter()
+            .map(|&(r, z)| {
+                let k = r / (d / 2.0);
+                o.iter()
+                    .map(|q| g.frame.point([q[0] * k, q[1] * k, z]))
+                    .collect()
+            })
+            .collect();
+        let top = g.frame.point([0.0, 0.0, stations[0].1]);
+        let bottom = g.frame.point([0.0, 0.0, stations[stations.len() - 1].1]);
+        let m = om9_addon_geom::mesh::ring_stack(&rings, Some(top), Some(bottom));
+        (m.vertices, m.triangles)
+    };
+    Geo::Mesh {
+        name,
+        vertices,
+        triangles,
+        meta: None,
+        layer: Some("Cutting".into()),
+    }
+}
+
 fn cutters(e: &Event) -> (Vec<Geo>, usize) {
     let p = Params::from_event(e);
     let mut out = Vec::new();
     let mut skipped = 0;
     for s in &e.selection {
-        let Some((c, axis, x, d)) = gem_frame(s, e.plane.normal()) else {
+        let Some(g) = om9_addon_geom::gems::PlacedGem::from_selected(s, e.plane.normal()) else {
             skipped += 1;
             continue;
         };
-        let (vertices, triangles) = revolve(c, axis, x, &profile(d, &p), SEGMENTS);
-        out.push(Geo::Mesh {
-            name: format!("Gem Cutter {} mm", fmt(d)),
-            vertices,
-            triangles,
-            meta: None,
-            layer: Some("Cutting".into()),
-        });
+        out.push(cutter_for(&g, &p));
     }
     (out, skipped)
 }

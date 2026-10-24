@@ -47,3 +47,4 @@ om9-addon-gem-on-curve = { path = "../../addons/gem_on_curve" }
 om9-addon-curves = { path = "../../addons/curves", default-features = false }
 om9-addon-transform = { path = "../../addons/transform", default-features = false }
 om9-addon-gem-cutter = { path = "../../addons/gem_cutter", default-features = false }
+om9-addon-matrix = { path = "../../addons/matrix", default-features = false }

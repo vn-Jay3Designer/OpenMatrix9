@@ -15,21 +15,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-/// Runs the real add-on code in-process through the same JSON boundary as the DLL.
+/// Runs the real add-on package code in-process through the same JSON boundary as the DLL.
 struct InProcess;
 impl Runtime for InProcess {
     fn load(&mut self, req: &LoadRequest) -> Result<Vec<String>, String> {
         Ok(req.manifest.commands.iter().map(|c| c.id.clone()).collect())
     }
     fn unload(&mut self, _id: &str) {}
-    fn session(&mut self, id: &str, event: &[u8]) -> Result<Vec<u8>, String> {
-        let (code, out) = if id == "om9_transform" {
-            session_json::<om9_transform::Transforms>(event)
-        } else if id == "gem_cutter" {
-            session_json::<gem_cutter::GemCutter>(event)
-        } else {
-            session_json::<om9_curves::Curves>(event)
-        };
+    fn session(&mut self, _id: &str, event: &[u8]) -> Result<Vec<u8>, String> {
+        let (code, out) = session_json::<om9_matrix::Matrix>(event);
         if code == 0 {
             Ok(out)
         } else {
@@ -58,10 +52,11 @@ pub fn features() -> Vec<(String, Option<String>)> {
 }
 
 fn host(tmp: &Path) -> Arc<Mutex<Host>> {
-    host_with(tmp, &["curves"])
+    host_with(tmp, &[])
 }
 
-fn host_with(tmp: &Path, addons: &[&str]) -> Arc<Mutex<Host>> {
+/// A host with the OM9 Matrix package installed and enabled (all menus in one add-on).
+fn host_with(tmp: &Path, _menus: &[&str]) -> Arc<Mutex<Host>> {
     let catalog = om9_app::addons::catalog().unwrap();
     let mut h = Host::new(HostConfig::new(
         om9_app::addons::om9_version(),
@@ -70,34 +65,37 @@ fn host_with(tmp: &Path, addons: &[&str]) -> Arc<Mutex<Host>> {
     ));
     h.register_runtime(RuntimeKind::Python, Box::new(InProcess));
     h.startup(&Startup::default());
-    for name in addons {
-        let zip = stage_zip(tmp, name, &catalog);
-        let r = h
-            .install_zip(
-                &zip,
-                &InstallOptions {
-                    enable: true,
-                    ..Default::default()
-                },
-            )
-            .unwrap();
-        assert!(r.enabled, "{:?}", r.warnings);
-    }
+    let zip = stage_zip(tmp, &catalog);
+    let r = h
+        .install_zip(
+            &zip,
+            &InstallOptions {
+                enable: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert!(r.enabled, "{:?}", r.warnings);
     Arc::new(Mutex::new(h))
 }
 
-fn stage_zip(tmp: &Path, name: &str, catalog: &om9_addons::catalog::Catalog) -> PathBuf {
-    let stage = tmp.join(format!("stage-{name}"));
-    fs::create_dir_all(&stage).unwrap();
-    let manifest = fs::read_to_string(repo().join(format!("addons/{name}/addon/om9_addon.toml")))
+fn stage_zip(tmp: &Path, catalog: &om9_addons::catalog::Catalog) -> PathBuf {
+    let stage = tmp.join("stage-matrix");
+    fs::create_dir_all(stage.join("icons")).unwrap();
+    let addon = repo().join("addons/matrix/addon");
+    let manifest = fs::read_to_string(addon.join("om9_addon.toml"))
         .unwrap()
         .replace("@PLATFORM@", "any")
         .replace("runtime = \"native\"", "runtime = \"python\"")
         .replace("@ENTRY@", "entry.bin");
     fs::write(stage.join("om9_addon.toml"), manifest).unwrap();
     fs::write(stage.join("entry.bin"), b"in-process").unwrap();
+    for e in fs::read_dir(addon.join("icons")).unwrap() {
+        let e = e.unwrap().path();
+        fs::copy(&e, stage.join("icons").join(e.file_name().unwrap())).unwrap();
+    }
     let (_, zip) = build_package(&stage, Some(catalog)).unwrap_or_else(|e| panic!("{e:?}"));
-    let path = tmp.join(format!("{name}.zip"));
+    let path = tmp.join("matrix.zip");
     fs::write(&path, zip).unwrap();
     path
 }
@@ -134,11 +132,10 @@ fn curve_commands_run_interactively() {
         Some("CurvePolylinePolyline")
     );
 
-    // OM9 now has its own Polyline, Circle … : the built-in keeps the typed name and icon,
-    // and the add-on version still runs by its code.
+    // With the package enabled, its Polyline, Circle … take over OM9's own icon and name.
     assert!(
         c.icon_target("Polyline", None)
-            .is_some_and(|t| !t.addon && t.enabled)
+            .is_some_and(|t| t.addon && t.command == "CurvePolylinePolyline")
     );
     // Polyline: prompt + sub-options, clicks, a typed relative point, Enter.
     c.run_addon_command("CurvePolylinePolyline").unwrap();
@@ -212,9 +209,10 @@ fn curve_commands_run_interactively() {
     c.run_addon_command("CurveCircleCenterRadius").unwrap();
     assert_eq!(c.addon_session().unwrap().code, "CurveCircleCenterRadius");
     c.submit("Circle").unwrap();
-    assert!(
-        c.addon_session().is_none(),
-        "the built-in Circle closes the session"
+    assert_eq!(
+        c.addon_session().map(|s| s.code.as_str()),
+        Some("CurveCircleCenterRadius"),
+        "the typed name runs the add-on's Circle"
     );
     c.cancel();
     // A refused value keeps the session open with the reason.
@@ -450,33 +448,121 @@ fn every_addon_command_has_an_icon_that_calls_it() {
             command: c.as_deref(),
         })
         .collect();
-    let addons = ["curves", "transform", "gem_cutter"];
     let mut c = Controller::new(Document::new("icons"), Limits::default()).unwrap();
-    c.attach_addons(host_with(&tmp, &addons), &names);
-    for name in addons {
-        let text =
-            fs::read_to_string(repo().join(format!("addons/{name}/addon/om9_addon.toml"))).unwrap();
-        let codes: Vec<&str> = text
-            .split("[[commands]]")
-            .skip(1)
-            .filter_map(|block| block.lines().find_map(|l| l.trim().strip_prefix("id = ")))
-            .map(|v| v.trim_matches('"'))
-            .collect();
-        assert!(!codes.is_empty(), "{name}");
-        for code in codes {
-            let icon = om9_app::icons::icon_for_command(code)
-                .unwrap_or_else(|| panic!("{name}: no OM9 icon for {code}"));
-            let target = c
-                .icon_target(icon, None)
-                .unwrap_or_else(|| panic!("{icon}: no command"));
-            assert!(target.enabled, "{icon} → {target:?}");
-            // Either OM9's own command (it keeps its icon) or this add-on's.
-            assert!(
-                !target.addon || target.command == code,
-                "{icon} → {target:?}, want {code}"
-            );
-            assert!(c.is_available(code), "{code}");
-        }
+    c.attach_addons(host(&tmp), &names);
+    let text = fs::read_to_string(repo().join("addons/matrix/addon/om9_addon.toml")).unwrap();
+    let codes: Vec<&str> = text
+        .split("[[commands]]")
+        .skip(1)
+        .filter_map(|block| block.lines().find_map(|l| l.trim().strip_prefix("id = ")))
+        .map(|v| v.trim_matches('"'))
+        .collect();
+    assert_eq!(codes.len(), om9_matrix::ALL.len());
+    for code in codes {
+        let icon = om9_app::icons::icon_for_command(code)
+            .unwrap_or_else(|| panic!("no OM9 icon for {code}"));
+        let target = c
+            .icon_target(icon, None)
+            .unwrap_or_else(|| panic!("{icon}: no command"));
+        assert!(target.enabled && target.addon, "{icon} → {target:?}");
+        assert_eq!(target.command, code, "{icon}");
+        assert!(c.is_available(code), "{code}");
     }
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
+fn gem_record(c: &Controller, id: om9_core::identity::ObjectId) -> serde_json::Value {
+    let e = c.document().entities.get(&id).unwrap();
+    serde_json::from_str(&e.extension(om9_core::model::GEM_EXTENSION_SLOT).unwrap().payload).unwrap()
+}
+
+/// Gem Loader → Halo → Gem Reporter (material) → replace by another cut → Gem Update →
+/// prongs, each through the controller as from the icons, one Undo step each.
+#[test]
+fn jewelry_flow_through_the_controller() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-jewelry-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("ring"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+
+    // Gem Loader: the panel opens with the command; the size is typed on the command line.
+    c.run_addon_command("BuilderGemLoader").unwrap();
+    assert!(c.addon_builder().is_some_and(|b| b.interactive));
+    c.submit("Length=6.5").unwrap();
+    assert!(c.prompt_text().contains("Round 6.50 mm"), "{}", c.prompt_text());
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    let undo = c.coordinator().undo_len();
+    c.submit("").unwrap();
+    assert!(c.addon_session().is_none() && c.addon_builder().is_none());
+    assert_eq!(c.coordinator().undo_len(), undo + 1);
+    let center = *c.document().entities.keys().next().unwrap();
+    assert_eq!(gem_record(&c, center)["diameter_mm"], 6.5);
+
+    // Halo around it.
+    c.select_objects(&[center]).unwrap();
+    c.run_addon_command("BuilderHalo").unwrap();
+    c.refresh_addon_session();
+    assert!(c.prompt_text().contains("22 accent stones"), "{}", c.prompt_text());
+    c.submit("").unwrap();
+    assert_eq!(c.document().entities.len(), 1 + 22 + 1);
+
+    // Gem Reporter assigns ruby to the center stone.
+    c.select_objects(&[center]).unwrap();
+    c.run_addon_command("BuilderGemReporter").unwrap();
+    c.submit("Material=ruby").unwrap();
+    c.submit("").unwrap();
+    assert_eq!(gem_record(&c, center)["material"], "ruby");
+    assert!(c.take_addon_messages().iter().any(|m| m.contains("ruby")));
+
+    // The loader replaces the selected stone by an oval in the same place.
+    c.select_objects(&[center]).unwrap();
+    c.run_addon_command("BuilderGemLoader").unwrap();
+    c.submit("Cut=oval").unwrap();
+    c.submit("Length=8").unwrap();
+    c.submit("").unwrap();
+    assert!(!c.document().entities.contains_key(&center), "old stone replaced");
+    let oval = c
+        .document()
+        .entities
+        .iter()
+        .find(|(_, e)| e.label.starts_with("Gem Oval"))
+        .map(|(id, _)| *id)
+        .unwrap();
+    assert_eq!(gem_record(&c, oval)["center"], serde_json::json!([0.0, 0.0, 0.0]));
+    assert_eq!(c.document().entities.len(), 1 + 22 + 1);
+
+    // Gem Update rebuilds the stone in place (same object).
+    c.select_objects(&[oval]).unwrap();
+    c.run_addon_command("BuilderGemUpdate").unwrap();
+    c.submit("").unwrap();
+    assert!(c.document().entities.contains_key(&oval));
+
+    // Four prongs on the oval.
+    c.select_objects(&[oval]).unwrap();
+    c.run_addon_command("BuilderProngAdder").unwrap();
+    c.refresh_addon_session();
+    c.submit("").unwrap();
+    let prongs = c
+        .document()
+        .entities
+        .values()
+        .filter(|e| e.label == "Prong")
+        .count();
+    assert_eq!(prongs, 4);
+    // One Undo removes the prongs only.
+    c.undo().unwrap();
+    assert_eq!(
+        c.document().entities.values().filter(|e| e.label == "Prong").count(),
+        0
+    );
     fs::remove_dir_all(&tmp).unwrap();
 }

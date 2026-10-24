@@ -155,6 +155,7 @@ fn finish_move(m: [f64; 16], copy: bool, msg: String) -> Reply {
     Reply::finish_transform(TransformOp {
         matrices: vec![m],
         keep_original: copy,
+        per_object: Vec::new(),
     })
     .say(msg)
 }
@@ -237,6 +238,7 @@ fn move_copy(e: &Event, st: &mut State, input: Option<&Input>) -> Reply {
                 Reply::finish_transform(TransformOp {
                     matrices: st.placed.clone(),
                     keep_original: true,
+                    per_object: Vec::new(),
                 })
                 .say(format!("{n} copies"))
             } else {
@@ -540,6 +542,7 @@ fn array_polar(e: &Event, st: &mut State, input: Option<&Input>) -> Reply {
         Reply::finish_transform(TransformOp {
             matrices: polar_matrices(e, *c, n, a.to_radians()),
             keep_original: true,
+            per_object: Vec::new(),
         })
         .say(format!("Polar array: {n} items over {}°", fmt(a)))
     };
@@ -638,6 +641,7 @@ fn array_linear(e: &Event, st: &mut State, input: Option<&Input>) -> Reply {
             Reply::finish_transform(TransformOp {
                 matrices: m,
                 keep_original: true,
+                per_object: Vec::new(),
             })
             .say(format!(
                 "Linear array: {n} items, spacing {} mm",
@@ -717,6 +721,7 @@ fn array_rect(e: &Event, st: &mut State, input: Option<&Input>) -> Reply {
             Reply::finish_transform(TransformOp {
                 matrices: mats(st, d),
                 keep_original: true,
+                per_object: Vec::new(),
             })
             .say(format!("Array: {total} items"))
         }

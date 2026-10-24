@@ -1661,10 +1661,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "om9-addon-cutters"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-gem-cutter",
+ "om9-addon-geom",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "om9-addon-gem-cutter"
 version = "0.1.0"
 dependencies = [
  "om9-addon-abi",
+ "om9-addon-geom",
  "om9-addons",
  "serde_json",
 ]
@@ -1679,10 +1691,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "om9-addon-gems"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-geom",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "om9-addon-geom"
 version = "0.1.0"
 dependencies = [
  "om9-addon-abi",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "om9-addon-matrix"
+version = "0.5.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-curves",
+ "om9-addon-cutters",
+ "om9-addon-gem-cutter",
+ "om9-addon-gem-on-curve",
+ "om9-addon-gems",
+ "om9-addon-settings",
+ "om9-addon-transform",
+ "om9-addons",
+ "serde_json",
+]
+
+[[package]]
+name = "om9-addon-settings"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-geom",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1714,6 +1764,7 @@ dependencies = [
  "om9-addon-curves",
  "om9-addon-gem-cutter",
  "om9-addon-gem-on-curve",
+ "om9-addon-matrix",
  "om9-addon-transform",
  "om9-addons",
  "om9-archive",

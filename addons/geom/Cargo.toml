@@ -9,3 +9,5 @@ publish = false
 
 [dependencies]
 om9-addon-abi = { path = "../../crates/om9-addon-abi", features = ["session"] }
+serde_json = { workspace = true }
+serde = { workspace = true }

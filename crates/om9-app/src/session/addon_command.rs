@@ -97,38 +97,31 @@ impl Controller {
             .and_then(|key| self.addon_code(key))
             .or_else(|| self.addon_code(icon))
     }
-    /// What an OM9 icon runs and whether it is enabled. A working built-in (its feature
-    /// available and its menu catalog row implemented) keeps its own icon; otherwise an
-    /// enabled add-on that provides the icon's catalog code runs. An icon that only borrows
-    /// a built-in feature id (Control Points shares Point's) also goes to the add-on.
-    /// `fallback` is a feature the caller found for the icon by other means.
+    /// What an OM9 icon runs and whether it is enabled. An enabled add-on that provides the
+    /// icon's catalog code runs; otherwise OM9's own command (its feature available and its
+    /// menu catalog row implemented). `fallback` is a feature the caller found for the icon
+    /// by other means.
     pub fn icon_target(&self, icon: &str, fallback: Option<&str>) -> Option<IconTarget> {
+        if let Some(code) = self.icon_addon(icon) {
+            return Some(IconTarget {
+                command: code,
+                enabled: true,
+                addon: true,
+            });
+        }
         let curve = crate::curve_menu::by_icon(icon);
         let surface = crate::surface_menu::by_icon(icon);
         let builtin = curve
             .map(|binding| binding.feature)
             .or_else(|| surface.map(|binding| binding.feature))
             .or_else(|| crate::icons::feature_for(icon))
-            .or(fallback);
+            .or(fallback)?;
         let catalog_enabled = curve.is_none_or(crate::curve_menu::CurveMenuBinding::enabled)
             && surface.is_none_or(crate::surface_menu::SurfaceMenuBinding::enabled);
-        let builtin_ok = builtin.is_some_and(|f| Self::availability(f).is_ok()) && catalog_enabled;
-        let addon = self.icon_addon(icon);
-        let own_icon = builtin.is_some_and(|f| {
-            crate::icons::command_key_for(f) == crate::icons::command_key_for(icon)
-                || curve.is_some()
-                || surface.is_some()
-        });
-        match (builtin, addon) {
-            (Some(f), _) if builtin_ok && own_icon => Some(IconTarget::builtin(f, true)),
-            (_, Some(code)) => Some(IconTarget {
-                command: code,
-                enabled: true,
-                addon: true,
-            }),
-            (Some(f), None) => Some(IconTarget::builtin(f, builtin_ok)),
-            (None, None) => None,
-        }
+        Some(IconTarget::builtin(
+            builtin,
+            Self::availability(builtin).is_ok() && catalog_enabled,
+        ))
     }
     /// Menu/icon/F6 gate: a built-in operation or a command an enabled add-on provides.
     pub fn is_available(&self, feature: &str) -> bool {
