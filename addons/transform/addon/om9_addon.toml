@@ -19,6 +19,8 @@ label = "Move"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Move"]
+summary = "Dời vật."
+steps = ["Chọn vật.", "Bấm điểm gốc.", "Bấm điểm đích (xem trước khi rê)."]
 
 [[commands]]
 id = "TopIconDuplicate"
@@ -26,6 +28,9 @@ label = "Duplicate"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Copy", "Duplicate"]
+summary = "Sao chép vật, đặt nhiều bản liên tiếp."
+steps = ["Chọn vật.", "Bấm điểm gốc.", "Bấm các điểm đặt bản sao, Enter để kết thúc."]
+options = ["InPlace: sao chép tại chỗ."]
 
 [[commands]]
 id = "TopIconRotate"
@@ -33,6 +38,9 @@ label = "Rotate"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Rotate"]
+summary = "Xoay vật quanh một tâm trong CPlane."
+steps = ["Chọn vật.", "Bấm tâm xoay.", "Gõ góc hoặc bấm hai điểm."]
+options = ["Copy: giữ bản gốc."]
 
 [[commands]]
 id = "TopIconMirror"
@@ -40,6 +48,9 @@ label = "Mirror"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Mirror"]
+summary = "Lấy đối xứng vật qua một đường."
+steps = ["Chọn vật.", "Bấm hai điểm của đường đối xứng (hoặc XAxis / YAxis)."]
+options = ["Copy: giữ bản gốc (mặc định Yes).", "XAxis / YAxis: trục CPlane."]
 
 [[commands]]
 id = "TransformRotate3D"
@@ -47,6 +58,9 @@ label = "Rotate 3D"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Rotate3D"]
+summary = "Xoay vật quanh một trục 3D."
+steps = ["Chọn vật.", "Bấm hai điểm của trục.", "Gõ góc."]
+options = ["Copy."]
 
 [[commands]]
 id = "TransformScaleScale3D"
@@ -54,6 +68,9 @@ label = "Scale 3D"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Scale"]
+summary = "Phóng to/thu nhỏ đều."
+steps = ["Chọn vật.", "Bấm điểm gốc.", "Gõ hệ số hoặc bấm hai điểm tham chiếu."]
+options = ["Copy."]
 
 [[commands]]
 id = "TransformScaleScale2D"
@@ -61,6 +78,9 @@ label = "Scale 2D"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Scale2D"]
+summary = "Phóng to/thu nhỏ trong mặt CPlane."
+steps = ["Chọn vật.", "Bấm điểm gốc.", "Gõ hệ số."]
+options = ["Copy."]
 
 [[commands]]
 id = "TransformScaleScale1D"
@@ -68,6 +88,9 @@ label = "Scale 1D"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Scale1D"]
+summary = "Phóng to/thu nhỏ theo một hướng."
+steps = ["Chọn vật.", "Bấm điểm gốc và hướng.", "Gõ hệ số."]
+options = ["Copy."]
 
 [[commands]]
 id = "TransformArrayPolar"
@@ -75,6 +98,9 @@ label = "Array Polar"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ArrayPolar"]
+summary = "Mảng tròn quanh tâm."
+steps = ["Chọn vật.", "Bấm tâm.", "Gõ số lượng và góc."]
+options = ["NumberOfItems, Angle."]
 
 [[commands]]
 id = "TransformArrayArrayLinear"
@@ -82,6 +108,8 @@ label = "Array Linear"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ArrayLinear"]
+summary = "Mảng thẳng hàng."
+steps = ["Chọn vật.", "Gõ số lượng.", "Bấm điểm gốc và khoảng cách."]
 
 [[commands]]
 id = "TransformArrayRectangular"
@@ -89,3 +117,6 @@ label = "Array"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Array"]
+summary = "Mảng lưới chữ nhật."
+steps = ["Chọn vật.", "Gõ số theo X, Y, Z.", "Bấm/gõ khoảng cách."]
+

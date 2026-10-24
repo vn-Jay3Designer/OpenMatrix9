@@ -660,6 +660,7 @@ mod tests {
             closed: false,
             gem: Some(rec),
             mesh: None,
+            exact: None,
         };
         let p = PlacedGem::from_selected(&s, [0.0, 0.0, 1.0]).unwrap();
         assert_eq!(p.gem, gem);

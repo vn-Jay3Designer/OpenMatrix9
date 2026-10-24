@@ -1,10 +1,18 @@
 # Gem On Crv
 
+Rải đá tròn đều theo đường cong (halo, ring rail).
+
 - **Mã lệnh:** `BuilderGemOnCrv`
 - **Vị trí:** menu Gems, ô số 2
 - **Icon:** `Resources/icons/gems-minimal/BuilderGemOnCrv.svg`
 - **Gọi bằng dòng lệnh:** `BuilderGemOnCrv`
 - **Cách chạy:** bảng BUILDERS và tuỳ chọn dòng lệnh; Enter để tạo
+
+## Cách dùng
+
+1. Chọn đường cong.
+2. Chọn Gem On Crv: bảng BUILDERS và tuỳ chọn dòng lệnh hiện ra, xem trước số đá.
+3. Enter để đặt đá (một lần Undo gỡ tất cả).
 
 ## Tuỳ chọn (lệnh phụ)
 

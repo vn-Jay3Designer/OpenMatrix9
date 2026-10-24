@@ -1,10 +1,18 @@
 # Gem Cutter
 
+Dao cắt lỗ cho từng viên đá (theo % cỡ đá), nằm ở layer Cutting.
+
 - **Mã lệnh:** `BuilderGemCutter`
 - **Vị trí:** menu Cutters, ô số 1
 - **Icon:** `Resources/icons/cutters-minimal/BuilderGemCutter.svg`
 - **Gọi bằng dòng lệnh:** `BuilderGemCutter`, `gvAzureCutter`, `GemCutter`
 - **Cách chạy:** từng bước trên dòng lệnh, kèm bảng BUILDERS; Enter để tạo, Esc để huỷ
+
+## Cách dùng
+
+1. Chọn đá.
+2. Chỉnh GirdleScale, GirdleWidth, TopHeight, SeatSize, LowerDepth, LowerTaper, ZOffset trên bảng BUILDERS hoặc dòng lệnh.
+3. Enter để tạo dao.
 
 ## Tuỳ chọn (lệnh phụ)
 

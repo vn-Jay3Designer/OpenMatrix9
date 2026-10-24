@@ -21,11 +21,15 @@ handler = "om9_addon_invoke"
 builder = true
 icon = "icons/gem_on_crv.svg"
 shortcut = "Ctrl+Shift+G"
+summary = "Rải đá tròn đều theo đường cong (halo, ring rail)."
+steps = ["Chọn đường cong.", "Chọn Gem On Crv: bảng BUILDERS và tuỳ chọn dòng lệnh hiện ra, xem trước số đá.", "Enter để đặt đá (một lần Undo gỡ tất cả)."]
 
 [[commands]]
 id = "BuilderGemCountOnCrv"
 label = "Gem Count On Crv"
 handler = "om9_addon_invoke"
+summary = "Báo số đá vừa với đường cong theo cỡ và khe hiện tại."
+steps = ["Chọn đường cong.", "Chọn Gem Count On Crv."]
 
 [[settings]]
 key = "diameter"

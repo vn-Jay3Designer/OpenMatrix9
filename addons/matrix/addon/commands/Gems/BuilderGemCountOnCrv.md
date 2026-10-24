@@ -1,10 +1,17 @@
 # Gem Count On Crv
 
+Báo số đá vừa với đường cong theo cỡ và khe hiện tại.
+
 - **Mã lệnh:** `BuilderGemCountOnCrv`
 - **Vị trí:** menu Gems, ô số 4
 - **Icon:** `Resources/icons/gems-minimal/BuilderGemCountOnCrv.svg`
 - **Gọi bằng dòng lệnh:** `BuilderGemCountOnCrv`
 - **Cách chạy:** chạy ngay với thông số đã lưu
+
+## Cách dùng
+
+1. Chọn đường cong.
+2. Chọn Gem Count On Crv.
 
 ## Tuỳ chọn (lệnh phụ)
 

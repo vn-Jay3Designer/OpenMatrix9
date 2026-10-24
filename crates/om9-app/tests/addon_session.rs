@@ -566,3 +566,51 @@ fn jewelry_flow_through_the_controller() {
     );
     fs::remove_dir_all(&tmp).unwrap();
 }
+
+/// A deformation (Taper) rebuilds a moved mesh in place: the object keeps its id and
+/// placement, its world shape follows the deformation.
+#[test]
+fn deformations_rebuild_objects_in_place() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-deform-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("deform"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    // A 10 × 2 × 2 box (Cube Cutter) at the origin, then moved +5 in x.
+    c.run_addon_command("BuilderPlaneandCubeCutters").unwrap();
+    c.submit("X=10").unwrap();
+    c.submit("Y=2").unwrap();
+    c.submit("Z=2").unwrap();
+    c.submit("").unwrap();
+    let id = *c.document().entities.keys().next().unwrap();
+    c.select_objects(&[id]).unwrap();
+    c.run_addon_command("TopIconMove").unwrap();
+    c.refresh_addon_session();
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([5.0, 0.0, 0.0]).unwrap();
+    let placement = c.document().entities[&id].placement;
+    // Taper along x from 0 to 10 (world): the far end shrinks to half.
+    c.select_objects(&[id]).unwrap();
+    c.run_addon_command("TransformTaper").unwrap();
+    c.refresh_addon_session();
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([10.0, 0.0, 0.0]).unwrap();
+    c.submit("1").unwrap();
+    c.submit("0.5").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    let e = &c.document().entities[&id];
+    assert_eq!(e.placement, placement, "the object keeps its placement");
+    let Geometry::Mesh(m) = &e.geometry else { panic!() };
+    let world: Vec<[f64; 3]> = m.vertices.iter().map(|v| e.placement.point(*v).unwrap()).collect();
+    let at_end = world.iter().filter(|v| (v[0] - 10.0).abs() < 1e-6).map(|v| v[1].abs()).fold(0.0, f64::max);
+    assert!((at_end - 0.5).abs() < 1e-6, "half width at x = 10: {at_end}");
+    fs::remove_dir_all(&tmp).unwrap();
+}

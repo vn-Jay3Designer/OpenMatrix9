@@ -31,6 +31,11 @@ pub const CATEGORIES: &[Category] = &[
         step: <om9_transform::Transforms as Interactive>::step,
     },
     Category {
+        name: "Transform",
+        commands: <om9_transform_tools::TransformTools as Interactive>::SESSION_COMMANDS,
+        step: <om9_transform_tools::TransformTools as Interactive>::step,
+    },
+    Category {
         name: "Gems",
         commands: <om9_gems::Gems as Interactive>::SESSION_COMMANDS,
         step: <om9_gems::Gems as Interactive>::step,
@@ -57,6 +62,7 @@ pub const CATEGORIES: &[Category] = &[
 pub const SOURCES: &[(&str, &str)] = &[
     ("Curve", "curves"),
     ("Transform", "transform"),
+    ("Transform", "transform_tools"),
     ("Gems", "gems"),
     ("Gems", "gem_on_curve"),
     ("Settings", "settings"),

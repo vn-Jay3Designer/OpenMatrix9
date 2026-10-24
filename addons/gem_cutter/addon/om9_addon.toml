@@ -21,6 +21,8 @@ handler = "om9_addon_session"
 interactive = true
 builder = true
 aliases = ["gvAzureCutter", "GemCutter"]
+summary = "Dao cắt lỗ cho từng viên đá (theo % cỡ đá), nằm ở layer Cutting."
+steps = ["Chọn đá.", "Chỉnh GirdleScale, GirdleWidth, TopHeight, SeatSize, LowerDepth, LowerTaper, ZOffset trên bảng BUILDERS hoặc dòng lệnh.", "Enter để tạo dao."]
 
 [[settings]]
 key = "girdle_scale"

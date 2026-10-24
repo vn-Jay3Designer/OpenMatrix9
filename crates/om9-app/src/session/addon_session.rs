@@ -228,6 +228,43 @@ fn to_geometry(g: &Geo, k: f64) -> Result<(Geometry, Option<Value>, String)> {
                 name("Curve"),
             )
         }
+        Geo::Surface {
+            degree,
+            size,
+            points,
+            weights,
+            knots,
+        } => {
+            let n = points.len();
+            if n != size[0] * size[1] {
+                return Err(Error::Invalid("add-on surface pole grid"));
+            }
+            let weights = if weights.is_empty() {
+                vec![1.0; n]
+            } else {
+                weights.clone()
+            };
+            let domain = |i: usize| -> Result<[f64; 2]> {
+                Ok([
+                    *knots[i].get(degree[i]).ok_or(Error::Invalid("NURBS knots"))?,
+                    *knots[i].get(size[i]).ok_or(Error::Invalid("NURBS knots"))?,
+                ])
+            };
+            (
+                Geometry::Surface(om9_core::geometry::NurbsSurface {
+                    degree: *degree,
+                    size: *size,
+                    poles: points.iter().map(|p| doc(*p, k)).collect(),
+                    weights,
+                    knots: knots.clone(),
+                    domain: [domain(0)?, domain(1)?],
+                    periodic: [false, false],
+                    reversed: false,
+                }),
+                None,
+                name("Surface"),
+            )
+        }
         Geo::Mesh {
             name: n,
             vertices,
@@ -294,6 +331,32 @@ fn preview_lines(g: &Geo, k: f64, limits: &om9_core::budget::Limits) -> Vec<[Poi
                 om9_core::surface_kernel::sample_curve(&c, PREVIEW_SAMPLES, limits)
                     .map(|p| strip(&p))
                     .unwrap_or_default()
+            }
+            // A surface previews as a grid of isocurves.
+            Ok((Geometry::Surface(srf), _, _)) => {
+                let mut out = Vec::new();
+                let n = 12;
+                let (du, dv) = (srf.domain[0], srf.domain[1]);
+                for dir in 0..2 {
+                    for i in 0..=n {
+                        let fixed = i as f64 / n as f64;
+                        let pts: Vec<Point3> = (0..=32)
+                            .filter_map(|j| {
+                                let t = j as f64 / 32.0;
+                                let (a, b) = if dir == 0 { (fixed, t) } else { (t, fixed) };
+                                om9_core::surface_kernel::evaluate(
+                                    &srf,
+                                    du[0] + a * (du[1] - du[0]),
+                                    dv[0] + b * (dv[1] - dv[0]),
+                                    limits,
+                                )
+                                .ok()
+                            })
+                            .collect();
+                        out.extend(strip(&pts));
+                    }
+                }
+                out
             }
             _ => Vec::new(),
         },
@@ -434,7 +497,81 @@ fn geo_in_local(g: &Geo, placement: &Transform, k: f64) -> Result<Geo> {
             meta: meta.clone(),
             layer: layer.clone(),
         },
+        Geo::Surface {
+            degree,
+            size,
+            points,
+            weights,
+            knots,
+        } => Geo::Surface {
+            degree: *degree,
+            size: *size,
+            points: points.iter().map(|q| p(*q)).collect(),
+            weights: weights.clone(),
+            knots: knots.clone(),
+        },
         other => other.clone(),
+    })
+}
+
+/// The exact definition of a curve or NURBS surface object, in world mm.
+fn exact_in_world(g: &Geometry, placement: &Transform, k: f64) -> Option<Geo> {
+    let p = |q: Point3| placement.point(q).ok().map(|w| mm(w, k));
+    let m = placement.0;
+    let v = |d: Point3| -> s::Vec3 { std::array::from_fn(|i| (0..3).map(|j| m[i][j] * d[j]).sum()) };
+    let sc = s::norm(v([1.0, 0.0, 0.0]));
+    Some(match g {
+        Geometry::Curve(Curve::Line { start, end, .. }) => Geo::Line {
+            start: p(*start)?,
+            end: p(*end)?,
+        },
+        Geometry::Curve(Curve::Circle {
+            center,
+            x,
+            y,
+            radius,
+            domain,
+            angle_domain,
+        }) => {
+            let span = angle_domain.unwrap_or(*domain);
+            let angle = span[1] - span[0];
+            let (c, xs, ys) = (p(*center)?, s::unit(v(*x)), s::unit(v(*y)));
+            let r = radius * sc * k;
+            if angle >= std::f64::consts::TAU - 1e-9 {
+                Geo::Circle {
+                    center: c,
+                    x: xs,
+                    y: ys,
+                    radius: r,
+                }
+            } else {
+                // Start the arc at its first angle.
+                let (sa, ca) = span[0].sin_cos();
+                let x0 = s::add(s::scale(xs, ca), s::scale(ys, sa));
+                let y0 = s::cross(s::unit(s::cross(xs, ys)), x0);
+                Geo::Arc {
+                    center: c,
+                    x: x0,
+                    y: y0,
+                    radius: r,
+                    angle,
+                }
+            }
+        }
+        Geometry::Curve(Curve::Nurbs(n)) => Geo::Nurbs {
+            degree: n.degree,
+            points: n.poles.iter().map(|q| p(*q)).collect::<Option<_>>()?,
+            weights: n.weights.clone(),
+            knots: n.knots.clone(),
+        },
+        Geometry::Surface(srf) => Geo::Surface {
+            degree: srf.degree,
+            size: srf.size,
+            points: srf.poles.iter().map(|q| p(*q)).collect::<Option<_>>()?,
+            weights: srf.weights.clone(),
+            knots: srf.knots.clone(),
+        },
+        _ => return None,
     })
 }
 
@@ -530,6 +667,7 @@ impl Controller {
                     closed: false,
                     gem,
                     mesh: None,
+                    exact: exact_in_world(&entity.geometry, &entity.placement, k),
                 });
                 out.len() - 1
             });

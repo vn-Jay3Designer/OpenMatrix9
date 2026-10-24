@@ -19,12 +19,18 @@ label = "Polyline"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Polyline"]
+summary = "Vẽ đường gấp khúc qua các điểm bấm."
+steps = ["Bấm điểm đầu.", "Bấm các điểm tiếp theo (gõ x,y hoặc @dx,dy hoặc số = chiều dài).", "Enter hoặc chuột phải để kết thúc; bấm lại điểm đầu để đóng."]
+options = ["Close: đóng và kết thúc.", "PersistentClose: tự đóng khi Enter.", "Length: khoá chiều dài đoạn.", "Undo: bỏ điểm vừa bấm."]
 
 [[commands]]
 id = "CurveLineSingleLine"
 label = "Single Line"
 handler = "om9_addon_session"
 interactive = true
+summary = "Vẽ một đoạn thẳng."
+steps = ["Bấm điểm đầu.", "Bấm điểm cuối (hoặc gõ chiều dài)."]
+options = ["BothSides: điểm đầu là trung điểm.", "Length: khoá chiều dài."]
 
 [[commands]]
 id = "CurveFreeFormInterpolatePoints"
@@ -32,6 +38,9 @@ label = "Interpolate Points"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["InterpCrv"]
+summary = "Vẽ đường cong trơn đi qua các điểm bấm."
+steps = ["Bấm các điểm.", "Enter để kết thúc."]
+options = ["Degree: bậc đường cong.", "Close / PersistentClose: đóng đường cong.", "Undo."]
 
 [[commands]]
 id = "CurveFreeFormControlPoints"
@@ -39,6 +48,9 @@ label = "Control Point Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Curve"]
+summary = "Vẽ đường cong theo điểm điều khiển."
+steps = ["Bấm các điểm điều khiển.", "Enter để kết thúc."]
+options = ["Degree, Close, PersistentClose, Undo."]
 
 [[commands]]
 id = "CurveRectangleCornertoCorner"
@@ -46,6 +58,9 @@ label = "Rectangle"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Rectangle"]
+summary = "Vẽ hình chữ nhật theo hai góc."
+steps = ["Bấm góc thứ nhất.", "Bấm góc đối diện (hoặc gõ dài, rộng)."]
+options = ["Center: từ tâm.", "3Point: theo 3 điểm.", "Vertical: đứng vuông góc CPlane.", "Rounded: bo góc (gõ bán kính)."]
 
 [[commands]]
 id = "CurveCircleCenterRadius"
@@ -53,6 +68,9 @@ label = "Circle"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Circle"]
+summary = "Vẽ đường tròn từ tâm và bán kính."
+steps = ["Bấm tâm.", "Bấm điểm trên đường tròn hoặc gõ bán kính/đường kính."]
+options = ["Mode: Radius hoặc Diameter.", "2Point, 3Point: tròn qua 2 / 3 điểm.", "Vertical: đứng vuông góc CPlane."]
 
 [[commands]]
 id = "CurveEllipseFromCenter"
@@ -60,6 +78,8 @@ label = "Ellipse"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Ellipse"]
+summary = "Vẽ elip từ tâm và hai bán trục."
+steps = ["Bấm tâm.", "Bấm đầu trục thứ nhất.", "Bấm đầu trục thứ hai."]
 
 [[commands]]
 id = "CurveArcCenterStartAngle"
@@ -67,6 +87,8 @@ label = "Arc"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Arc"]
+summary = "Vẽ cung tròn từ tâm, điểm đầu và góc."
+steps = ["Bấm tâm.", "Bấm điểm đầu.", "Bấm điểm cuối hoặc gõ góc."]
 
 [[commands]]
 id = "CurveArcStartEndDirection"
@@ -74,6 +96,8 @@ label = "Arc Start End Direction"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ArcDirection"]
+summary = "Vẽ cung tròn từ điểm đầu, điểm cuối và hướng tiếp tuyến."
+steps = ["Bấm điểm đầu.", "Bấm điểm cuối.", "Bấm hướng tại điểm đầu."]
 
 [[commands]]
 id = "CurvePolygonCenterRadius"
@@ -81,6 +105,9 @@ label = "Polygon"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Polygon"]
+summary = "Vẽ đa giác đều từ tâm và bán kính."
+steps = ["Bấm tâm.", "Bấm đỉnh hoặc gõ bán kính."]
+options = ["NumSides: số cạnh.", "Circumscribed: ngoại tiếp."]
 
 [[commands]]
 id = "CurveSpiral"
@@ -88,6 +115,9 @@ label = "Spiral"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Spiral"]
+summary = "Vẽ đường xoắn ốc."
+steps = ["Bấm tâm và các bán kính.", "Gõ số vòng."]
+options = ["Turns: số vòng.", "Flat: xoắn phẳng."]
 
 [[commands]]
 id = "CurveHelix"
@@ -95,9 +125,15 @@ label = "Helix"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Helix"]
+summary = "Vẽ đường lò xo (helix)."
+steps = ["Bấm đầu và cuối trục.", "Bấm/gõ bán kính."]
+options = ["Turns: số vòng."]
 
 [[commands]]
 id = "CurvePointObjectSinglePoint"
 label = "Point"
 handler = "om9_addon_session"
 interactive = true
+summary = "Đặt một điểm."
+steps = ["Bấm vị trí điểm."]
+

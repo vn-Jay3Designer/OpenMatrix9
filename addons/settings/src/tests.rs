@@ -28,6 +28,7 @@ fn stone(id: &str, d: f64, at: Vec3) -> Selected {
         closed: false,
         gem: Some(gem.record(&f, "test", "diamond")),
         mesh: None,
+        exact: None,
     }
 }
 
@@ -149,6 +150,7 @@ fn beads_follow_the_curve() {
         closed: false,
         gem: None,
         mesh: None,
+        exact: None,
     };
     let e = event(BEAD_ON_CURVE, Input::Enter, json!({}), vec![sel]);
     let r = Settings::step(&e).unwrap();

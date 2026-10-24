@@ -78,6 +78,10 @@ pub struct Selected {
     /// World triangles of a mesh or solid, for commands with `mesh_data = true`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mesh: Option<SelectedMesh>,
+    /// The exact world definition of a curve or NURBS surface (control points, knots …),
+    /// for commands that edit or continue it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact: Option<Geo>,
 }
 
 /// Triangles of a selected object in world millimetres.
@@ -229,6 +233,16 @@ pub enum Geo {
         #[serde(default)]
         weights: Vec<f64>,
         knots: Vec<f64>,
+    },
+    /// Clamped NURBS surface. Poles are u-major (`index = u * size[1] + v`); each knot
+    /// vector has `size + degree + 1` values.
+    Surface {
+        degree: [usize; 2],
+        size: [usize; 2],
+        points: Vec<Vec3>,
+        #[serde(default)]
+        weights: Vec<f64>,
+        knots: [Vec<f64>; 2],
     },
     Mesh {
         #[serde(default)]

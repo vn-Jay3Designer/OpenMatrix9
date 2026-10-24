@@ -27,6 +27,7 @@ fn stone(id: &str, cut: Cut, l: f64, w: f64, at: Vec3) -> Selected {
         closed: false,
         gem: Some(gem.record(&f, "test", "diamond")),
         mesh: None,
+        exact: None,
     }
 }
 
@@ -152,6 +153,7 @@ fn finger_rail_and_quad_flip() {
         closed: true,
         gem: None,
         mesh: None,
+        exact: None,
     };
     let (c, r, n) = fit_circle(&ring).unwrap();
     assert!(norm(c) < 1e-9 && (r - 8.675).abs() < 1e-9 && n[1].abs() > 0.999);
