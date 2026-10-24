@@ -1,0 +1,103 @@
+# Manifest của gói add-on. tools/ci/build-addons-windows.ps1 điền @ENTRY@/@PLATFORM@ theo nền tảng build.
+schema_version = "1.0.0"
+id = "om9_curves"
+version = "0.1.0"
+name = "Curve Tools"
+tagline = "Menu Curve kiểu Matrix 9: Polyline, Circle, Arc, Helix…"
+maintainer = "OpenMatrix9 contributors"
+type = "add-on"
+license = ["SPDX:LGPL-2.1-or-later"]
+om9_version_min = "0.1.0"
+platforms = ["@PLATFORM@"]
+runtime = "native"
+entry = "@ENTRY@"
+tags = ["Curve"]
+
+[[commands]]
+id = "CurvePolylinePolyline"
+label = "Polyline"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Polyline"]
+
+[[commands]]
+id = "CurveLineSingleLine"
+label = "Single Line"
+handler = "om9_addon_session"
+interactive = true
+
+[[commands]]
+id = "CurveFreeFormInterpolatePoints"
+label = "Interpolate Points"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["InterpCrv"]
+
+[[commands]]
+id = "CurveFreeFormControlPoints"
+label = "Control Point Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Curve"]
+
+[[commands]]
+id = "CurveRectangleCornertoCorner"
+label = "Rectangle"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Rectangle"]
+
+[[commands]]
+id = "CurveCircleCenterRadius"
+label = "Circle"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Circle"]
+
+[[commands]]
+id = "CurveEllipseFromCenter"
+label = "Ellipse"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Ellipse"]
+
+[[commands]]
+id = "CurveArcCenterStartAngle"
+label = "Arc"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Arc"]
+
+[[commands]]
+id = "CurveArcStartEndDirection"
+label = "Arc Start End Direction"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ArcDirection"]
+
+[[commands]]
+id = "CurvePolygonCenterRadius"
+label = "Polygon"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Polygon"]
+
+[[commands]]
+id = "CurveSpiral"
+label = "Spiral"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Spiral"]
+
+[[commands]]
+id = "CurveHelix"
+label = "Helix"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Helix"]
+
+[[commands]]
+id = "CurvePointObjectSinglePoint"
+label = "Point"
+handler = "om9_addon_session"
+interactive = true

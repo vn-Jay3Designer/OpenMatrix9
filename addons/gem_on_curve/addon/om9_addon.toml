@@ -1,7 +1,7 @@
 # Manifest của gói add-on. tools/ci/build-addons-windows.ps1 điền @ENTRY@/@PLATFORM@ theo nền tảng build.
 schema_version = "1.0.0"
 id = "gem_on_curve"
-version = "0.4.0"
+version = "0.4.1"
 name = "Gem On Curve"
 tagline = "Rải đá tròn đều theo đường cong (halo, ring rail)"
 maintainer = "OpenMatrix9 contributors"

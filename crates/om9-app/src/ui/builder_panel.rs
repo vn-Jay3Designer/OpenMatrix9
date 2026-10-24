@@ -14,6 +14,8 @@ use om9_scene::camera::{Camera, Viewport};
 
 /// Preview outline colour (cyan, readable on the dark viewport and over white grids).
 const PREVIEW: [u8; 4] = [64, 200, 255, 230];
+/// Rubber band from the last point to the cursor.
+const RUBBER: [u8; 4] = [255, 220, 90, 230];
 const WARN: Color32 = Color32::from_rgb(255, 150, 120);
 
 #[derive(Default)]
@@ -71,8 +73,13 @@ impl MatrixApp {
     /// Per frame while the application runs: keep the preview and the prompt current, and
     /// echo the command name when a builder opens from a menu or icon.
     pub(super) fn builder_frame(&mut self) {
+        self.controller.refresh_addon_session();
         self.controller.refresh_builder_preview();
-        let code = self.controller.addon_builder().map(|b| b.code.clone());
+        let code = self
+            .controller
+            .addon_builder()
+            .map(|b| b.code.clone())
+            .or_else(|| self.controller.addon_session().map(|s| s.code.clone()));
         if code != self.builder_ui.seen {
             if code.is_some() {
                 self.builder_ui.focus = None;
@@ -90,13 +97,22 @@ impl MatrixApp {
 
     /// The command name echoed into the history when a builder opens without typing.
     pub(super) fn echo_builder_start(&mut self, before: Option<String>) {
-        let Some(b) = self.controller.addon_builder() else {
+        let started = self
+            .controller
+            .addon_session()
+            .map(|s| (s.code.clone(), s.typed.clone(), s.label.clone()))
+            .or_else(|| {
+                self.controller
+                    .addon_builder()
+                    .map(|b| (b.code.clone(), b.typed.clone(), b.label.clone()))
+            });
+        let Some((code, typed, label)) = started else {
             return;
         };
-        if before.as_deref() == Some(b.code.as_str()) {
+        if before.as_deref() == Some(code.as_str()) {
             return;
         }
-        let name = b.typed.clone().unwrap_or_else(|| b.label.clone());
+        let name = typed.unwrap_or(label);
         self.transcript.append_history(&format!("Command: {name}"));
     }
 
@@ -107,6 +123,14 @@ impl MatrixApp {
         camera: &Camera,
         viewport: Viewport,
     ) {
+        if let Some(session) = self.controller.addon_session() {
+            for [a, c] in session.lines.iter().chain(&session.hover_lines) {
+                super::paint_line(painter, camera, viewport, *a, *c, PREVIEW, 1.2);
+            }
+            if let (Some(from), Some(to)) = (session.rubber_from, self.hover) {
+                super::paint_line(painter, camera, viewport, from, to, RUBBER, 1.0);
+            }
+        }
         let Some(b) = self.controller.addon_builder() else {
             return;
         };
@@ -217,7 +241,8 @@ impl MatrixApp {
             self.controller.reset_builder_defaults();
         }
         if cancel {
-            self.controller.cancel_addon_builder();
+            // Closes the builder and, for an interactive command, its session.
+            self.controller.cancel();
             self.transcript
                 .append_history(&format!("{}: đã huỷ", b.label));
             self.feedback(Ok(()));

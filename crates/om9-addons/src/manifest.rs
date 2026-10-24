@@ -56,6 +56,12 @@ pub struct CommandSpec {
     /// `builder = true`: the command opens its builder (command-line options, builder panel and
     /// live preview) and only creates geometry on Enter/Accept. Otherwise it runs at once.
     pub builder: bool,
+    /// `interactive = true`: the command runs as a step-by-step session (points, command-line
+    /// sub-options, preview) through `om9_addon_session`.
+    pub interactive: bool,
+    /// Extra names the command can be typed as (`Rectangle`, `Circle` …), besides the catalog
+    /// command name.
+    pub aliases: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -384,7 +390,17 @@ pub fn from_table(t: &Table, chk: &Check) -> Result<Manifest, Vec<String>> {
         let group = cr.str_opt("group");
         let is_new = matches!(c.get("new"), Some(Value::Bool(true)));
         let builder = matches!(c.get("builder"), Some(Value::Bool(true)));
+        let interactive = matches!(c.get("interactive"), Some(Value::Bool(true)));
+        let aliases = cr.str_list("aliases").unwrap_or_default();
         let mut errs: Vec<String> = cr.errs.into_iter().map(|e| format!("{ctx}: {e}")).collect();
+        for a in &aliases {
+            if a.is_empty()
+                || a.len() > 48
+                || !a.chars().all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+            {
+                errs.push(format!("{ctx}: alias {a:?} phải là một từ chữ/số"));
+            }
+        }
         if !valid_cmd(&cid) {
             errs.push(format!("{ctx}: mã lệnh không hợp lệ {cid:?}"));
         } else if !seen.insert(cid.clone()) {
@@ -435,6 +451,8 @@ pub fn from_table(t: &Table, chk: &Check) -> Result<Manifest, Vec<String>> {
             is_new,
             group,
             builder,
+            interactive,
+            aliases,
         });
     }
     if addon_type == AddonType::AddOn && commands.is_empty() {

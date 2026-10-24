@@ -31,6 +31,12 @@ pub fn provided_names<'a>(host: &Host, features: &[FeatureName<'a>]) -> BTreeMap
     let mut map = BTreeMap::new();
     for (code, _owner, _label) in host.bound_commands() {
         map.insert(code.to_ascii_lowercase(), code.clone());
+        if let Some(info) = host.command_info(&code) {
+            for alias in &info.command.aliases {
+                map.entry(alias.to_ascii_lowercase())
+                    .or_insert_with(|| code.clone());
+            }
+        }
         if let Some(feature) = crate::icons::feature_for(&code) {
             map.insert(feature.to_ascii_lowercase(), code.clone());
             for f in features {

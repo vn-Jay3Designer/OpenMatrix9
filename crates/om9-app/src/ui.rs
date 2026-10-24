@@ -1044,7 +1044,11 @@ impl MatrixApp {
         self.note_dock_diagnostics(&diagnostics);
     }
     fn invoke(&mut self, id: &str, origin: InvocationOrigin) {
-        let builder_before = self.controller.addon_builder().map(|b| b.code.clone());
+        let builder_before = self
+            .controller
+            .addon_session()
+            .map(|s| s.code.clone())
+            .or_else(|| self.controller.addon_builder().map(|b| b.code.clone()));
         let result = self.controller.dispatch_effect(id, origin);
         if result.is_ok() {
             self.echo_builder_start(builder_before);
@@ -2603,11 +2607,29 @@ impl MatrixApp {
                 .ray([pos.x as f64, pos.y as f64], viewport)
                 .and_then(|ray| ray.intersect_plane(self.controller.input_plane()));
             if let Ok(world) = world {
+                if world != self.hover
+                    && let Some(point) = world
+                {
+                    // An interactive add-on command previews under the cursor (rubber band,
+                    // circle radius …); the state only advances on a click.
+                    self.controller.session_hover(point);
+                }
                 self.hover = world;
+            }
+            // Right click = Enter while an interactive command runs (Matrix/Rhino habit).
+            if response.secondary_clicked() && self.controller.addon_session().is_some() {
+                let result = self.controller.submit_effect("").map(|_| ());
+                self.feedback(result);
+                return;
             }
             if response.clicked() {
                 self.controller.workspace.active = id;
-                if self.controller.is_running() {
+                if !self.controller.is_running() && self.controller.session_wants_point() {
+                    if let Some(point) = self.hover {
+                        let result = self.controller.session_point(point);
+                        self.feedback(result);
+                    }
+                } else if self.controller.is_running() {
                     if let Some(point) = self.hover {
                         let result = self.controller.accept_world_point(point);
                         self.feedback(result);

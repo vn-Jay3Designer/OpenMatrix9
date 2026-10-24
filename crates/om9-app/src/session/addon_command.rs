@@ -90,6 +90,21 @@ impl Controller {
             .then(|| self.addon_names.get(&key).cloned())
             .flatten()
     }
+    /// The add-on command an OM9 icon calls, if any: matched by the icon's catalog code
+    /// (MainMenu.ini key), else by its name as a manifest alias (`Circle`). `builtin` is the
+    /// core feature the icon is bound to; a working built-in keeps its own icon (Line,
+    /// Point), while an icon that only borrows a feature id (Control Points shares Point's)
+    /// or whose feature is not implemented calls the add-on.
+    pub fn icon_addon(&self, icon: &str, builtin: Option<&str>) -> Option<String> {
+        let key = crate::icons::command_key_for(icon);
+        let code = key
+            .and_then(|key| self.addon_code(key))
+            .or_else(|| self.addon_code(icon))?;
+        let keeps_builtin = builtin.is_some_and(|feature| {
+            Self::availability(feature).is_ok() && crate::icons::command_key_for(feature) == key
+        });
+        (!keeps_builtin).then_some(code)
+    }
     /// Menu/icon/F6 gate: a built-in operation or a command an enabled add-on provides.
     pub fn is_available(&self, feature: &str) -> bool {
         Self::availability(feature).is_ok() || self.addon_code(feature).is_some()
@@ -112,6 +127,20 @@ impl Controller {
             .lock()
             .map_err(|_| Error::Io("add-on host poisoned".into()))?
             .command_info(code);
+        if let Some(i) = info.as_ref().filter(|i| i.command.interactive) {
+            let label = i.command.label.clone();
+            let panel = i.command.builder;
+            self.start_addon_session(code, &label)?;
+            // A command with its own menu panel (Gem Cutter …) also opens the builder; its
+            // values travel with every step and Enter goes to the session.
+            if panel {
+                self.start_addon_builder(code)?;
+                if let Some(b) = self.addon_builder.as_mut() {
+                    b.interactive = true;
+                }
+            }
+            return Ok(());
+        }
         if info.as_ref().is_some_and(|i| i.command.builder) {
             return self.start_addon_builder(code);
         }

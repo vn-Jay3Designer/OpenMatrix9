@@ -48,6 +48,8 @@ pub struct AddonBuilder {
     pub revision: u64,
     preview_key: Option<(u64, u64, u64)>,
     pub preview: BuilderPreview,
+    /// The panel of an interactive command: the session previews and Enter goes to it.
+    pub interactive: bool,
 }
 
 impl AddonBuilder {
@@ -189,7 +191,11 @@ impl Controller {
             .map_err(|_| Error::Io("add-on host poisoned".into()))?
             .command_info(code)
             .ok_or(Error::Unsupported("add-on command"))?;
-        self.cancel();
+        if self.addon_session.as_ref().is_none_or(|s| s.code != code) {
+            self.cancel();
+        } else {
+            self.cancel_addon_builder();
+        }
         self.addon_builder = Some(AddonBuilder {
             code: code.to_owned(),
             label: info.command.label.clone(),
@@ -201,6 +207,7 @@ impl Controller {
             revision: 0,
             preview_key: None,
             preview: BuilderPreview::default(),
+            interactive: false,
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -316,6 +323,22 @@ impl Controller {
         if b.preview_key == Some(key) {
             return;
         }
+        if b.interactive {
+            // The session draws the preview; tell it the panel values changed.
+            let changed = b.preview_key.is_some_and(|old| old.0 != key.0);
+            if let Some(b) = self.addon_builder.as_mut() {
+                b.preview_key = Some(key);
+            }
+            if changed {
+                let _ = self.session_step(om9_addon_abi::session::Input::Selection);
+            }
+            if let (Some(b), Some(s)) = (self.addon_builder.as_mut(), self.addon_session.as_ref()) {
+                b.preview.count = s.reply.preview.len();
+                b.preview.messages = s.reply.messages.clone();
+                b.preview.error = s.reply.error.clone();
+            }
+            return;
+        }
         let (code, values) = (b.code.clone(), b.values.clone());
         let to_mm = self.document().page_unit.factor();
         let preview = match self.addon_invocation(&code, &values) {
@@ -354,12 +377,26 @@ impl Controller {
             .addon_builder
             .clone()
             .ok_or(Error::Missing("builder"))?;
+        if b.interactive {
+            self.session_step(om9_addon_abi::session::Input::Enter)?;
+            if self.addon_session.is_none() {
+                self.store_builder_values(&b);
+                self.addon_builder = None;
+            }
+            return Ok(());
+        }
         let created = self.run_addon_with(&b.code, &b.values, &b.label)?;
         if created == 0 {
             // Nothing to place (no curve, curve too short): the builder stays open so the
             // user can pick a curve or change a value; the reason is already reported.
             return Err(Error::Invalid("nothing to create"));
         }
+        self.store_builder_values(&b);
+        self.addon_builder = None;
+        Ok(())
+    }
+
+    pub(super) fn store_builder_values(&mut self, b: &AddonBuilder) {
         if let Some(host) = self.addons.clone()
             && let Ok(mut h) = host.lock()
             && let Err(e) = h.store_settings(&b.owner, &b.values)
@@ -367,8 +404,6 @@ impl Controller {
             self.addon_messages
                 .push(format!("Không lưu được thông số mặc định: {e}"));
         }
-        self.addon_builder = None;
-        Ok(())
     }
 
     /// Esc / Cancel: close the builder; nothing is created or stored.

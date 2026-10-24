@@ -1,0 +1,91 @@
+# Manifest của gói add-on. tools/ci/build-addons-windows.ps1 điền @ENTRY@/@PLATFORM@ theo nền tảng build.
+schema_version = "1.0.0"
+id = "om9_transform"
+version = "0.1.0"
+name = "Transform Tools"
+tagline = "Move, Rotate, Mirror, Scale, Array kiểu Matrix 9"
+maintainer = "OpenMatrix9 contributors"
+type = "add-on"
+license = ["SPDX:LGPL-2.1-or-later"]
+om9_version_min = "0.1.0"
+platforms = ["@PLATFORM@"]
+runtime = "native"
+entry = "@ENTRY@"
+tags = ["Transform"]
+
+[[commands]]
+id = "TopIconMove"
+label = "Move"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Move"]
+
+[[commands]]
+id = "TopIconDuplicate"
+label = "Duplicate"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Copy", "Duplicate"]
+
+[[commands]]
+id = "TopIconRotate"
+label = "Rotate"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Rotate"]
+
+[[commands]]
+id = "TopIconMirror"
+label = "Mirror"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Mirror"]
+
+[[commands]]
+id = "TransformRotate3D"
+label = "Rotate 3D"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Rotate3D"]
+
+[[commands]]
+id = "TransformScaleScale3D"
+label = "Scale 3D"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Scale"]
+
+[[commands]]
+id = "TransformScaleScale2D"
+label = "Scale 2D"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Scale2D"]
+
+[[commands]]
+id = "TransformScaleScale1D"
+label = "Scale 1D"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Scale1D"]
+
+[[commands]]
+id = "TransformArrayPolar"
+label = "Array Polar"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ArrayPolar"]
+
+[[commands]]
+id = "TransformArrayArrayLinear"
+label = "Array Linear"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ArrayLinear"]
+
+[[commands]]
+id = "TransformArrayRectangular"
+label = "Array"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Array"]

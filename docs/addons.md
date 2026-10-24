@@ -48,6 +48,52 @@ Manifest keys used by builders:
 Commands without `builder = true` (for example Gem Count On Crv) run at once with the
 remembered values.
 
+## Interactive commands: clicks, sub-options and preview
+
+Commands marked `interactive = true` in the manifest run step by step, like the built-in Line.
+Polyline, Circle, Move and Gem Cutter work this way.
+
+- **Starting:** the command does not create anything when it starts. It shows a prompt and its
+  sub-options in the command line, for example `Start of polyline  PersistentClose=No  Length`.
+- **Sub-options:** you can click an option, or type its name, `Name=value`, or a bare number.
+- **Points:** you can click in the viewport or type `x,y[,z]`, `@dx,dy` (relative) or a number
+  (a distance along the last direction).
+- **Finishing:** Enter or a right-click finishes the command. Esc cancels it. U removes the last point.
+- **Preview:** while you move the mouse the add-on draws a preview line, plus a rubber band from
+  the last point. The preview is only drawn on screen and is never added to the document.
+- **Undo:** the result is one transaction, so a single Undo removes it.
+
+A command can also set `builder = true`. It then also opens the BUILDERS panel (Gem Cutter does
+this). Values typed in the command line and values set in the panel are the same settings, and
+the values you accept become the defaults for next time.
+
+The session protocol is JSON over the optional `om9_addon_session` symbol. The add-on keeps no
+state; the host stores it and passes it back with each step.
+
+- Each event carries the command code, the input (`start`, `point`, `hover`, `text`, `option`,
+  `enter`, `undo` or `selection`), the previous state, the CPlane, the current selection
+  (meshes, curves and gem records) and the settings.
+- Each reply carries:
+  - the new state;
+  - the prompt and option tokens;
+  - what it wants next (a point, objects, a number or nothing);
+  - preview geometry and a rubber band;
+  - when the command is done, the geometry to create (point, line, polyline, circle, arc,
+    NURBS or mesh, with an optional layer) or 4×4 transforms for the selection, with a flag to
+    keep the originals.
+- All values are in millimetres.
+- Rust add-ons implement `session::Interactive` and call `export_interactive!` (from
+  `om9-addon-abi`, feature `session`).
+- The host validates every reply before it changes the document.
+
+An add-on command is called the same way as a built-in command:
+
+- by its catalog code or a manifest `aliases` entry in the command line (`Circle`,
+  `gvAzureCutter`);
+- from F6;
+- from its OM9 icon in the menu palettes and toolbars. An icon whose catalog code an enabled
+  add-on provides becomes active.
+
 ## Package layout
 
 ```
@@ -75,15 +121,21 @@ boundary. The host checks every returned mesh before it touches the document.
 - `cargo run -p om9-addons --features native --bin om9-addon -- --catalog Resources/menu/MainMenu.ini build <dir> -o <pkg>.zip`
   packages a directory deterministically. `validate`, `install`, `enable`, `list`, `menu` and
   `settings` cover the rest of the lifecycle.
-- On Windows CI, `tools/ci/build-addons-windows.ps1` builds `gem_on_curve.dll`, packages
-  `gem_on_curve-<ver>-windows-x64.zip` and `ring_sizes-<ver>.zip`, smoke-installs them and
-  uploads them as the `om9-addons` artifact. Built libraries are never committed.
+- On Windows CI, `tools/ci/build-addons-windows.ps1` builds the native add-ons
+  (`gem_on_curve`, `curves`, `transform`, `gem_cutter`) and packages each as
+  `<dir>-<ver>-windows-x64.zip`, plus `ring_sizes-<ver>.zip`. It then smoke-installs and
+  enables them, which really loads every DLL, and uploads the zips as the `om9-addons`
+  artifact. Built libraries are never committed.
 
 ## Shipped examples
 
 | Package | Commands | Notes |
 |---|---|---|
 | `addons/gem_on_curve` | Gem On Crv, Gem Count On Crv | Round brilliant stones spaced along curves.<br>Closed curve: `n = ⌊L/(d+g)⌋`, `g' = L/n − d`.<br>Open curve: `n = ⌊(L+g)/(d+g)⌋`.<br>Gem On Crv opens a builder; Gem Count On Crv reports at once.<br>Options: Size, Spacing, Start/End %, ZOffset, Layout (fit or fixed gap), Orient (CPlane or outward). |
+| `addons/curves` | Polyline, Line, Interpolate/Control Point Curve, Rectangle, Circle, Ellipse, Arc (center / start-end-direction), Polygon, Spiral, Helix, Point | Interactive. Options include Close, PersistentClose, Length, Degree, Center/3Point/Rounded, 2Point/3Point/Diameter, NumSides/Circumscribed and Turns. |
+| `addons/transform` | Move, Duplicate, Rotate, Mirror, Rotate 3D, Scale 3D/2D/1D, Array Polar/Linear/Rectangular | Works on the selection, or asks you to select. Shows a live preview of the moved objects. Copy option. Gem records follow the transform. |
+| `addons/gem_cutter` | Gem Cutter | Builder and interactive. Makes a closed cutter mesh for each selected gem on the layer *Cutting*. Values in % of the stone diameter: Girdle Scale, Girdle Width, Top Height, Seat Size, Lower Depth, Lower Taper, Z Offset. |
+| `addons/geom` | — | Shared curve maths (NURBS evaluation, interpolation, conics, arcs, spirals) linked into the add-ons above; not a package. |
 | `addons/ring_sizes` | — | Data library: US and ISO 8653 ring size tables. |
 
 Check value: a Ø17.35 mm ring rail with Ø1.5 mm stones and 0.2 mm spacing gives 32 stones with a
@@ -94,4 +146,7 @@ Tests:
 - `crates/om9-addons/tests`
 - `addons/gem_on_curve/tests/native_load.rs` (real library load)
 - `crates/om9-app/tests/addon_command.rs` (controller, CMD/menu paths, single Undo)
+- `crates/om9-app/tests/addon_session.rs`: interactive curves, transforms and Gem Cutter through
+  the controller. It also checks that every add-on command has an OM9 icon that calls it.
+- `addons/{curves,transform}/tests/native_load.rs` (real library, session symbol)
 - `crates/om9-core/tests/insert_with_extension.rs`

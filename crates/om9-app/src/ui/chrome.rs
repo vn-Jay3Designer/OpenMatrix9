@@ -547,7 +547,15 @@ impl MatrixApp {
                     .find(|f| crate::icons::icon_name(&f.id) == Some(name))
                     .map(|f| f.id.clone())
             })
-            .or_else(|| (id == LINE || id == POINT).then(|| id.to_owned()));
+            .or_else(|| (id == LINE || id == POINT).then(|| id.to_owned()))
+            // An icon with no feature row still runs when an installed add-on provides its
+            // catalog code (Rectangle, Circle, Gem Cutter …).
+            .or_else(|| self.controller.icon_addon(name, None))
+            .map(|actual| {
+                self.controller
+                    .icon_addon(name, Some(&actual))
+                    .unwrap_or(actual)
+            });
         let feature = actual
             .as_ref()
             .and_then(|id| self.features.iter().find(|f| &f.id == id).cloned());
@@ -1058,6 +1066,11 @@ impl MatrixApp {
                                     if *name == "Line" { LINE } else { POINT },
                                     name,
                                 );
+                            }
+                            // Toolbar slots (Move, Rotate, Mirror …) run the installed
+                            // add-on that provides the command; others stay inactive.
+                            _ if self.controller.icon_addon(name, None).is_some() => {
+                                self.feature_icon(ui, "", name);
                             }
                             _ => {
                                 self.icon(ui, name, false, name);

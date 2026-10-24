@@ -22,6 +22,17 @@ pub const SYM_ABI_VERSION: &[u8] = b"om9_addon_abi_version\0";
 pub const SYM_COMMAND_COUNT: &[u8] = b"om9_addon_command_count\0";
 pub const SYM_COMMAND_NAME: &[u8] = b"om9_addon_command_name\0";
 pub const SYM_INVOKE: &[u8] = b"om9_addon_invoke\0";
+/// Optional: interactive commands (see [`session`]), `om9_addon_session(json, len, write, ctx)`.
+pub const SYM_SESSION: &[u8] = b"om9_addon_session\0";
+
+/// Callback through which an add-on hands its JSON reply to the host (copied before return).
+pub type Om9Write = unsafe extern "C" fn(ctx: *mut c_void, data: *const u8, len: usize);
+/// Signature of `om9_addon_session`.
+pub type Om9SessionFn =
+    unsafe extern "C" fn(input: *const u8, len: usize, write: Om9Write, ctx: *mut c_void) -> i32;
+
+#[cfg(feature = "session")]
+pub mod session;
 
 /// Kết quả `om9_addon_invoke`.
 pub const INVOKE_OK: i32 = 0;

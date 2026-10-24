@@ -19,6 +19,7 @@ struct Loaded {
     // Giữ thư viện sống; con trỏ hàm bên dưới chỉ hợp lệ khi `_lib` còn.
     _lib: libloading::Library,
     invoke: InvokeFn,
+    session: Option<Om9SessionFn>,
 }
 
 #[derive(Default)]
@@ -106,6 +107,29 @@ unsafe extern "C" fn cb_add_mesh(
     0
 }
 
+#[derive(Default)]
+struct SessionSink {
+    bytes: Vec<u8>,
+    overflow: bool,
+}
+
+unsafe extern "C" fn cb_session_write(ctx: *mut c_void, data: *const u8, len: usize) {
+    if ctx.is_null() || (data.is_null() && len > 0) {
+        return;
+    }
+    // SAFETY: `ctx` is the `SessionSink` of the running call.
+    let sink = unsafe { &mut *(ctx as *mut SessionSink) };
+    if sink.bytes.len().saturating_add(len) > crate::runtime::MAX_SESSION_JSON {
+        sink.overflow = true;
+        return;
+    }
+    if len > 0 {
+        // SAFETY: the add-on passes `len` readable bytes for this callback; copied at once.
+        sink.bytes
+            .extend_from_slice(unsafe { std::slice::from_raw_parts(data, len) });
+    }
+}
+
 impl Runtime for NativeRuntime {
     fn load(&mut self, req: &LoadRequest) -> Result<Vec<String>, String> {
         let entry = req
@@ -154,13 +178,58 @@ impl Runtime for NativeRuntime {
             let s = unsafe { name(i).to_str() }.ok_or("tên lệnh không phải UTF-8")?;
             commands.push(s.to_owned());
         }
-        self.loaded
-            .insert(req.id.to_owned(), Loaded { _lib: lib, invoke });
+        // Optional: interactive commands.
+        // SAFETY: the symbol type is fixed by om9-addon-abi.
+        let session = unsafe { lib.get::<Om9SessionFn>(SYM_SESSION).ok().map(|f| *f) };
+        self.loaded.insert(
+            req.id.to_owned(),
+            Loaded {
+                _lib: lib,
+                invoke,
+                session,
+            },
+        );
         Ok(commands)
     }
 
     fn unload(&mut self, id: &str) {
         self.loaded.remove(id);
+    }
+
+    fn session(&mut self, id: &str, event: &[u8]) -> Result<Vec<u8>, String> {
+        let loaded = self
+            .loaded
+            .get(id)
+            .ok_or_else(|| format!("add-on {id} chưa nạp"))?;
+        let f = loaded
+            .session
+            .ok_or_else(|| format!("add-on {id} không có lệnh tương tác"))?;
+        if event.len() > crate::runtime::MAX_SESSION_JSON {
+            return Err("sự kiện quá lớn".into());
+        }
+        let mut sink = SessionSink::default();
+        // SAFETY: `event` and `sink` live until the call returns; the add-on copies nothing back
+        // except through `cb_session_write`, which copies into `sink`.
+        let code = unsafe {
+            f(
+                event.as_ptr(),
+                event.len(),
+                cb_session_write,
+                &mut sink as *mut SessionSink as *mut c_void,
+            )
+        };
+        if sink.overflow {
+            return Err(format!("{id}: trả lời quá lớn"));
+        }
+        match code {
+            INVOKE_OK => Ok(sink.bytes),
+            INVOKE_PANIC => Err(format!("{id}: add-on bị panic; lệnh đã huỷ")),
+            _ => Err(String::from_utf8_lossy(&sink.bytes)
+                .trim_matches('"')
+                .chars()
+                .take(2000)
+                .collect()),
+        }
     }
 
     fn invoke(&mut self, id: &str, input: &CommandInput) -> Result<CommandOutput, String> {

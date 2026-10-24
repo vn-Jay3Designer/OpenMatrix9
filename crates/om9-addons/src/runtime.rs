@@ -104,7 +104,15 @@ pub trait Runtime: Send {
     fn invoke(&mut self, _id: &str, _input: &CommandInput) -> Result<CommandOutput, String> {
         Err("runtime này không chạy lệnh".into())
     }
+    /// One step of an interactive command: a JSON event in, a JSON reply out
+    /// (see `om9_addon_abi::session`). The host never interprets the bytes here.
+    fn session(&mut self, _id: &str, _event: &[u8]) -> Result<Vec<u8>, String> {
+        Err("add-on này không có lệnh tương tác".into())
+    }
 }
+
+/// Largest JSON step accepted in either direction.
+pub const MAX_SESSION_JSON: usize = 64 << 20;
 
 /// Runtime cho add-on `library`: không chạy mã, host tự đăng ký assets.
 pub struct DataRuntime;

@@ -1170,6 +1170,30 @@ impl Host {
         self.invoke_with(code, input, &BTreeMap::new())
     }
 
+    /// One step of an interactive command (`interactive = true`): the JSON event goes to the
+    /// owner's runtime unchanged and its JSON reply comes back unchanged. The app parses both.
+    pub fn session(&mut self, code: &str, event: &[u8]) -> Result<Vec<u8>, String> {
+        let owner = self
+            .bindings
+            .get(code)
+            .cloned()
+            .ok_or_else(|| format!("lệnh {code} chưa có add-on nào cung cấp"))?;
+        let kind = self
+            .active
+            .get(&owner)
+            .ok_or_else(|| format!("add-on {owner} không còn bật"))?
+            .runtime;
+        let rt = self
+            .runtimes
+            .get_mut(&kind)
+            .ok_or_else(|| format!("chưa có runtime {}", kind.as_str()))?;
+        let reply = rt.session(&owner, event)?;
+        if reply.len() > crate::runtime::MAX_SESSION_JSON {
+            return Err(format!("{owner}: trả lời quá lớn"));
+        }
+        Ok(reply)
+    }
+
     /// A bound command's declaration and its owner's settings (schema + effective values),
     /// for the builder (command-line options and builder panel).
     pub fn command_info(&self, code: &str) -> Option<CommandInfo> {

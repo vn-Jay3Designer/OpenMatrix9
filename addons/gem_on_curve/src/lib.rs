@@ -416,9 +416,18 @@ impl Addon for GemOnCurve {
             ));
             if place {
                 for (k, pl) in lay.gems.iter().enumerate() {
+                    // The frame (girdle center, table axis, x) lets cutters, prongs and
+                    // settings find the stone; OM9 keeps it in step with Move/Rotate.
+                    let v3 = |a: Vec3| format!("[{},{},{}]", a[0], a[1], a[2]);
                     let meta = format!(
-                        "{{\"cut\":\"round\",\"diameter_mm\":{},\"spacing_mm\":{},\"index\":{},\"curve\":{},\"source\":\"gem_on_curve\"}}",
-                        p.diameter, lay.real_gap, k, ci
+                        "{{\"cut\":\"round\",\"diameter_mm\":{},\"spacing_mm\":{},\"index\":{},\"curve\":{},\"source\":\"gem_on_curve\",\"center\":{},\"axis\":{},\"x\":{}}}",
+                        p.diameter,
+                        lay.real_gap,
+                        k,
+                        ci,
+                        v3(pl.center),
+                        v3(pl.w),
+                        v3(pl.u)
                     );
                     out.add_mesh(
                         &format!("Gem {:.2} mm", p.diameter),
@@ -435,6 +444,7 @@ impl Addon for GemOnCurve {
     }
 }
 
+#[cfg(feature = "export")]
 om9_addon_abi::export_addon!(GemOnCurve);
 
 #[cfg(test)]
@@ -664,5 +674,54 @@ mod tests {
         for g in layout(&path, &params(), [0.0, 0.0, 1.0]).unwrap().gems {
             assert!((len(g.w) - 1.0).abs() < 1e-9 && dot(g.w, g.u).abs() < 1e-9);
         }
+    }
+
+    #[test]
+    fn gem_records_carry_a_json_frame() {
+        struct Sink(Vec<String>);
+        impl Output for Sink {
+            fn add_mesh(
+                &mut self,
+                _: &str,
+                _: &[[f64; 3]],
+                _: &[[u32; 3]],
+                meta: &str,
+            ) -> Result<(), String> {
+                self.0.push(meta.to_owned());
+                Ok(())
+            }
+            fn message(&mut self, _: &str) {}
+        }
+        let r = Request {
+            command: "BuilderGemOnCrv".into(),
+            curves: vec![CurveData {
+                points: circle(17.35, 512),
+                closed: true,
+            }],
+            settings: Default::default(),
+            plane_normal: [0.0, 0.0, 1.0],
+        };
+        let mut sink = Sink(Vec::new());
+        GemOnCurve::invoke(&r, &mut sink).unwrap();
+        assert_eq!(sink.0.len(), 32);
+        let m: serde_json::Value = serde_json::from_str(&sink.0[0]).unwrap();
+        let axis: Vec<f64> = m["axis"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        assert!(
+            (axis[2] - 1.0).abs() < 1e-9,
+            "table faces the CPlane normal: {axis:?}"
+        );
+        let c: Vec<f64> = m["center"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_f64().unwrap())
+            .collect();
+        assert!(((c[0] * c[0] + c[1] * c[1]).sqrt() - 17.35 / 2.0).abs() < 1e-6);
+        assert_eq!(m["diameter_mm"], 1.5);
     }
 }

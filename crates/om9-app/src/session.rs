@@ -15,6 +15,8 @@ pub mod stress;
 mod subobjects;
 pub use subobjects::SelectedSubobject;
 mod addon_builder;
+mod addon_session;
+pub use addon_session::AddonSession;
 mod addon_command;
 pub use addon_builder::{AddonBuilder, BuilderPreview, display_value};
 mod files;
@@ -118,6 +120,8 @@ pub struct Controller {
     addon_typed: std::collections::BTreeMap<String, String>,
     /// The open builder of an add-on command, if any.
     addon_builder: Option<addon_builder::AddonBuilder>,
+    /// The running interactive add-on command (Polyline, Move, Gem Cutter …), if any.
+    addon_session: Option<addon_session::AddonSession>,
 }
 impl Controller {
     pub fn capture_view_menu(
@@ -246,6 +250,7 @@ impl Controller {
             addon_messages: Vec::new(),
             addon_typed: Default::default(),
             addon_builder: None,
+            addon_session: None,
         })
     }
     pub fn coordinator(&self) -> &TransactionCoordinator {
@@ -446,8 +451,9 @@ impl Controller {
         if self.is_running() {
             return Err(Error::Busy);
         }
-        // One command at a time: a built-in command closes an open add-on builder.
+        // One command at a time: a built-in command closes an open add-on builder or session.
         self.cancel_addon_builder();
+        self.cancel_addon_session();
         let feature = match feature {
             LINE => LINE,
             POINT => POINT,
@@ -538,7 +544,7 @@ impl Controller {
     /// The command-line prompt, including an open add-on builder's.
     pub fn prompt_text(&self) -> String {
         if !self.is_running()
-            && let Some(p) = self.builder_prompt()
+            && let Some(p) = self.session_prompt().or_else(|| self.builder_prompt())
         {
             return p;
         }
@@ -566,6 +572,7 @@ impl Controller {
     }
     pub fn cancel(&mut self) {
         self.cancel_addon_builder();
+        self.cancel_addon_session();
         if let Some(s) = self.session.take() {
             self.events.emit(
                 crate::command_events::EventKind::Finished,
@@ -606,6 +613,10 @@ impl Controller {
             return Err(Error::Budget("command input"));
         }
         let text = text.trim();
+        // An interactive add-on command reads the line first (points, options, Enter).
+        if !self.is_running() && self.addon_session.is_some() && self.submit_session_text(text)? {
+            return Ok(());
+        }
         // An open add-on builder reads its options first (`Size=2`, Enter = accept).
         if !self.is_running() && self.addon_builder.is_some() && self.submit_builder_text(text)? {
             return Ok(());

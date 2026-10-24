@@ -183,10 +183,16 @@ fn run() -> Result<(), String> {
                         if r.enabled { " (đã bật)" } else { "" },
                         h.user_repo().join(&r.id).display()
                     );
-                    for w in r.warnings {
+                    for w in &r.warnings {
                         println!("  ! {w}");
                     }
-                    Ok(())
+                    // `--enable` that could not enable (library fails to load, ABI mismatch)
+                    // is a failure for scripts, not a warning.
+                    if opts.enable && !r.enabled {
+                        Err(format!("{}: đã cài nhưng không bật được", r.id))
+                    } else {
+                        Ok(())
+                    }
                 }
                 Err(e) => Err(e.join("\n")),
             }
