@@ -134,8 +134,14 @@ fn curve_commands_run_interactively() {
         Some("CurvePolylinePolyline")
     );
 
-    // Polyline typed in CMD: prompt + sub-options, clicks, a typed relative point, Enter.
-    c.submit("Polyline").unwrap();
+    // OM9 now has its own Polyline, Circle … : the built-in keeps the typed name and icon,
+    // and the add-on version still runs by its code.
+    assert!(
+        c.icon_target("Polyline", None)
+            .is_some_and(|t| !t.addon && t.enabled)
+    );
+    // Polyline: prompt + sub-options, clicks, a typed relative point, Enter.
+    c.run_addon_command("CurvePolylinePolyline").unwrap();
     let s = c.addon_session().expect("session open");
     assert!(
         c.prompt_text().starts_with("Start of polyline"),
@@ -195,19 +201,24 @@ fn curve_commands_run_interactively() {
         .unwrap();
     assert!((circle - 8.675).abs() < 1e-12);
 
-    // Esc cancels; nothing is created. Another command name closes the session and runs.
+    // Esc cancels; nothing is created. Another command closes the session and runs.
     let before = c.document().entities.len();
-    c.submit("Rectangle").unwrap();
+    c.run_addon_command("CurveRectangleCornertoCorner").unwrap();
     c.session_point([0.0, 0.0, 0.0]).unwrap();
     c.cancel();
     assert!(c.addon_session().is_none());
     assert_eq!(c.document().entities.len(), before);
-    c.submit("Rectangle").unwrap();
-    c.submit("Circle").unwrap();
+    c.run_addon_command("CurveRectangleCornertoCorner").unwrap();
+    c.run_addon_command("CurveCircleCenterRadius").unwrap();
     assert_eq!(c.addon_session().unwrap().code, "CurveCircleCenterRadius");
+    c.submit("Circle").unwrap();
+    assert!(
+        c.addon_session().is_none(),
+        "the built-in Circle closes the session"
+    );
     c.cancel();
     // A refused value keeps the session open with the reason.
-    c.submit("Polygon").unwrap();
+    c.run_addon_command("CurvePolygonCenterRadius").unwrap();
     let err = c.submit("NumSides=2").unwrap_err().to_string();
     assert!(err.contains("NumSides"), "{err}");
     assert!(c.addon_session().is_some());
@@ -240,7 +251,7 @@ fn transform_commands_act_on_the_selection() {
     assert!(c.is_available("OM9-TOP11-006"), "Top 11 Move icon");
     assert_eq!(c.addon_code("move").as_deref(), Some("TopIconMove"));
     // A circle to work on.
-    c.submit("Circle").unwrap();
+    c.run_addon_command("CurveCircleCenterRadius").unwrap();
     c.session_point([0.0, 0.0, 0.0]).unwrap();
     c.submit("2").unwrap();
     let id = *c.document().entities.keys().next().unwrap();
@@ -251,7 +262,7 @@ fn transform_commands_act_on_the_selection() {
 
     // Move with nothing selected asks for objects first; selecting advances the prompt.
     c.select_objects(&[]).unwrap();
-    c.submit("Move").unwrap();
+    c.run_addon_command("TopIconMove").unwrap();
     assert!(
         c.prompt_text().starts_with("Select objects to move"),
         "{}",
@@ -277,7 +288,7 @@ fn transform_commands_act_on_the_selection() {
     assert_eq!(c.document().entities.len(), 1, "Move does not copy");
 
     // Polar array: 6 items → 5 copies, one transaction, one Undo.
-    c.submit("ArrayPolar").unwrap();
+    c.run_addon_command("TransformArrayPolar").unwrap();
     c.submit("0,0").unwrap();
     c.submit("6").unwrap();
     c.submit("").unwrap();
@@ -286,7 +297,7 @@ fn transform_commands_act_on_the_selection() {
     assert_eq!(c.document().entities.len(), 1);
 
     // Mirror keeps the original (Copy=Yes) across the CPlane y axis.
-    c.dispatch("TopIconMirror", InvocationOrigin::Menu).unwrap();
+    c.run_addon_command("TopIconMirror").unwrap();
     c.submit("YAxis").unwrap();
     assert_eq!(c.document().entities.len(), 2);
     let mirrored = c
@@ -299,12 +310,12 @@ fn transform_commands_act_on_the_selection() {
     assert!((mirrored[0] + 10.0).abs() < 1e-9 && (mirrored[1] - 5.0).abs() < 1e-9);
 
     // Scale 3D with a typed factor; Rotate with a typed angle.
-    c.submit("Scale").unwrap();
+    c.run_addon_command("TransformScaleScale3D").unwrap();
     c.submit("10,5").unwrap();
     c.submit("2").unwrap();
     let e = c.document().entities.get(&id).unwrap();
     assert!((e.placement.0[0][0] - 2.0).abs() < 1e-12);
-    c.submit("Rotate").unwrap();
+    c.run_addon_command("TopIconRotate").unwrap();
     c.submit("10,5").unwrap();
     c.submit("90").unwrap();
     assert!(c.addon_session().is_none());
@@ -340,6 +351,7 @@ fn gem_cutter_uses_its_panel_and_command_line() {
             faces: vec![vec![0, 1, 2], vec![0, 3, 1], vec![1, 3, 2], vec![2, 3, 0]],
             normals: vec![],
             colors: vec![],
+            corner_uvs: Vec::new(),
         }),
         doc.current_layer,
     );
@@ -451,26 +463,17 @@ fn every_addon_command_has_an_icon_that_calls_it() {
             .map(|v| v.trim_matches('"'))
             .collect();
         assert!(!codes.is_empty(), "{name}");
-        // Control Points borrows Point's feature id in the icon table but is its own command.
-        assert_eq!(
-            c.icon_addon(
-                "CurveFreeFormControlPoints",
-                om9_app::icons::feature_for("CurveFreeFormControlPoints")
-            )
-            .as_deref()
-            .filter(|_| name == "curves"),
-            (name == "curves").then_some("CurveFreeFormControlPoints")
-        );
         for code in codes {
             let icon = om9_app::icons::icon_for_command(code)
                 .unwrap_or_else(|| panic!("{name}: no OM9 icon for {code}"));
-            let builtin = om9_app::icons::feature_for(icon);
-            let called = c.icon_addon(icon, builtin);
-            let keeps_builtin = matches!(builtin, Some(f) if f == om9_app::session::LINE || f == om9_app::session::POINT)
-                && called.is_none();
+            let target = c
+                .icon_target(icon, None)
+                .unwrap_or_else(|| panic!("{icon}: no command"));
+            assert!(target.enabled, "{icon} → {target:?}");
+            // Either OM9's own command (it keeps its icon) or this add-on's.
             assert!(
-                called.as_deref() == Some(code) || keeps_builtin,
-                "{icon} ({builtin:?}) → {called:?}, want {code}"
+                !target.addon || target.command == code,
+                "{icon} → {target:?}, want {code}"
             );
             assert!(c.is_available(code), "{code}");
         }

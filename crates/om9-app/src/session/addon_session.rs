@@ -42,6 +42,8 @@ pub struct AddonSession {
     /// The last accepted point (document units), for `@dx,dy` input.
     pub last_point: Option<Point3>,
     selection_seen: u64,
+    /// The pointer position last sent as a hover event; the UI reports it every frame.
+    hover_at: Option<Point3>,
 }
 
 impl AddonSession {
@@ -242,6 +244,7 @@ fn to_geometry(g: &Geo, k: f64) -> Result<(Geometry, Option<Value>, String)> {
                     faces: triangles.iter().map(|t| t.to_vec()).collect(),
                     normals: Vec::new(),
                     colors: Vec::new(),
+                    corner_uvs: Vec::new(),
                 }),
                 meta.clone(),
                 if n.is_empty() {
@@ -512,6 +515,7 @@ impl Controller {
             rubber_from: None,
             last_point: None,
             selection_seen: self.selection_revision,
+            hover_at: None,
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -666,11 +670,11 @@ impl Controller {
 
     /// The cursor moved over a viewport.
     pub fn session_hover(&mut self, point: Point3) {
-        if self
-            .addon_session
-            .as_ref()
-            .is_some_and(|s| matches!(s.reply.want, Want::Point | Want::Number))
+        if let Some(s) = self.addon_session.as_mut()
+            && matches!(s.reply.want, Want::Point | Want::Number)
+            && s.hover_at != Some(point)
         {
+            s.hover_at = Some(point);
             let k = self.document().page_unit.factor();
             let _ = self.session_step(Input::Hover {
                 point: mm(point, k),

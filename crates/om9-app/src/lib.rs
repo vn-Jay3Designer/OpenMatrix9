@@ -3,7 +3,10 @@
 pub mod addons;
 mod brep_bridge;
 pub mod command_events;
+pub mod curve_menu;
+pub mod display;
 pub mod dock_layout;
+pub mod f6;
 pub mod file_lifecycle;
 pub mod gpu_viewport;
 pub mod icons;
@@ -14,14 +17,19 @@ pub mod menu_catalog;
 mod native_picker;
 pub mod option_parser;
 pub mod panel_ops;
+pub mod pictureframe;
+pub mod project_manager;
 pub mod report;
 pub mod session;
+pub mod solid_menu;
 pub mod startup;
 pub mod status_surface;
 pub mod superselect;
+pub mod surface_menu;
 pub mod three_dm_host;
 pub mod transcript;
 pub mod ui;
+pub mod utilities;
 pub mod viewport_menu;
 mod window_identity_guard;
 pub mod workbench_regions;
@@ -54,6 +62,6 @@ pub fn document_limits() -> om9_core::budget::Limits {
 }
 
 pub mod camera_rig;
-pub mod navigation;
 pub mod frame_scheduler;
+pub mod navigation;
 mod navigation_audit;

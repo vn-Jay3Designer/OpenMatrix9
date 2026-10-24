@@ -94,6 +94,11 @@ An add-on command is called the same way as a built-in command:
 - from its OM9 icon in the menu palettes and toolbars. An icon whose catalog code an enabled
   add-on provides becomes active.
 
+When OM9 itself implements a command (for example its own Polyline, Circle or the Top 11
+buttons), the built-in command keeps the typed name and the icon. The add-on version still
+runs by its catalog code. `docs/matrix9-commands.md` shows, for every menu command, whether OM9
+or an add-on runs it today.
+
 ## Package layout
 
 ```

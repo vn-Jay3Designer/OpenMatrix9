@@ -90,20 +90,45 @@ impl Controller {
             .then(|| self.addon_names.get(&key).cloned())
             .flatten()
     }
-    /// The add-on command an OM9 icon calls, if any: matched by the icon's catalog code
-    /// (MainMenu.ini key), else by its name as a manifest alias (`Circle`). `builtin` is the
-    /// core feature the icon is bound to; a working built-in keeps its own icon (Line,
-    /// Point), while an icon that only borrows a feature id (Control Points shares Point's)
-    /// or whose feature is not implemented calls the add-on.
-    pub fn icon_addon(&self, icon: &str, builtin: Option<&str>) -> Option<String> {
-        let key = crate::icons::command_key_for(icon);
-        let code = key
+    /// The add-on command an OM9 icon names: by the icon's catalog code (MainMenu.ini key),
+    /// else by its name as a manifest alias (`Circle`).
+    pub fn icon_addon(&self, icon: &str) -> Option<String> {
+        crate::icons::command_key_for(icon)
             .and_then(|key| self.addon_code(key))
-            .or_else(|| self.addon_code(icon))?;
-        let keeps_builtin = builtin.is_some_and(|feature| {
-            Self::availability(feature).is_ok() && crate::icons::command_key_for(feature) == key
+            .or_else(|| self.addon_code(icon))
+    }
+    /// What an OM9 icon runs and whether it is enabled. A working built-in (its feature
+    /// available and its menu catalog row implemented) keeps its own icon; otherwise an
+    /// enabled add-on that provides the icon's catalog code runs. An icon that only borrows
+    /// a built-in feature id (Control Points shares Point's) also goes to the add-on.
+    /// `fallback` is a feature the caller found for the icon by other means.
+    pub fn icon_target(&self, icon: &str, fallback: Option<&str>) -> Option<IconTarget> {
+        let curve = crate::curve_menu::by_icon(icon);
+        let surface = crate::surface_menu::by_icon(icon);
+        let builtin = curve
+            .map(|binding| binding.feature)
+            .or_else(|| surface.map(|binding| binding.feature))
+            .or_else(|| crate::icons::feature_for(icon))
+            .or(fallback);
+        let catalog_enabled = curve.is_none_or(crate::curve_menu::CurveMenuBinding::enabled)
+            && surface.is_none_or(crate::surface_menu::SurfaceMenuBinding::enabled);
+        let builtin_ok = builtin.is_some_and(|f| Self::availability(f).is_ok()) && catalog_enabled;
+        let addon = self.icon_addon(icon);
+        let own_icon = builtin.is_some_and(|f| {
+            crate::icons::command_key_for(f) == crate::icons::command_key_for(icon)
+                || curve.is_some()
+                || surface.is_some()
         });
-        (!keeps_builtin).then_some(code)
+        match (builtin, addon) {
+            (Some(f), _) if builtin_ok && own_icon => Some(IconTarget::builtin(f, true)),
+            (_, Some(code)) => Some(IconTarget {
+                command: code,
+                enabled: true,
+                addon: true,
+            }),
+            (Some(f), None) => Some(IconTarget::builtin(f, builtin_ok)),
+            (None, None) => None,
+        }
     }
     /// Menu/icon/F6 gate: a built-in operation or a command an enabled add-on provides.
     pub fn is_available(&self, feature: &str) -> bool {
@@ -115,7 +140,7 @@ impl Controller {
 
     /// Run an add-on command: a builder command opens its builder, any other runs at once
     /// with the add-on's remembered values.
-    pub(super) fn run_addon_command(&mut self, code: &str) -> Result<()> {
+    pub fn run_addon_command(&mut self, code: &str) -> Result<()> {
         if self.is_running() {
             return Err(Error::Busy);
         }
@@ -251,6 +276,7 @@ impl Controller {
                 faces: m.triangles.iter().map(|t| t.to_vec()).collect(),
                 normals: Vec::new(),
                 colors: Vec::new(),
+                corner_uvs: Vec::new(),
             };
             let mut entity = Entity::new(&m.name, Geometry::Mesh(mesh), layer);
             if entity.attributes.layer.is_some() {
@@ -294,5 +320,23 @@ impl Controller {
             }),
         );
         Ok(created)
+    }
+}
+
+/// The command an icon runs (see [`Controller::icon_target`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IconTarget {
+    pub command: String,
+    pub enabled: bool,
+    /// Provided by an installed add-on rather than built into OM9.
+    pub addon: bool,
+}
+impl IconTarget {
+    fn builtin(feature: &str, enabled: bool) -> Self {
+        Self {
+            command: feature.to_owned(),
+            enabled,
+            addon: false,
+        }
     }
 }

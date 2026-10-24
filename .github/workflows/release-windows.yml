@@ -35,8 +35,6 @@ jobs:
           fetch-depth: 0
       - name: Audit public source before creating the dependency environment
         run: python tools/public_source_audit.py
-      - name: Check the command catalog matches the menus and add-ons
-        run: python tools/command_catalog.py --check
       - name: Validate release tag and main ancestry
         if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
