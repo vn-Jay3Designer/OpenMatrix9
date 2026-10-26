@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 275 lệnh.
+Tổng cộng: 330 lệnh.
 
 ## Builder (16 lệnh)
 
@@ -199,6 +199,66 @@ Tổng cộng: 275 lệnh.
 | `SolidSolidEditToolsFacesMoveFace` | [Move Face](commands/Solid/SolidSolidEditToolsFacesMoveFace.md) | Solid #28 |
 | `SolidShell` | [Shell](commands/Solid/SolidShell.md) | Solid #29 |
 | `SolidPtOn` | [Solid Points On](commands/Solid/SolidPtOn.md) | Solid #30 |
+
+## SubD (55 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `ClayooEditItem` | [Edit Item](commands/SubD/ClayooEditItem.md) | Clayoo #1 |
+| `ClayooEditDivide` | [Divide](commands/SubD/ClayooEditDivide.md) | Clayoo #2 |
+| `ClayooEditSplitSides` | [Split Sides](commands/SubD/ClayooEditSplitSides.md) | Clayoo #3 |
+| `ClayooEditInset` | [Inset](commands/SubD/ClayooEditInset.md) | Clayoo #4 |
+| `ClayooEditKnife` | [Knife](commands/SubD/ClayooEditKnife.md) | Clayoo #5 |
+| `ClayooEditOffset` | [Offset](commands/SubD/ClayooEditOffset.md) | Clayoo #6 |
+| `ClayooEditExtrude` | [Extrude](commands/SubD/ClayooEditExtrude.md) | Clayoo #7 |
+| `ClayooEditBridge` | [Bridge](commands/SubD/ClayooEditBridge.md) | Clayoo #8 |
+| `ClayooCreationAppendFace` | [Append Face](commands/SubD/ClayooCreationAppendFace.md) | Clayoo #9 |
+| `ClayooCreationPipe` | [SubD Pipe](commands/SubD/ClayooCreationPipe.md) | Clayoo #10 |
+| `ClayooEditCrease` | [Crease](commands/SubD/ClayooEditCrease.md) | Clayoo #14 |
+| `ClayooEditFlipNormals` | [Flip Normals](commands/SubD/ClayooEditFlipNormals.md) | Clayoo #15 |
+| `ClayooEditProjectToPlane` | [Project to Plane](commands/SubD/ClayooEditProjectToPlane.md) | Clayoo #16 |
+| `ClayooEditCollapse` | [Collapse](commands/SubD/ClayooEditCollapse.md) | Clayoo #17 |
+| `ClayooEditMatch` | [Match](commands/SubD/ClayooEditMatch.md) | Clayoo #18 |
+| `ClayooEditWeld` | [Weld](commands/SubD/ClayooEditWeld.md) | Clayoo #19 |
+| `ClayooEditSymmetry` | [Symmetry](commands/SubD/ClayooEditSymmetry.md) | Clayoo #20 |
+| `ClayooPrimitivesBox` | [SubD Box](commands/SubD/ClayooPrimitivesBox.md) | Clayoo #21 |
+| `ClayooPrimitivesSphere` | [SubD Sphere](commands/SubD/ClayooPrimitivesSphere.md) | Clayoo #22 |
+| `ClayooPrimitivesCylinder` | [SubD Cylinder](commands/SubD/ClayooPrimitivesCylinder.md) | Clayoo #23 |
+| `ClayooPrimitivesCone` | [SubD Cone](commands/SubD/ClayooPrimitivesCone.md) | Clayoo #24 |
+| `ClayooPrimitivesTorus` | [SubD Torus](commands/SubD/ClayooPrimitivesTorus.md) | Clayoo #25 |
+| `ClayooPrimitivesPlane` | [SubD Plane](commands/SubD/ClayooPrimitivesPlane.md) | Clayoo #26 |
+| `ClayooCreationSweep1Rail` | [SubD Sweep 1 Rail](commands/SubD/ClayooCreationSweep1Rail.md) | Clayoo #27 |
+| `ClayooCreationSweep2Rails` | [SubD Sweep 2 Rails](commands/SubD/ClayooCreationSweep2Rails.md) | Clayoo #28 |
+| `ClayooCreationLoft` | [SubD Loft](commands/SubD/ClayooCreationLoft.md) | Clayoo #29 |
+| `ClayooEditWrap` | [Wrap](commands/SubD/ClayooEditWrap.md) | Clayoo #30 |
+| `ClayooCreationRevolve` | [SubD Revolve](commands/SubD/ClayooCreationRevolve.md) | Clayoo #31 |
+| `ClayooCreationFromCurve` | [SubD from Curve](commands/SubD/ClayooCreationFromCurve.md) | Clayoo #32 |
+| `ClayooCreationFrom2Curves` | [SubD from 2 Curves](commands/SubD/ClayooCreationFrom2Curves.md) | Clayoo #33 |
+| `ClayooEditFill` | [Fill](commands/SubD/ClayooEditFill.md) | Clayoo #34 |
+| `ClayooEditShell` | [Shell](commands/SubD/ClayooEditShell.md) | Clayoo #35 |
+| `ClayooEditExtract` | [Extract](commands/SubD/ClayooEditExtract.md) | Clayoo #36 |
+| `ClayooCreationFromSurface` | [SubD from Surface](commands/SubD/ClayooCreationFromSurface.md) | Clayoo #37 |
+| `ClayooCreationFromTSplines` | [SubD from T-Splines](commands/SubD/ClayooCreationFromTSplines.md) | Clayoo #38 |
+| `ClayooCreationFromMesh` | [SubD from Mesh](commands/SubD/ClayooCreationFromMesh.md) | Clayoo #39 |
+| `ClayooCreationToNurbs` | [SubD to NURBS](commands/SubD/ClayooCreationToNurbs.md) | Clayoo #40 |
+| `ClayooSelectionSelectionSets` | [Selection Sets](commands/SubD/ClayooSelectionSelectionSets.md) | Clayoo #41 |
+| `ClayooSelectionSelectRing` | [Select Ring](commands/SubD/ClayooSelectionSelectRing.md) | Clayoo #42 |
+| `ClayooSelectionSelectLoop` | [Select Loop](commands/SubD/ClayooSelectionSelectLoop.md) | Clayoo #43 |
+| `ClayooSelectUV` | [Select UV](commands/SubD/ClayooSelectUV.md) | Clayoo #44 |
+| `ClayooSelectionSelectAll` | [Select All](commands/SubD/ClayooSelectionSelectAll.md) | Clayoo #45 |
+| `ClayooSelectionSelectNone` | [Select None](commands/SubD/ClayooSelectionSelectNone.md) | Clayoo #46 |
+| `ClayooSelectionPaintSelection` | [Paint Selection](commands/SubD/ClayooSelectionPaintSelection.md) | Clayoo #47 |
+| `ClayooSelectionGrowSelection` | [Grow Selection](commands/SubD/ClayooSelectionGrowSelection.md) | Clayoo #48 |
+| `ClayooSelectionShrink` | [Shrink Selection](commands/SubD/ClayooSelectionShrink.md) | Clayoo #49 |
+| `ClayooSelectionInvertSelection` | [Invert Selection](commands/SubD/ClayooSelectionInvertSelection.md) | Clayoo #50 |
+| `ClayooSelectionSelectCreased` | [Select Creased](commands/SubD/ClayooSelectionSelectCreased.md) | Clayoo #51 |
+| `ClayooSelectionSelectNaked` | [Select Naked](commands/SubD/ClayooSelectionSelectNaked.md) | Clayoo #52 |
+| `ClayooSelectionSelectCoplanar` | [Select Coplanar](commands/SubD/ClayooSelectionSelectCoplanar.md) | Clayoo #53 |
+| `ClayooEditSubdivisionLevel` | [Subdivision Level](commands/SubD/ClayooEditSubdivisionLevel.md) | Clayoo #54 |
+| `ClayooCreationClayooLibrary` | [SubD Library](commands/SubD/ClayooCreationClayooLibrary.md) | Clayoo #55 |
+| `ClayooSelectionSetPlane` | [Set SubD Plane](commands/SubD/ClayooSelectionSetPlane.md) | Clayoo #56 |
+| `ClayooSelectionResetPlane` | [Reset SubD Plane](commands/SubD/ClayooSelectionResetPlane.md) | Clayoo #57 |
+| `ClayooCreateIsocurves` | [Create Isocurves](commands/SubD/ClayooCreateIsocurves.md) | Clayoo #58 |
 
 ## Surface (40 lệnh)
 

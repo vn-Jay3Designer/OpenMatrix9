@@ -33,6 +33,7 @@ om9-addon-setting-tools = { path = "../setting_tools" }
 om9-addon-builders = { path = "../builders" }
 om9-addon-tools = { path = "../tools" }
 om9-addon-surfaces = { path = "../surfaces" }
+om9-addon-subd = { path = "../subd" }
 serde_json = { workspace = true }
 
 [dev-dependencies]

@@ -674,6 +674,56 @@ fn surfaces_round_trip_through_the_document() {
     fs::remove_dir_all(&tmp).unwrap();
 }
 
+/// SubD: a cage from the add-on keeps its faces through the document, so a face selection
+/// made by one command is used by the next (Paint Selection → Extrude → Subdivision Level).
+#[test]
+fn subd_face_selection_survives_the_document() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-subd-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("subd"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    c.run_addon_command("ClayooPrimitivesBox").unwrap();
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([4.0, 4.0, 0.0]).unwrap();
+    c.submit("4").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    let cube = *c.document().entities.keys().next().unwrap();
+    let tris = |c: &Controller| match &c.document().entities[&cube].geometry {
+        Geometry::Mesh(m) => m.faces.len(),
+        g => panic!("{g:?}"),
+    };
+    assert_eq!(tris(&c), 6 * 4 * 2, "a 2 × 2 cage on every side");
+    // Paint one top face, extrude it.
+    c.select_objects(&[cube]).unwrap();
+    c.run_addon_command("ClayooSelectionPaintSelection").unwrap();
+    c.session_point([1.0, 1.0, 0.0]).unwrap();
+    assert!(c.prompt_text().contains("1 faces selected"), "{}", c.prompt_text());
+    c.submit("").unwrap();
+    c.select_objects(&[cube]).unwrap();
+    c.run_addon_command("ClayooEditExtrude").unwrap();
+    c.refresh_addon_session();
+    assert!(c.prompt_text().contains("Distance"), "the selection is used: {}", c.prompt_text());
+    c.submit("2").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    assert_eq!(tris(&c), (24 + 4) * 2, "four side walls");
+    // Smooth it.
+    c.select_objects(&[cube]).unwrap();
+    c.run_addon_command("ClayooEditSubdivisionLevel").unwrap();
+    c.submit("2").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    assert_eq!(tris(&c), 28 * 16 * 2);
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
 /// A deformation (Taper) rebuilds a moved mesh in place: the object keeps its id and
 /// placement, its world shape follows the deformation.
 #[test]

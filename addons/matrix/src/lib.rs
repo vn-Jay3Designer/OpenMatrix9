@@ -56,6 +56,11 @@ pub const CATEGORIES: &[Category] = &[
         step: <om9_tools::Tools as Interactive>::step,
     },
     Category {
+        name: "SubD",
+        commands: <om9_subd::SubD as Interactive>::SESSION_COMMANDS,
+        step: <om9_subd::SubD as Interactive>::step,
+    },
+    Category {
         name: "Builder",
         commands: <om9_builders::Builders as Interactive>::SESSION_COMMANDS,
         step: <om9_builders::Builders as Interactive>::step,
@@ -106,6 +111,7 @@ pub const SOURCES: &[(&str, &str)] = &[
     ("Solid", "solid"),
     ("Transform", "transform"),
     ("Transform", "transform_tools"),
+    ("SubD", "subd"),
     ("Builder", "builders"),
     ("Tools", "tools"),
     ("Gems", "gems"),
