@@ -97,7 +97,7 @@ fn generate() -> Generated {
          id = \"om9_matrix\"\n\
          version = \"{version}\"\n\
          name = \"OM9 Matrix\"\n\
-         tagline = \"Lệnh kiểu Matrix 9: Curve, Transform, Gems, Settings, Cutters …\"\n\
+         tagline = \"Lệnh kiểu Matrix 9 cho 11 menu: Curve, Surface, SubD, Gems …\"\n\
          maintainer = \"OpenMatrix9 contributors\"\n\
          type = \"add-on\"\n\
          license = [\"SPDX:LGPL-2.1-or-later\"]\n\
@@ -105,7 +105,7 @@ fn generate() -> Generated {
          platforms = [\"@PLATFORM@\"]\n\
          runtime = \"native\"\n\
          entry = \"@ENTRY@\"\n\
-         tags = [\"Curve\", \"Transform\", \"Gems\", \"Settings\", \"Cutters\"]\n"
+         tags = [\"Top11\", \"Curve\", \"Surface\", \"Solid\", \"Transform\", \"SubD\", \"Builder\", \"Tools\", \"Gems\", \"Settings\", \"Cutters\"]\n"
     );
     let positions = menu_positions();
     let mut pages = BTreeMap::new();

@@ -32,7 +32,7 @@ const MENUS: &[(&str, &str)] = &[
     ("Cutters", "Cutters"),
 ];
 /// Bundled add-ons whose commands count as available.
-const ADDONS: &[&str] = &["curves", "transform", "gem_cutter", "gem_on_curve"];
+const ADDONS: &[&str] = &["matrix"];
 
 /// Declares the manifest's commands; the catalog never runs them.
 struct Declared;
@@ -83,14 +83,8 @@ fn host(tmp: &Path) -> Arc<Mutex<Host>> {
                 .replace("@ENTRY@", "entry.bin");
         fs::write(stage.join("om9_addon.toml"), manifest).unwrap();
         fs::write(stage.join("entry.bin"), b"declared").unwrap();
-        let src = repo().join(format!("addons/{name}/addon/icons"));
-        if src.is_dir() {
-            fs::create_dir_all(stage.join("icons")).unwrap();
-            for f in fs::read_dir(src).unwrap() {
-                let f = f.unwrap().path();
-                fs::copy(&f, stage.join("icons").join(f.file_name().unwrap())).unwrap();
-            }
-        }
+        copy_tree(&repo().join(format!("addons/{name}/addon/icons")), &stage.join("icons"));
+        copy_tree(&repo().join(format!("addons/{name}/addon/commands")), &stage.join("commands"));
         let (_, zip) = build_package(&stage, Some(&catalog)).unwrap_or_else(|e| panic!("{e:?}"));
         let path = tmp.join(format!("{name}.zip"));
         fs::write(&path, zip).unwrap();
@@ -107,6 +101,22 @@ fn host(tmp: &Path) -> Arc<Mutex<Host>> {
         assert!(r.enabled, "{name}: {:?}", r.warnings);
     }
     Arc::new(Mutex::new(h))
+}
+
+fn copy_tree(from: &Path, to: &Path) {
+    if !from.is_dir() {
+        return;
+    }
+    fs::create_dir_all(to).unwrap();
+    for f in fs::read_dir(from).unwrap() {
+        let f = f.unwrap().path();
+        let dst = to.join(f.file_name().unwrap());
+        if f.is_dir() {
+            copy_tree(&f, &dst);
+        } else {
+            fs::copy(&f, dst).unwrap();
+        }
+    }
 }
 
 /// `Resources/icons/<group>-minimal/<code>.svg`, relative to `Resources/icons`.
@@ -144,6 +154,8 @@ fn render() -> String {
     let host = host(&tmp);
     let mut c = Controller::new(Document::new("catalog"), Limits::default()).unwrap();
     c.attach_addons(host.clone(), &names);
+    // OM9 alone: what an icon runs without the add-on.
+    let plain = Controller::new(Document::new("catalog"), Limits::default()).unwrap();
     let menu = ini(&fs::read_to_string(repo().join("Resources/menu/MainMenu.ini")).unwrap());
     let menus: BTreeMap<&str, &BTreeMap<String, String>> = menu
         .iter()
@@ -164,7 +176,7 @@ fn render() -> String {
     let mut summary = Vec::new();
     for (title, section) in groups {
         let count: usize = section["IconCount"].parse().unwrap();
-        let (mut core, mut addon) = (0, 0);
+        let (mut core, mut addon, mut neither) = (0, 0, 0);
         let mut rows = Vec::new();
         for i in 1..=count {
             let code = section
@@ -187,39 +199,44 @@ fn render() -> String {
             ]
             .into_iter()
             .any(|n| om9_core::top11::Top11Action::from_icon(n).is_some());
-            let status = match &target {
-                _ if top11 => {
-                    core += 1;
-                    "OM9 (Top 11)".to_owned()
-                }
-                Some(t) if t.addon => {
-                    addon += 1;
+            let builtin = top11 || plain.icon_target(icon, None).is_some_and(|t| t.enabled);
+            let by_addon = target.as_ref().is_some_and(|t| t.addon);
+            if builtin {
+                core += 1;
+            }
+            if by_addon {
+                addon += 1;
+            }
+            if !builtin && !by_addon {
+                neither += 1;
+            }
+            let status = match (&target, builtin) {
+                (Some(t), b) if t.addon => {
                     let owner = host
                         .lock()
                         .unwrap()
                         .command_info(&t.command)
                         .map(|i| i.owner)
                         .unwrap_or_default();
-                    format!("add-on `{owner}`")
+                    if b {
+                        format!("add-on `{owner}` (OM9 also has it)")
+                    } else {
+                        format!("add-on `{owner}`")
+                    }
                 }
-                Some(t) if t.enabled => {
-                    core += 1;
-                    "OM9".to_owned()
-                }
-                _ => "planned".to_owned(),
+                (_, true) => if top11 { "OM9 (Top 11)".to_owned() } else { "OM9".to_owned() },
+                _ => "—".to_owned(),
             };
             let svg = svg(code).map_or("—".to_owned(), |s| format!("`{s}`"));
             rows.push(format!("| {i} | `{code}` | {name} | {svg} | {status} |"));
         }
         summary.push(format!(
-            "| {title} | {core} | {addon} | {} | {count} |",
-            count - core - addon
+            "| {title} | {core} | {addon} | {neither} | {count} |"
         ));
         sections.push(format!(
-            "## {title}\n\nMenu colour: {}. OM9: {core}, add-on: {addon}, planned: {} of {count}.\n\n\
+            "## {title}\n\nMenu colour: {}. OM9 built in: {core}, OM9 Matrix add-on: {addon}, neither: {neither} of {count}.\n\n\
              | Position | Code | Name | Icon | Runs |\n|---|---|---|---|---|\n{}\n",
             section.get("Color").map_or("—", String::as_str),
-            count - core - addon,
             rows.join("\n")
         ));
     }
@@ -231,12 +248,14 @@ fn render() -> String {
          `OM9_UPDATE_CATALOG=1 cargo test -p om9-app --test command_catalog`.\n\n\
          - **Position**: the slot in the menu palette, counted left to right and top to bottom.\n\
          - **Icon**: the authored SVG under `Resources/icons/`.\n\
-         - **Runs**: what a click on the icon runs today.\n\
-         \x20 - `OM9`: the command is built into OM9.\n\
-         \x20 - add-on: the command comes from a bundled add-on, once that add-on is installed.\n\
-         \x20 - `planned`: the command is not available yet.\n\
-         - Where OM9 and an add-on both provide a command, OM9's built-in command keeps the icon.\n\n\
-         ## Summary\n\n| Group | OM9 | Add-on | Planned | Commands |\n|---|---|---|---|---|\n{}\n\n{}",
+         - **Runs**: what a click on the icon runs.\n\
+         \x20 - add-on `om9_matrix`: the OM9 Matrix add-on package runs it while the package is\n\
+         \x20   installed and enabled (icon, typed name and F6 alike).\n\
+         \x20 - `OM9`: OM9's own command, when the add-on is not enabled (or does not have it).\n\
+         \x20 - `—`: neither has it yet.\n\
+         - With the add-on enabled, its command takes the icon; disabling the add-on gives the\n\
+         \x20 icon back to OM9's own command.\n\n\
+         ## Summary\n\n| Group | OM9 built in | OM9 Matrix add-on | Neither | Commands |\n|---|---|---|---|---|\n{}\n\n{}",
         summary.join("\n"),
         sections.join("\n")
     )

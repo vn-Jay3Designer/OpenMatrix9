@@ -126,11 +126,43 @@ boundary. The host checks every returned mesh before it touches the document.
 - `cargo run -p om9-addons --features native --bin om9-addon -- --catalog Resources/menu/MainMenu.ini build <dir> -o <pkg>.zip`
   packages a directory deterministically. `validate`, `install`, `enable`, `list`, `menu` and
   `settings` cover the rest of the lifecycle.
-- On Windows CI, `tools/ci/build-addons-windows.ps1` builds the native add-ons
-  (`gem_on_curve`, `curves`, `transform`, `gem_cutter`) and packages each as
-  `<dir>-<ver>-windows-x64.zip`, plus `ring_sizes-<ver>.zip`. It then smoke-installs and
-  enables them, which really loads every DLL, and uploads the zips as the `om9-addons`
+- On Windows CI, `tools/ci/build-addons-windows.ps1` builds **one** native package, the OM9
+  Matrix suite (`om9-addon-matrix` → `om9_matrix.dll`), and packages it as
+  `om9_matrix-<ver>-windows-x64.zip` with its help pages and icons, plus
+  `ring_sizes-<ver>.zip`. It then smoke-installs and enables it (which really loads the DLL),
+  lists the Gems, Clayoo, Surface and Tools menus, and uploads the zips as the `om9-addons`
   artifact. Built libraries are never committed.
+- The package files are generated: `OM9_UPDATE_PACKAGE=1 cargo test -p om9-addon-matrix --test package`
+  writes `addons/matrix/addon/` (manifest, README, `commands/<Menu>/<Code>.md`) from the menu
+  crates' manifests and checks that names and setting keys are unique and that every command
+  is routed to its menu. Build `om9-addon-matrix` on its own (`cargo build -p om9-addon-matrix`):
+  linked into one build with the older stand-alone add-ons, their exports would collide.
+
+## The OM9 Matrix package
+
+One zip with every Matrix-style command of the add-ons: **337 commands filling all 342 slots of 11 menus** (Top 11,
+Curve, Surface, Solid, Transform, SubD, Builder, Tools, Gems, Settings, Cutters). While it is
+enabled, its commands take the menu icons, the typed names and F6; disabling it gives the
+icons back to OM9's own commands. Each menu is a crate under `addons/`; `addons/matrix` links
+them into one library and routes each command to its menu.
+
+| Menu | Crates | Notes |
+|---|---|---|
+| Top 11 | `transform`, `top11` | Move, Duplicate, Rotate, Mirror; edit / control points (pick, place, repeat), explode, join, split, trim, ring rail. |
+| Curve | `curves`, `curve_tools` | Drawing commands; rebuild, refit, blends, offsets, fillets, chamfers, projections, intersections, sections, curve boolean, tween, sketches, curves on surfaces, soft edit … |
+| Surface | `surfaces` | NURBS results: sweeps (1/2/multi rail, profile, four profile), loft, network, patch, edge curves, exact revolve, blends, fillets and chamfers (variable too), offsets, merge, match, drape, heightfield, unroll, soft edit, rebuild, refit … |
+| Solid | `solid` | Primitives, booleans (mesh CSG), extrude, pipe, holes, shell, fillet edge, text … |
+| Transform | `transform`, `transform_tools` | Scale, orient, shear, bend, taper, twist, flows, arrays, cages … |
+| SubD | `subd` | Polygon cages with Catmull–Clark smoothing (creases stay sharp). OM9 selects whole objects, so the add-on keeps a face selection per object (Select Loop / Ring / UV / Paint / Grow / Shrink / Invert / Naked / Creased / Coplanar / Sets) that Extrude, Inset, Item, Collapse, Extract … use. |
+| Builder | `builders` | Eternity band, signet, raised and SubD rings, award top, text on curve, rope, jump ring, knots, pattern, nautilus, mill work. Rings: finger rail in the Front view, axis Y. |
+| Tools | `tools` | Ring rail, profiles, custom rails, smart targets, metal weights, ring resizer, findings libraries (our own parametric parts), image trace, object checker, mesh repair / reducer, 3D-print sprues … |
+| Gems | `gems`, `gem_on_curve`, `gem_tools` | Loader, cuts, halo, reporter; layouts on curves and surfaces, pavé (auto, builder, sphere, prongs, azure), clusters, tapered baguettes, springs, follow, control, positioner, flow, splop. Stones remember the settings and cutters built on them (`styles` in the gem record): Match Attributes and Save / Load Style (`.om9style` files) rebuild them. |
+| Settings | `settings`, `setting_tools` | Prongs, bezel, head, beads, channel border; SubD bezel, pull to rail, prong editor, prongs and beads on surfaces, metal from gems. |
+| Cutters | `gem_cutter`, `cutters`, `setting_tools` | Gem cutter and its library, bezel / channel / bright-cut / micro-prong cutters, plane and cube cutters, cut to finger rail, quad flip, Boolean Builder. |
+
+Limits worth knowing: B-rep booleans and fillets work on meshes; surface fillets and chamfers
+do not trim the original surfaces; history-based Matrix behaviour (editing a result later by its
+inputs) is not reproduced; vendor libraries (Stuller, Bermark) are replaced by parametric parts.
 
 ## Shipped examples
 

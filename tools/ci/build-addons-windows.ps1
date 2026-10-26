@@ -11,12 +11,11 @@ if (-not $env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR = Join-Path ([IO.Path]::
 $env:CARGO_TARGET_DIR = [IO.Path]::GetFullPath($env:CARGO_TARGET_DIR)
 $release = Join-Path $env:CARGO_TARGET_DIR 'release'
 # Native add-ons: cargo package, DLL name, add-on id, version (zip name) and the menu the
-# smoke test lists. Each zip carries one Windows x64 DLL beside its manifest.
+# smoke test lists. Every Matrix-style command ships in ONE package (om9_matrix): one
+# Windows x64 DLL beside its manifest, the help pages (commands/<Menu>/<Code>.md), the
+# README and the icons.
 $native = @(
-    @{ crate = 'om9-addon-gem-on-curve'; dll = 'gem_on_curve.dll'; dir = 'gem_on_curve'; id = 'gem_on_curve' },
-    @{ crate = 'om9-addon-curves'; dll = 'om9_curves.dll'; dir = 'curves'; id = 'om9_curves' },
-    @{ crate = 'om9-addon-transform'; dll = 'om9_transform.dll'; dir = 'transform'; id = 'om9_transform' },
-    @{ crate = 'om9-addon-gem-cutter'; dll = 'gem_cutter.dll'; dir = 'gem_cutter'; id = 'gem_cutter' }
+    @{ crate = 'om9-addon-matrix'; dll = 'om9_matrix.dll'; dir = 'matrix'; id = 'om9_matrix' }
 )
 Push-Location $source
 try {
@@ -42,12 +41,17 @@ foreach ($a in $native) {
     $text = (Get-Content -Raw -LiteralPath (Join-Path $src 'om9_addon.toml')).Replace('@PLATFORM@', 'windows-x64').Replace('@ENTRY@', $a.dll)
     [IO.File]::WriteAllText((Join-Path $dst 'om9_addon.toml'), $text, (New-Object Text.UTF8Encoding $false))
     Copy-Item (Join-Path $release $a.dll) (Join-Path $dst $a.dll)
-    if (Test-Path (Join-Path $src 'icons')) {
-        Copy-Item -Recurse (Join-Path $src 'icons') (Join-Path $dst 'icons')
+    foreach ($extra in @('icons', 'commands')) {
+        if (Test-Path (Join-Path $src $extra)) {
+            Copy-Item -Recurse (Join-Path $src $extra) (Join-Path $dst $extra)
+        }
+    }
+    if (Test-Path (Join-Path $src 'README.md')) {
+        Copy-Item (Join-Path $src 'README.md') (Join-Path $dst 'README.md')
     }
     $version = ([regex]::Match($text, '(?m)^version\s*=\s*"([^"]+)"')).Groups[1].Value
     if (-not $version) { throw "$($a.dir): no version in manifest" }
-    $a.zip = "$($a.dir)-$version-windows-x64.zip"
+    $a.zip = "$($a.id)-$version-windows-x64.zip"
     $packages += @{ src = $dst; out = $a.zip }
 }
 $packages += @{ src = Join-Path $source 'addons/ring_sizes'; out = 'ring_sizes-1.0.0.zip' }
@@ -66,8 +70,10 @@ foreach ($a in $native) {
     & $tool --catalog $catalog --config $config install (Join-Path $OutDir $a.zip) --enable --yes
     if ($LASTEXITCODE -ne 0) { throw "$($a.id) install/enable smoke test failed" }
 }
-& $tool --catalog $catalog --config $config menu Gems
-if ($LASTEXITCODE -ne 0) { throw 'Gems command listing failed' }
+foreach ($menu in @('Gems', 'Clayoo', 'Surface', 'Tools')) {
+    & $tool --catalog $catalog --config $config menu $menu
+    if ($LASTEXITCODE -ne 0) { throw "$menu command listing failed" }
+}
 foreach ($a in $native) {
     & $tool --catalog $catalog --config $config uninstall $a.id
     if ($LASTEXITCODE -ne 0) { throw "$($a.id) uninstall smoke test failed" }

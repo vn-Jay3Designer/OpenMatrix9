@@ -3,9 +3,9 @@
 # tools/ci/build-addons-windows.ps1 fills @ENTRY@/@PLATFORM@.
 schema_version = "1.0.0"
 id = "om9_matrix"
-version = "0.5.0"
+version = "0.9.0"
 name = "OM9 Matrix"
-tagline = "Lệnh kiểu Matrix 9: Curve, Transform, Gems, Settings, Cutters …"
+tagline = "Lệnh kiểu Matrix 9 cho 11 menu: Curve, Surface, SubD, Gems …"
 maintainer = "OpenMatrix9 contributors"
 type = "add-on"
 license = ["SPDX:LGPL-2.1-or-later"]
@@ -13,7 +13,7 @@ om9_version_min = "0.1.0"
 platforms = ["@PLATFORM@"]
 runtime = "native"
 entry = "@ENTRY@"
-tags = ["Curve", "Transform", "Gems", "Settings", "Cutters"]
+tags = ["Top11", "Curve", "Surface", "Solid", "Transform", "SubD", "Builder", "Tools", "Gems", "Settings", "Cutters"]
 
 # ---- Top11 (addons/top11) ----
 

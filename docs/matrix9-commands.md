@@ -6,443 +6,445 @@ the icon table and the bundled add-on manifests. Do not edit by hand; regenerate
 
 - **Position**: the slot in the menu palette, counted left to right and top to bottom.
 - **Icon**: the authored SVG under `Resources/icons/`.
-- **Runs**: what a click on the icon runs today.
-  - `OM9`: the command is built into OM9.
-  - add-on: the command comes from a bundled add-on, once that add-on is installed.
-  - `planned`: the command is not available yet.
-- Where OM9 and an add-on both provide a command, OM9's built-in command keeps the icon.
+- **Runs**: what a click on the icon runs.
+  - add-on `om9_matrix`: the OM9 Matrix add-on package runs it while the package is
+    installed and enabled (icon, typed name and F6 alike).
+  - `OM9`: OM9's own command, when the add-on is not enabled (or does not have it).
+  - `—`: neither has it yet.
+- With the add-on enabled, its command takes the icon; disabling the add-on gives the
+  icon back to OM9's own command.
 
 ## Summary
 
-| Group | OM9 | Add-on | Planned | Commands |
+| Group | OM9 built in | OM9 Matrix add-on | Neither | Commands |
 |---|---|---|---|---|
-| Top 11 buttons | 11 | 0 | 0 | 11 |
-| Curve | 51 | 3 | 4 | 58 |
-| Surface | 35 | 0 | 5 | 40 |
-| Solid | 16 | 0 | 14 | 30 |
-| Transform | 0 | 7 | 33 | 40 |
-| SubD (Clayoo) | 0 | 0 | 58 | 58 |
-| Builder | 0 | 0 | 16 | 16 |
-| Tools | 2 | 0 | 29 | 31 |
-| Gems | 0 | 2 | 33 | 35 |
-| Settings | 0 | 0 | 12 | 12 |
-| Cutters | 0 | 1 | 10 | 11 |
+| Top 11 buttons | 11 | 11 | 0 | 11 |
+| Curve | 51 | 58 | 0 | 58 |
+| Surface | 35 | 40 | 0 | 40 |
+| Solid | 16 | 30 | 0 | 30 |
+| Transform | 0 | 40 | 0 | 40 |
+| SubD (Clayoo) | 0 | 58 | 0 | 58 |
+| Builder | 0 | 16 | 0 | 16 |
+| Tools | 2 | 31 | 0 | 31 |
+| Gems | 0 | 35 | 0 | 35 |
+| Settings | 0 | 12 | 0 | 12 |
+| Cutters | 0 | 11 | 0 | 11 |
 
 ## Top 11 buttons
 
-Menu colour: —. OM9: 11, add-on: 0, planned: 0 of 11.
+Menu colour: —. OM9 built in: 11, OM9 Matrix add-on: 11, neither: 0 of 11.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `TopIconDuplicate` | Duplicate | `core-minimal/TopIconDuplicate.svg` | OM9 (Top 11) |
-| 2 | `TopIconEditPointsOn` | Edit Points On | `core-minimal/TopIconEditPointsOn.svg` | OM9 (Top 11) |
-| 3 | `TopIconControlPointsOn` | Control Points On | `core-minimal/TopIconControlPointsOn.svg` | OM9 (Top 11) |
-| 4 | `TopIconMirror` | Mirror | `core-minimal/TopIconMirror.svg` | OM9 (Top 11) |
-| 5 | `TopIconMove` | Move | `core-minimal/TopIconMove.svg` | OM9 (Top 11) |
-| 6 | `TopIconRotate` | Rotate | `core-minimal/TopIconRotate.svg` | OM9 (Top 11) |
-| 7 | `TopIconExplode` | Explode | `core-minimal/TopIconExplode.svg` | OM9 (Top 11) |
-| 8 | `TopIconJoin` | Join | `core-minimal/TopIconJoin.svg` | OM9 (Top 11) |
-| 9 | `TopIconSplit` | Split | `core-minimal/TopIconSplit.svg` | OM9 (Top 11) |
-| 10 | `TopIconTrim` | Trim | `core-minimal/TopIconTrim.svg` | OM9 (Top 11) |
-| 11 | `TopIconRingRail` | Ring Rail | `core-minimal/TopIconRingRail.svg` | OM9 (Top 11) |
+| 1 | `TopIconDuplicate` | Duplicate | `core-minimal/TopIconDuplicate.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 2 | `TopIconEditPointsOn` | Edit Points On | `core-minimal/TopIconEditPointsOn.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 3 | `TopIconControlPointsOn` | Control Points On | `core-minimal/TopIconControlPointsOn.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 4 | `TopIconMirror` | Mirror | `core-minimal/TopIconMirror.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 5 | `TopIconMove` | Move | `core-minimal/TopIconMove.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 6 | `TopIconRotate` | Rotate | `core-minimal/TopIconRotate.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 7 | `TopIconExplode` | Explode | `core-minimal/TopIconExplode.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 8 | `TopIconJoin` | Join | `core-minimal/TopIconJoin.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 9 | `TopIconSplit` | Split | `core-minimal/TopIconSplit.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 10 | `TopIconTrim` | Trim | `core-minimal/TopIconTrim.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 11 | `TopIconRingRail` | Ring Rail | `core-minimal/TopIconRingRail.svg` | add-on `om9_matrix` (OM9 also has it) |
 
 ## Curve
 
-Menu colour: Yellow. OM9: 51, add-on: 3, planned: 4 of 58.
+Menu colour: Yellow. OM9 built in: 51, OM9 Matrix add-on: 58, neither: 0 of 58.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `CurvePolylinePolyline` | PolyLine | `curve-minimal/CurvePolylinePolyline.svg` | OM9 |
-| 2 | `CurveLineSingleLine` | Line | `curve-minimal/CurveLineSingleLine.svg` | OM9 |
-| 3 | `CurveFreeFormInterpolatePoints` | Interpolate | `curve-minimal/CurveFreeFormInterpolatePoints.svg` | add-on `om9_curves` |
-| 4 | `CurveRectangleCornertoCorner` | Rectangle | `curve-minimal/CurveRectangleCornertoCorner.svg` | OM9 |
-| 5 | `CurveCircleCenterRadius` | Circle | `curve-minimal/CurveCircleCenterRadius.svg` | OM9 |
-| 6 | `CurveEllipseFromCenter` | Ellipse | `curve-minimal/CurveEllipseFromCenter.svg` | add-on `om9_curves` |
-| 7 | `CurveArcCenterStartAngle` | Arc | `curve-minimal/CurveArcCenterStartAngle.svg` | OM9 |
-| 8 | `CurveArcStartEndDirection` | Arc Direction | `curve-minimal/CurveArcStartEndDirection.svg` | OM9 |
-| 9 | `OthersCurveRebuild` | Rebuild | `curve-minimal/OthersCurveRebuild.svg` | OM9 |
-| 10 | `CurveCurveEditToolsRefitToTolerance` | Refit to Tolerance | `curve-minimal/CurveCurveEditToolsRefitToTolerance.svg` | OM9 |
-| 11 | `CurveBlendCurvesBlendCurves` | Quick Curve Blend | `curve-minimal/CurveBlendCurvesBlendCurves.svg` | OM9 |
-| 12 | `CurveBlendCurvesBlendCrv` | Adjustable Curve Blend | `curve-minimal/CurveBlendCurvesBlendCrv.svg` | OM9 |
-| 13 | `CurveCurveFrom2Views` | Curve from 2 Views | `curve-minimal/CurveCurveFrom2Views.svg` | OM9 |
-| 14 | `BuilderCrv2ViewHistory` | Curve 2 Views with History | `curve-minimal/BuilderCrv2ViewHistory.svg` | planned |
-| 15 | `CurveCurveFromObjectsPullback` | Pullback | `curve-minimal/CurveCurveFromObjectsPullback.svg` | OM9 |
-| 16 | `CurveCurveFromObjectsProject` | ProjectCurve | `curve-minimal/CurveCurveFromObjectsProject.svg` | planned |
-| 17 | `CurveCurveFromObjectsIntersection` | Intersection | `curve-minimal/CurveCurveFromObjectsIntersection.svg` | OM9 |
-| 18 | `CurveOffsetCurve` | Offset | `curve-minimal/CurveOffsetCurve.svg` | planned |
-| 19 | `CurveOffsetOffsetCrvOnSrf` | Offset Curve on Surface | `curve-minimal/CurveOffsetOffsetCrvOnSrf.svg` | OM9 |
-| 20 | `CurveCurveFromObjectsExtractIsocurve` | Extract Isocurve | `curve-minimal/CurveCurveFromObjectsExtractIsocurve.svg` | OM9 |
-| 21 | `CurveFilletCurves` | Fillet Curves | `curve-minimal/CurveFilletCurves.svg` | OM9 |
-| 22 | `CurveFilletCorners` | Fillet Corners | `curve-minimal/CurveFilletCorners.svg` | OM9 |
-| 23 | `CurveChamferCurves` | Chamfer Curves | `curve-minimal/CurveChamferCurves.svg` | OM9 |
-| 24 | `CurveCurveFromObjectsCreateUVCurves` | Create UV Curves | `curve-minimal/CurveCurveFromObjectsCreateUVCurves.svg` | OM9 |
-| 25 | `CurveCurveFromObjectsApplyUVCurves` | Apply UV Curves | `curve-minimal/CurveCurveFromObjectsApplyUVCurves.svg` | OM9 |
-| 26 | `CurveFreeFormThroughPoints` | Through Points | `curve-minimal/CurveFreeFormThroughPoints.svg` | OM9 |
-| 27 | `CurveExtendCurveExtendCurve` | Extend Curve | `curve-minimal/CurveExtendCurveExtendCurve.svg` | OM9 |
-| 28 | `CurvePolygonCenterRadius` | Polygon | `curve-minimal/CurvePolygonCenterRadius.svg` | OM9 |
-| 29 | `CurveSpiral` | Spiral | `curve-minimal/CurveSpiral.svg` | OM9 |
-| 30 | `CurveHelix` | Helix | `curve-minimal/CurveHelix.svg` | OM9 |
-| 31 | `CurvePointObjectSinglePoint` | Point | `curve-minimal/CurvePointObjectSinglePoint.svg` | OM9 |
-| 32 | `CurvePointObjectMarkCurveStart` | Mark Curve Start | `curve-minimal/CurvePointObjectMarkCurveStart.svg` | OM9 |
-| 33 | `CurvePointObjectMarkCurveEnd` | Mark Curve End | `curve-minimal/CurvePointObjectMarkCurveEnd.svg` | OM9 |
-| 34 | `CurveCurveEditToolsAdjustClosedCurveSeam` | Adjust Closed Curve Seam | `curve-minimal/CurveCurveEditToolsAdjustClosedCurveSeam.svg` | OM9 |
-| 35 | `CurveFreeFormContinueInterpCurve` | Continue Interpolated Curve | `curve-minimal/CurveFreeFormContinueInterpCurve.svg` | OM9 |
-| 36 | `OthersCurveDivideCurve` | Divide Curve | `curve-minimal/OthersCurveDivideCurve.svg` | OM9 |
-| 37 | `CurveCurveEditToolsCurveBoolean` | Curve Boolean | `curve-minimal/CurveCurveEditToolsCurveBoolean.svg` | OM9 |
-| 38 | `CurveTweenCurves` | Tween Curves | `curve-minimal/CurveTweenCurves.svg` | OM9 |
-| 39 | `CurveCurveFromObjectsDuplicateEdge` | Duplicate Edge | `curve-minimal/CurveCurveFromObjectsDuplicateEdge.svg` | OM9 |
-| 40 | `CurveCurveFromObjectsDuplicateBorder` | Duplicate Border | `curve-minimal/CurveCurveFromObjectsDuplicateBorder.svg` | OM9 |
-| 41 | `CurveFreeFormControlPoints` | Curve | `curve-minimal/CurveFreeFormControlPoints.svg` | add-on `om9_curves` |
-| 42 | `CurveFreeFormContinueCurve` | Continue Control Point Curve | `curve-minimal/CurveFreeFormContinueCurve.svg` | OM9 |
-| 43 | `CurveGVExtractIsocurve` | Extract Angle Isocurve | `curve-minimal/CurveGVExtractIsocurve.svg` | OM9 |
-| 44 | `CurveCrossSectionProfiles` | Cross Section Profiles | `curve-minimal/CurveCrossSectionProfiles.svg` | OM9 |
-| 45 | `CurveFreeFormSketch` | Sketch | `curve-minimal/CurveFreeFormSketch.svg` | OM9 |
-| 46 | `CurveFreeFormSketchonSurface` | Sketch on Surface | `curve-minimal/CurveFreeFormSketchonSurface.svg` | OM9 |
-| 47 | `CurveFreeFormSketchonPolygonMesh` | Sketch on Mesh | `curve-minimal/CurveFreeFormSketchonPolygonMesh.svg` | planned |
-| 48 | `BuilderPolylineOnSurface` | Polyline on Surface | `curve-minimal/BuilderPolylineOnSurface.svg` | OM9 |
-| 49 | `CurveFreeFormInterpolateonSurface` | Interp Curve on Surface | `curve-minimal/CurveFreeFormInterpolateonSurface.svg` | OM9 |
-| 50 | `CurveConvertCurveToLines` | Curve to Lines | `curve-minimal/CurveConvertCurveToLines.svg` | OM9 |
-| 51 | `CurveCurveFromObjectsSection` | Section | `curve-minimal/CurveCurveFromObjectsSection.svg` | OM9 |
-| 52 | `CurveCurveEditToolsMatch` | Match | `curve-minimal/CurveCurveEditToolsMatch.svg` | OM9 |
-| 53 | `CurveCurveFromObjectsSilhouette` | Silhouette | `curve-minimal/CurveCurveFromObjectsSilhouette.svg` | OM9 |
-| 54 | `CurveCurveFromObjectsExtractWireframe` | Extract Wire Frame | `curve-minimal/CurveCurveFromObjectsExtractWireframe.svg` | OM9 |
-| 55 | `CurveCurveEditToolsSoftEdit` | Soft Edit | `curve-minimal/CurveCurveEditToolsSoftEdit.svg` | OM9 |
-| 56 | `CurveOffsetOffsetCrvNormalToSurface` | Offset Normal to Surface | `curve-minimal/CurveOffsetOffsetCrvNormalToSurface.svg` | OM9 |
-| 57 | `CurveBlendCurvesArcBlend` | Arc Blend | `curve-minimal/CurveBlendCurvesArcBlend.svg` | OM9 |
-| 58 | `CurveCurveFromObjectsIntersectTwoSets` | Intersect Two Sets | `curve-minimal/CurveCurveFromObjectsIntersectTwoSets.svg` | OM9 |
+| 1 | `CurvePolylinePolyline` | PolyLine | `curve-minimal/CurvePolylinePolyline.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 2 | `CurveLineSingleLine` | Line | `curve-minimal/CurveLineSingleLine.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 3 | `CurveFreeFormInterpolatePoints` | Interpolate | `curve-minimal/CurveFreeFormInterpolatePoints.svg` | add-on `om9_matrix` |
+| 4 | `CurveRectangleCornertoCorner` | Rectangle | `curve-minimal/CurveRectangleCornertoCorner.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 5 | `CurveCircleCenterRadius` | Circle | `curve-minimal/CurveCircleCenterRadius.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 6 | `CurveEllipseFromCenter` | Ellipse | `curve-minimal/CurveEllipseFromCenter.svg` | add-on `om9_matrix` |
+| 7 | `CurveArcCenterStartAngle` | Arc | `curve-minimal/CurveArcCenterStartAngle.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 8 | `CurveArcStartEndDirection` | Arc Direction | `curve-minimal/CurveArcStartEndDirection.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 9 | `OthersCurveRebuild` | Rebuild | `curve-minimal/OthersCurveRebuild.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 10 | `CurveCurveEditToolsRefitToTolerance` | Refit to Tolerance | `curve-minimal/CurveCurveEditToolsRefitToTolerance.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 11 | `CurveBlendCurvesBlendCurves` | Quick Curve Blend | `curve-minimal/CurveBlendCurvesBlendCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 12 | `CurveBlendCurvesBlendCrv` | Adjustable Curve Blend | `curve-minimal/CurveBlendCurvesBlendCrv.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 13 | `CurveCurveFrom2Views` | Curve from 2 Views | `curve-minimal/CurveCurveFrom2Views.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 14 | `BuilderCrv2ViewHistory` | Curve 2 Views with History | `curve-minimal/BuilderCrv2ViewHistory.svg` | add-on `om9_matrix` |
+| 15 | `CurveCurveFromObjectsPullback` | Pullback | `curve-minimal/CurveCurveFromObjectsPullback.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 16 | `CurveCurveFromObjectsProject` | ProjectCurve | `curve-minimal/CurveCurveFromObjectsProject.svg` | add-on `om9_matrix` |
+| 17 | `CurveCurveFromObjectsIntersection` | Intersection | `curve-minimal/CurveCurveFromObjectsIntersection.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 18 | `CurveOffsetCurve` | Offset | `curve-minimal/CurveOffsetCurve.svg` | add-on `om9_matrix` |
+| 19 | `CurveOffsetOffsetCrvOnSrf` | Offset Curve on Surface | `curve-minimal/CurveOffsetOffsetCrvOnSrf.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 20 | `CurveCurveFromObjectsExtractIsocurve` | Extract Isocurve | `curve-minimal/CurveCurveFromObjectsExtractIsocurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 21 | `CurveFilletCurves` | Fillet Curves | `curve-minimal/CurveFilletCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 22 | `CurveFilletCorners` | Fillet Corners | `curve-minimal/CurveFilletCorners.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 23 | `CurveChamferCurves` | Chamfer Curves | `curve-minimal/CurveChamferCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 24 | `CurveCurveFromObjectsCreateUVCurves` | Create UV Curves | `curve-minimal/CurveCurveFromObjectsCreateUVCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 25 | `CurveCurveFromObjectsApplyUVCurves` | Apply UV Curves | `curve-minimal/CurveCurveFromObjectsApplyUVCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 26 | `CurveFreeFormThroughPoints` | Through Points | `curve-minimal/CurveFreeFormThroughPoints.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 27 | `CurveExtendCurveExtendCurve` | Extend Curve | `curve-minimal/CurveExtendCurveExtendCurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 28 | `CurvePolygonCenterRadius` | Polygon | `curve-minimal/CurvePolygonCenterRadius.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 29 | `CurveSpiral` | Spiral | `curve-minimal/CurveSpiral.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 30 | `CurveHelix` | Helix | `curve-minimal/CurveHelix.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 31 | `CurvePointObjectSinglePoint` | Point | `curve-minimal/CurvePointObjectSinglePoint.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 32 | `CurvePointObjectMarkCurveStart` | Mark Curve Start | `curve-minimal/CurvePointObjectMarkCurveStart.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 33 | `CurvePointObjectMarkCurveEnd` | Mark Curve End | `curve-minimal/CurvePointObjectMarkCurveEnd.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 34 | `CurveCurveEditToolsAdjustClosedCurveSeam` | Adjust Closed Curve Seam | `curve-minimal/CurveCurveEditToolsAdjustClosedCurveSeam.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 35 | `CurveFreeFormContinueInterpCurve` | Continue Interpolated Curve | `curve-minimal/CurveFreeFormContinueInterpCurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 36 | `OthersCurveDivideCurve` | Divide Curve | `curve-minimal/OthersCurveDivideCurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 37 | `CurveCurveEditToolsCurveBoolean` | Curve Boolean | `curve-minimal/CurveCurveEditToolsCurveBoolean.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 38 | `CurveTweenCurves` | Tween Curves | `curve-minimal/CurveTweenCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 39 | `CurveCurveFromObjectsDuplicateEdge` | Duplicate Edge | `curve-minimal/CurveCurveFromObjectsDuplicateEdge.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 40 | `CurveCurveFromObjectsDuplicateBorder` | Duplicate Border | `curve-minimal/CurveCurveFromObjectsDuplicateBorder.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 41 | `CurveFreeFormControlPoints` | Curve | `curve-minimal/CurveFreeFormControlPoints.svg` | add-on `om9_matrix` |
+| 42 | `CurveFreeFormContinueCurve` | Continue Control Point Curve | `curve-minimal/CurveFreeFormContinueCurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 43 | `CurveGVExtractIsocurve` | Extract Angle Isocurve | `curve-minimal/CurveGVExtractIsocurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 44 | `CurveCrossSectionProfiles` | Cross Section Profiles | `curve-minimal/CurveCrossSectionProfiles.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 45 | `CurveFreeFormSketch` | Sketch | `curve-minimal/CurveFreeFormSketch.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 46 | `CurveFreeFormSketchonSurface` | Sketch on Surface | `curve-minimal/CurveFreeFormSketchonSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 47 | `CurveFreeFormSketchonPolygonMesh` | Sketch on Mesh | `curve-minimal/CurveFreeFormSketchonPolygonMesh.svg` | add-on `om9_matrix` |
+| 48 | `BuilderPolylineOnSurface` | Polyline on Surface | `curve-minimal/BuilderPolylineOnSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 49 | `CurveFreeFormInterpolateonSurface` | Interp Curve on Surface | `curve-minimal/CurveFreeFormInterpolateonSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 50 | `CurveConvertCurveToLines` | Curve to Lines | `curve-minimal/CurveConvertCurveToLines.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 51 | `CurveCurveFromObjectsSection` | Section | `curve-minimal/CurveCurveFromObjectsSection.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 52 | `CurveCurveEditToolsMatch` | Match | `curve-minimal/CurveCurveEditToolsMatch.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 53 | `CurveCurveFromObjectsSilhouette` | Silhouette | `curve-minimal/CurveCurveFromObjectsSilhouette.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 54 | `CurveCurveFromObjectsExtractWireframe` | Extract Wire Frame | `curve-minimal/CurveCurveFromObjectsExtractWireframe.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 55 | `CurveCurveEditToolsSoftEdit` | Soft Edit | `curve-minimal/CurveCurveEditToolsSoftEdit.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 56 | `CurveOffsetOffsetCrvNormalToSurface` | Offset Normal to Surface | `curve-minimal/CurveOffsetOffsetCrvNormalToSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 57 | `CurveBlendCurvesArcBlend` | Arc Blend | `curve-minimal/CurveBlendCurvesArcBlend.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 58 | `CurveCurveFromObjectsIntersectTwoSets` | Intersect Two Sets | `curve-minimal/CurveCurveFromObjectsIntersectTwoSets.svg` | add-on `om9_matrix` (OM9 also has it) |
 
 ## Surface
 
-Menu colour: Green. OM9: 35, add-on: 0, planned: 5 of 40.
+Menu colour: Green. OM9 built in: 35, OM9 Matrix add-on: 40, neither: 0 of 40.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `SurfaceSweepSweep1Rail` | Sweep | `surface-minimal/SurfaceSweepSweep1Rail.svg` | planned |
-| 2 | `SurfaceSweepSweep2Rails` | Sweep 2 | `surface-minimal/SurfaceSweepSweep2Rails.svg` | OM9 |
-| 3 | `SurfaceSweepProfileSweep` | Profile Sweep | `surface-minimal/SurfaceSweepProfileSweep.svg` | OM9 |
-| 4 | `SurfacePlanarCurves` | Planar Curves | `surface-minimal/SurfacePlanarCurves.svg` | OM9 |
-| 5 | `SurfacePlaneCornertoCorner` | Plane from Corners | `surface-minimal/SurfacePlaneCornertoCorner.svg` | OM9 |
-| 6 | `OthersSurfaceRebuild` | Rebuild | `surface-minimal/OthersSurfaceRebuild.svg` | OM9 |
-| 7 | `SurfaceBlendSurface` | Blend Surface | `surface-minimal/SurfaceBlendSurface.svg` | OM9 |
-| 8 | `SurfaceVariableFilletBlendChamferVariableBlendSurfaces` | Variable Blend Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableBlendSurfaces.svg` | OM9 |
-| 9 | `SurfaceLoft` | Loft | `surface-minimal/SurfaceLoft.svg` | planned |
-| 10 | `SurfaceCurveNetwork` | Curve Network | `surface-minimal/SurfaceCurveNetwork.svg` | OM9 |
-| 11 | `SurfaceSurfaceEditToolsShrinkTrimmedSurface` | Shrink Trimmed Surface | `surface-minimal/SurfaceSurfaceEditToolsShrinkTrimmedSurface.svg` | OM9 |
-| 12 | `SurfacePatch` | Patch | `surface-minimal/SurfacePatch.svg` | OM9 |
-| 13 | `SurfaceEdgeCurves` | Edge Curves | `surface-minimal/SurfaceEdgeCurves.svg` | OM9 |
-| 14 | `SurfaceSurfaceEditToolsUntrim` | Untrim | `surface-minimal/SurfaceSurfaceEditToolsUntrim.svg` | OM9 |
-| 15 | `SurfaceGVDExtrudeAll` | Surface Extrude All | `surface-minimal/SurfaceGVDExtrudeAll.svg` | OM9 |
-| 16 | `SurfaceRevolve` | Revolve | `surface-minimal/SurfaceRevolve.svg` | planned |
-| 17 | `SurfaceRailRevolve` | Rail Revolve | `surface-minimal/SurfaceRailRevolve.svg` | OM9 |
-| 18 | `BuilderFourProfileSweep` | Sweep 4 | `surface-minimal/BuilderFourProfileSweep.svg` | OM9 |
-| 19 | `SurfaceSweepSweepMultiRail` | Sweep Multi | `surface-minimal/SurfaceSweepSweepMultiRail.svg` | OM9 |
-| 20 | `SurfaceTweenSurfaces` | Tween Surfaces | `surface-minimal/SurfaceTweenSurfaces.svg` | OM9 |
-| 21 | `SurfaceFilletSurfaces` | Fillet Surfaces | `surface-minimal/SurfaceFilletSurfaces.svg` | OM9 |
-| 22 | `SurfaceVariableFilletBlendChamferVariableFilletSurfaces` | Variable Fillet Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableFilletSurfaces.svg` | OM9 |
-| 23 | `SurfaceChamferSurfaces` | Chamfer Surfaces | `surface-minimal/SurfaceChamferSurfaces.svg` | OM9 |
-| 24 | `SurfaceVariableFilletBlendChamferVariableChamferSurfaces` | Variable Chamfer Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableChamferSurfaces.svg` | OM9 |
-| 25 | `SurfaceOffsetSurface` | Offset Surface | `surface-minimal/SurfaceOffsetSurface.svg` | OM9 |
-| 26 | `SurfaceVariableOffsetSurface` | Variable Offset Surface | `surface-minimal/SurfaceVariableOffsetSurface.svg` | OM9 |
-| 27 | `SurfaceSurfaceEditToolsMerge` | Merge Surfaces | `surface-minimal/SurfaceSurfaceEditToolsMerge.svg` | OM9 |
-| 28 | `SurfaceSurfaceEditToolsMatch` | Match Surfaces | `surface-minimal/SurfaceSurfaceEditToolsMatch.svg` | OM9 |
-| 29 | `SurfaceDrape` | Drape | `surface-minimal/SurfaceDrape.svg` | OM9 |
-| 30 | `SurfaceHeightfieldfromImage` | Heightfield from Image | `surface-minimal/SurfaceHeightfieldfromImage.svg` | OM9 |
-| 31 | `SurfaceSurfaceEditToolsSplitatIsocurve` | Split at Isocurve | `surface-minimal/SurfaceSurfaceEditToolsSplitatIsocurve.svg` | OM9 |
-| 32 | `SurfaceExtendSurface` | Extend Surface | `surface-minimal/SurfaceExtendSurface.svg` | OM9 |
-| 33 | `SurfaceExtrudeCurveNormalToSurface` | Extrude Normal to Surface | `surface-minimal/SurfaceExtrudeCurveNormalToSurface.svg` | OM9 |
-| 34 | `SurfaceUnrollDevelopableSrf` | Unroll Surface | `surface-minimal/SurfaceUnrollDevelopableSrf.svg` | OM9 |
-| 35 | `SurfaceSmash` | SurfaceSmash | `surface-minimal/SurfaceSmash.svg` | planned |
-| 36 | `SurfaceSurfaceEditToolsSoftEdit` | Soft Edit | `surface-minimal/SurfaceSurfaceEditToolsSoftEdit.svg` | OM9 |
-| 37 | `SurfacePlaneCuttingPlane` | Cutting Plane | `surface-minimal/SurfacePlaneCuttingPlane.svg` | OM9 |
-| 38 | `SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam` | Adjust Closed Surface Seam | `surface-minimal/SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam.svg` | OM9 |
-| 39 | `SurfaceSurfaceEditToolsSetSurfaceTangent` | Set Surface Tangent | `surface-minimal/SurfaceSurfaceEditToolsSetSurfaceTangent.svg` | OM9 |
-| 40 | `SurfaceSurfaceEditToolsRefittoTolerance` | SurfaceSurfaceEditToolsRefittoTolerance | `surface-minimal/SurfaceSurfaceEditToolsRefittoTolerance.svg` | planned |
+| 1 | `SurfaceSweepSweep1Rail` | Sweep | `surface-minimal/SurfaceSweepSweep1Rail.svg` | add-on `om9_matrix` |
+| 2 | `SurfaceSweepSweep2Rails` | Sweep 2 | `surface-minimal/SurfaceSweepSweep2Rails.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 3 | `SurfaceSweepProfileSweep` | Profile Sweep | `surface-minimal/SurfaceSweepProfileSweep.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 4 | `SurfacePlanarCurves` | Planar Curves | `surface-minimal/SurfacePlanarCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 5 | `SurfacePlaneCornertoCorner` | Plane from Corners | `surface-minimal/SurfacePlaneCornertoCorner.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 6 | `OthersSurfaceRebuild` | Rebuild | `surface-minimal/OthersSurfaceRebuild.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 7 | `SurfaceBlendSurface` | Blend Surface | `surface-minimal/SurfaceBlendSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 8 | `SurfaceVariableFilletBlendChamferVariableBlendSurfaces` | Variable Blend Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableBlendSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 9 | `SurfaceLoft` | Loft | `surface-minimal/SurfaceLoft.svg` | add-on `om9_matrix` |
+| 10 | `SurfaceCurveNetwork` | Curve Network | `surface-minimal/SurfaceCurveNetwork.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 11 | `SurfaceSurfaceEditToolsShrinkTrimmedSurface` | Shrink Trimmed Surface | `surface-minimal/SurfaceSurfaceEditToolsShrinkTrimmedSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 12 | `SurfacePatch` | Patch | `surface-minimal/SurfacePatch.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 13 | `SurfaceEdgeCurves` | Edge Curves | `surface-minimal/SurfaceEdgeCurves.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 14 | `SurfaceSurfaceEditToolsUntrim` | Untrim | `surface-minimal/SurfaceSurfaceEditToolsUntrim.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 15 | `SurfaceGVDExtrudeAll` | Surface Extrude All | `surface-minimal/SurfaceGVDExtrudeAll.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 16 | `SurfaceRevolve` | Revolve | `surface-minimal/SurfaceRevolve.svg` | add-on `om9_matrix` |
+| 17 | `SurfaceRailRevolve` | Rail Revolve | `surface-minimal/SurfaceRailRevolve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 18 | `BuilderFourProfileSweep` | Sweep 4 | `surface-minimal/BuilderFourProfileSweep.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 19 | `SurfaceSweepSweepMultiRail` | Sweep Multi | `surface-minimal/SurfaceSweepSweepMultiRail.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 20 | `SurfaceTweenSurfaces` | Tween Surfaces | `surface-minimal/SurfaceTweenSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 21 | `SurfaceFilletSurfaces` | Fillet Surfaces | `surface-minimal/SurfaceFilletSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 22 | `SurfaceVariableFilletBlendChamferVariableFilletSurfaces` | Variable Fillet Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableFilletSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 23 | `SurfaceChamferSurfaces` | Chamfer Surfaces | `surface-minimal/SurfaceChamferSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 24 | `SurfaceVariableFilletBlendChamferVariableChamferSurfaces` | Variable Chamfer Surfaces | `surface-minimal/SurfaceVariableFilletBlendChamferVariableChamferSurfaces.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 25 | `SurfaceOffsetSurface` | Offset Surface | `surface-minimal/SurfaceOffsetSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 26 | `SurfaceVariableOffsetSurface` | Variable Offset Surface | `surface-minimal/SurfaceVariableOffsetSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 27 | `SurfaceSurfaceEditToolsMerge` | Merge Surfaces | `surface-minimal/SurfaceSurfaceEditToolsMerge.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 28 | `SurfaceSurfaceEditToolsMatch` | Match Surfaces | `surface-minimal/SurfaceSurfaceEditToolsMatch.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 29 | `SurfaceDrape` | Drape | `surface-minimal/SurfaceDrape.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 30 | `SurfaceHeightfieldfromImage` | Heightfield from Image | `surface-minimal/SurfaceHeightfieldfromImage.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 31 | `SurfaceSurfaceEditToolsSplitatIsocurve` | Split at Isocurve | `surface-minimal/SurfaceSurfaceEditToolsSplitatIsocurve.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 32 | `SurfaceExtendSurface` | Extend Surface | `surface-minimal/SurfaceExtendSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 33 | `SurfaceExtrudeCurveNormalToSurface` | Extrude Normal to Surface | `surface-minimal/SurfaceExtrudeCurveNormalToSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 34 | `SurfaceUnrollDevelopableSrf` | Unroll Surface | `surface-minimal/SurfaceUnrollDevelopableSrf.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 35 | `SurfaceSmash` | SurfaceSmash | `surface-minimal/SurfaceSmash.svg` | add-on `om9_matrix` |
+| 36 | `SurfaceSurfaceEditToolsSoftEdit` | Soft Edit | `surface-minimal/SurfaceSurfaceEditToolsSoftEdit.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 37 | `SurfacePlaneCuttingPlane` | Cutting Plane | `surface-minimal/SurfacePlaneCuttingPlane.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 38 | `SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam` | Adjust Closed Surface Seam | `surface-minimal/SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 39 | `SurfaceSurfaceEditToolsSetSurfaceTangent` | Set Surface Tangent | `surface-minimal/SurfaceSurfaceEditToolsSetSurfaceTangent.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 40 | `SurfaceSurfaceEditToolsRefittoTolerance` | SurfaceSurfaceEditToolsRefittoTolerance | `surface-minimal/SurfaceSurfaceEditToolsRefittoTolerance.svg` | add-on `om9_matrix` |
 
 ## Solid
 
-Menu colour: Purple. OM9: 16, add-on: 0, planned: 14 of 30.
+Menu colour: Purple. OM9 built in: 16, OM9 Matrix add-on: 30, neither: 0 of 30.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `SolidUnion` | Union | `solid-minimal/SolidUnion.svg` | planned |
-| 2 | `SolidDifference` | Difference | `solid-minimal/SolidDifference.svg` | planned |
-| 3 | `SolidIntersection` | Intersection | `solid-minimal/SolidIntersection.svg` | planned |
-| 4 | `SolidBooleanTwoObjects` | Boolean Two Objects | `solid-minimal/SolidBooleanTwoObjects.svg` | OM9 |
-| 5 | `SolidCapPlanarHoles` | Cap Planar | `solid-minimal/SolidCapPlanarHoles.svg` | OM9 |
-| 6 | `SolidExtractSurface` | Extract Surface | `solid-minimal/SolidExtractSurface.svg` | OM9 |
-| 7 | `SolidFilletEdgeFilletEdge` | Fillet Edge | `solid-minimal/SolidFilletEdgeFilletEdge.svg` | OM9 |
-| 8 | `SolidText` | Text | `solid-minimal/SolidText.svg` | OM9 |
-| 9 | `SolidExtrudePlanarCurveStraight` | SolidExtrudePlanarCurveStraight | `solid-minimal/SolidExtrudePlanarCurveStraight.svg` | planned |
-| 10 | `SolidGVDAllExtrude` | SolidGVDAllExtrude | `solid-minimal/SolidGVDAllExtrude.svg` | planned |
-| 11 | `SolidPipe` | Pipe | `solid-minimal/SolidPipe.svg` | OM9 |
-| 12 | `SolidBoxCornertoCornerHeight` | Box | `solid-minimal/SolidBoxCornertoCornerHeight.svg` | OM9 |
-| 13 | `SolidSphereCenterRadius` | Sphere | `solid-minimal/SolidSphereCenterRadius.svg` | OM9 |
-| 14 | `SolidEllipsoidFromCenter` | Ellipsoid | `solid-minimal/SolidEllipsoidFromCenter.svg` | OM9 |
-| 15 | `SolidTorus` | Torus | `solid-minimal/SolidTorus.svg` | OM9 |
-| 16 | `SolidCylinder` | Cylinder | `solid-minimal/SolidCylinder.svg` | OM9 |
-| 17 | `SolidTube` | Tube | `solid-minimal/SolidTube.svg` | OM9 |
-| 18 | `SolidPyramid` | Pyramid | `solid-minimal/SolidPyramid.svg` | OM9 |
-| 19 | `SolidCone` | Cone | `solid-minimal/SolidCone.svg` | OM9 |
-| 20 | `SolidTruncatedCone` | Truncated Cone | `solid-minimal/SolidTruncatedCone.svg` | OM9 |
-| 21 | `SolidBoss` | Boss | `solid-minimal/SolidBoss.svg` | planned |
-| 22 | `SolidRib` | Rib | `solid-minimal/SolidRib.svg` | planned |
-| 23 | `SolidSlab` | Slab | `solid-minimal/SolidSlab.svg` | planned |
-| 24 | `SolidSolidEditToolsHolesMakeHole` | Make Hole | `solid-minimal/SolidSolidEditToolsHolesMakeHole.svg` | planned |
-| 25 | `SolidSolidEditToolsHolesArrayHole` | Array Hole | `solid-minimal/SolidSolidEditToolsHolesArrayHole.svg` | planned |
-| 26 | `SolidSolidEditToolsHolesArrayHolePolar` | Array Hole Polar | `solid-minimal/SolidSolidEditToolsHolesArrayHolePolar.svg` | planned |
-| 27 | `SolidSolidEditToolsHolesMoveHole` | Move Hole | `solid-minimal/SolidSolidEditToolsHolesMoveHole.svg` | planned |
-| 28 | `SolidSolidEditToolsFacesMoveFace` | Move Face | `solid-minimal/SolidSolidEditToolsFacesMoveFace.svg` | planned |
-| 29 | `SolidShell` | Shell | `solid-minimal/SolidShell.svg` | OM9 |
-| 30 | `SolidPtOn` | SolidPtOn | `solid-minimal/SolidPtOn.svg` | planned |
+| 1 | `SolidUnion` | Union | `solid-minimal/SolidUnion.svg` | add-on `om9_matrix` |
+| 2 | `SolidDifference` | Difference | `solid-minimal/SolidDifference.svg` | add-on `om9_matrix` |
+| 3 | `SolidIntersection` | Intersection | `solid-minimal/SolidIntersection.svg` | add-on `om9_matrix` |
+| 4 | `SolidBooleanTwoObjects` | Boolean Two Objects | `solid-minimal/SolidBooleanTwoObjects.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 5 | `SolidCapPlanarHoles` | Cap Planar | `solid-minimal/SolidCapPlanarHoles.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 6 | `SolidExtractSurface` | Extract Surface | `solid-minimal/SolidExtractSurface.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 7 | `SolidFilletEdgeFilletEdge` | Fillet Edge | `solid-minimal/SolidFilletEdgeFilletEdge.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 8 | `SolidText` | Text | `solid-minimal/SolidText.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 9 | `SolidExtrudePlanarCurveStraight` | SolidExtrudePlanarCurveStraight | `solid-minimal/SolidExtrudePlanarCurveStraight.svg` | add-on `om9_matrix` |
+| 10 | `SolidGVDAllExtrude` | SolidGVDAllExtrude | `solid-minimal/SolidGVDAllExtrude.svg` | add-on `om9_matrix` |
+| 11 | `SolidPipe` | Pipe | `solid-minimal/SolidPipe.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 12 | `SolidBoxCornertoCornerHeight` | Box | `solid-minimal/SolidBoxCornertoCornerHeight.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 13 | `SolidSphereCenterRadius` | Sphere | `solid-minimal/SolidSphereCenterRadius.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 14 | `SolidEllipsoidFromCenter` | Ellipsoid | `solid-minimal/SolidEllipsoidFromCenter.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 15 | `SolidTorus` | Torus | `solid-minimal/SolidTorus.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 16 | `SolidCylinder` | Cylinder | `solid-minimal/SolidCylinder.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 17 | `SolidTube` | Tube | `solid-minimal/SolidTube.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 18 | `SolidPyramid` | Pyramid | `solid-minimal/SolidPyramid.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 19 | `SolidCone` | Cone | `solid-minimal/SolidCone.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 20 | `SolidTruncatedCone` | Truncated Cone | `solid-minimal/SolidTruncatedCone.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 21 | `SolidBoss` | Boss | `solid-minimal/SolidBoss.svg` | add-on `om9_matrix` |
+| 22 | `SolidRib` | Rib | `solid-minimal/SolidRib.svg` | add-on `om9_matrix` |
+| 23 | `SolidSlab` | Slab | `solid-minimal/SolidSlab.svg` | add-on `om9_matrix` |
+| 24 | `SolidSolidEditToolsHolesMakeHole` | Make Hole | `solid-minimal/SolidSolidEditToolsHolesMakeHole.svg` | add-on `om9_matrix` |
+| 25 | `SolidSolidEditToolsHolesArrayHole` | Array Hole | `solid-minimal/SolidSolidEditToolsHolesArrayHole.svg` | add-on `om9_matrix` |
+| 26 | `SolidSolidEditToolsHolesArrayHolePolar` | Array Hole Polar | `solid-minimal/SolidSolidEditToolsHolesArrayHolePolar.svg` | add-on `om9_matrix` |
+| 27 | `SolidSolidEditToolsHolesMoveHole` | Move Hole | `solid-minimal/SolidSolidEditToolsHolesMoveHole.svg` | add-on `om9_matrix` |
+| 28 | `SolidSolidEditToolsFacesMoveFace` | Move Face | `solid-minimal/SolidSolidEditToolsFacesMoveFace.svg` | add-on `om9_matrix` |
+| 29 | `SolidShell` | Shell | `solid-minimal/SolidShell.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 30 | `SolidPtOn` | SolidPtOn | `solid-minimal/SolidPtOn.svg` | add-on `om9_matrix` |
 
 ## Transform
 
-Menu colour: TRed. OM9: 0, add-on: 7, planned: 33 of 40.
+Menu colour: TRed. OM9 built in: 0, OM9 Matrix add-on: 40, neither: 0 of 40.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `TransformScaleScale3D` | Scale 3D | `transform-minimal/TransformScaleScale3D.svg` | add-on `om9_transform` |
-| 2 | `TransformScaleScale2D` | Scale2D | `transform-minimal/TransformScaleScale2D.svg` | add-on `om9_transform` |
-| 3 | `TransformScaleScale1D` | Scale1D | `transform-minimal/TransformScaleScale1D.svg` | add-on `om9_transform` |
-| 4 | `TransformScaleNonUniformScale` | Scale Non-Uniform | `transform-minimal/TransformScaleNonUniformScale.svg` | planned |
-| 5 | `TransformOrient2Points` | Orient 2 Points | `transform-minimal/TransformOrient2Points.svg` | planned |
-| 6 | `TransformOrient3Points` | Orient 3 Points | `transform-minimal/TransformOrient3Points.svg` | planned |
-| 7 | `TransformRotate3D` | Rotate3D | `transform-minimal/TransformRotate3D.svg` | add-on `om9_transform` |
-| 8 | `TransformBend` | Bend | `transform-minimal/TransformBend.svg` | planned |
-| 9 | `TransformArrayPolar` | Array Polar | `transform-minimal/TransformArrayPolar.svg` | add-on `om9_transform` |
-| 10 | `TransformProjecttoCPlane` | Project To C-Plane | `transform-minimal/TransformProjecttoCPlane.svg` | planned |
-| 11 | `gvSmartFlow` | Smart Flow | `transform-minimal/gvSmartFlow.svg` | planned |
-| 12 | `gvSmartFlowRigid` | Smart Flow Rigid | `transform-minimal/gvSmartFlowRigid.svg` | planned |
-| 13 | `gvSmartFlowBreak` | Smart Flow Break | `transform-minimal/gvSmartFlowBreak.svg` | planned |
-| 14 | `gvSmartFlowPullDownCurves` | Smart Flow Pull Down Curves | `transform-minimal/gvSmartFlowPullDownCurves.svg` | planned |
-| 15 | `TransformSmartPattern` | TransformSmartPattern | `transform-minimal/TransformSmartPattern.svg` | planned |
-| 16 | `TransformOrientOnSurface` | Orient on Surface | `transform-minimal/TransformOrientOnSurface.svg` | planned |
-| 17 | `TransformOrientPerpendiculartoCurve` | Orient Perpendicular to Curve | `transform-minimal/TransformOrientPerpendiculartoCurve.svg` | planned |
-| 18 | `TransformSymmetry` | Symmetry | `transform-minimal/TransformSymmetry.svg` | planned |
-| 19 | `TransformSolidPtOn` | Solid Points ON | `transform-minimal/TransformSolidPtOn.svg` | planned |
-| 20 | `TransformCageEditingCageEdit` | Cage Edit | `transform-minimal/TransformCageEditingCageEdit.svg` | planned |
-| 21 | `TransformArrayAlongCurve` | Array Along Curve | `transform-minimal/TransformArrayAlongCurve.svg` | planned |
-| 22 | `TransformArrayArrayLinear` | Array Linear | `transform-minimal/TransformArrayArrayLinear.svg` | add-on `om9_transform` |
-| 23 | `TransformArrayAlongSurface` | Array Along Surface | `transform-minimal/TransformArrayAlongSurface.svg` | planned |
-| 24 | `TransformArrayAlongCurveonSurface` | Array Along Curve | `transform-minimal/TransformArrayAlongCurveonSurface.svg` | planned |
-| 25 | `TransformArrayRectangular` | Array | `transform-minimal/TransformArrayRectangular.svg` | add-on `om9_transform` |
-| 26 | `TransformFlowAlongCurve` | Flow Along Curve | `transform-minimal/TransformFlowAlongCurve.svg` | planned |
-| 27 | `TransformFlowAlongSurface` | Flow Along Surface | `transform-minimal/TransformFlowAlongSurface.svg` | planned |
-| 28 | `TransformSplop` | Splop | `transform-minimal/TransformSplop.svg` | planned |
-| 29 | `TransformSetPoints` | Set Points | `transform-minimal/TransformSetPoints.svg` | planned |
-| 30 | `TransformScaleScaleByPlane` | Scale By Plane | `transform-minimal/TransformScaleScaleByPlane.svg` | planned |
-| 31 | `TransformStretch` | Stretch | `transform-minimal/TransformStretch.svg` | planned |
-| 32 | `TransformTaper` | Taper | `transform-minimal/TransformTaper.svg` | planned |
-| 33 | `TransformShear` | Shear | `transform-minimal/TransformShear.svg` | planned |
-| 34 | `TransformTwist` | Twist | `transform-minimal/TransformTwist.svg` | planned |
-| 35 | `TransformMaelstrom` | Maelstrom | `transform-minimal/TransformMaelstrom.svg` | planned |
-| 36 | `BuilderMakeDownFacing` | Make Down Facing | `transform-minimal/BuilderMakeDownFacing.svg` | planned |
-| 37 | `TransformOrientRemaptoCPlane` | Remap to C-Plane | `transform-minimal/TransformOrientRemaptoCPlane.svg` | planned |
-| 38 | `TransformMoveUVN` | MoveUVN | `transform-minimal/TransformMoveUVN.svg` | planned |
-| 39 | `TransformSoftMove` | Soft Move | `transform-minimal/TransformSoftMove.svg` | planned |
-| 40 | `TransformCageEditingCreateCage` | Create Cage | `transform-minimal/TransformCageEditingCreateCage.svg` | planned |
+| 1 | `TransformScaleScale3D` | Scale 3D | `transform-minimal/TransformScaleScale3D.svg` | add-on `om9_matrix` |
+| 2 | `TransformScaleScale2D` | Scale2D | `transform-minimal/TransformScaleScale2D.svg` | add-on `om9_matrix` |
+| 3 | `TransformScaleScale1D` | Scale1D | `transform-minimal/TransformScaleScale1D.svg` | add-on `om9_matrix` |
+| 4 | `TransformScaleNonUniformScale` | Scale Non-Uniform | `transform-minimal/TransformScaleNonUniformScale.svg` | add-on `om9_matrix` |
+| 5 | `TransformOrient2Points` | Orient 2 Points | `transform-minimal/TransformOrient2Points.svg` | add-on `om9_matrix` |
+| 6 | `TransformOrient3Points` | Orient 3 Points | `transform-minimal/TransformOrient3Points.svg` | add-on `om9_matrix` |
+| 7 | `TransformRotate3D` | Rotate3D | `transform-minimal/TransformRotate3D.svg` | add-on `om9_matrix` |
+| 8 | `TransformBend` | Bend | `transform-minimal/TransformBend.svg` | add-on `om9_matrix` |
+| 9 | `TransformArrayPolar` | Array Polar | `transform-minimal/TransformArrayPolar.svg` | add-on `om9_matrix` |
+| 10 | `TransformProjecttoCPlane` | Project To C-Plane | `transform-minimal/TransformProjecttoCPlane.svg` | add-on `om9_matrix` |
+| 11 | `gvSmartFlow` | Smart Flow | `transform-minimal/gvSmartFlow.svg` | add-on `om9_matrix` |
+| 12 | `gvSmartFlowRigid` | Smart Flow Rigid | `transform-minimal/gvSmartFlowRigid.svg` | add-on `om9_matrix` |
+| 13 | `gvSmartFlowBreak` | Smart Flow Break | `transform-minimal/gvSmartFlowBreak.svg` | add-on `om9_matrix` |
+| 14 | `gvSmartFlowPullDownCurves` | Smart Flow Pull Down Curves | `transform-minimal/gvSmartFlowPullDownCurves.svg` | add-on `om9_matrix` |
+| 15 | `TransformSmartPattern` | TransformSmartPattern | `transform-minimal/TransformSmartPattern.svg` | add-on `om9_matrix` |
+| 16 | `TransformOrientOnSurface` | Orient on Surface | `transform-minimal/TransformOrientOnSurface.svg` | add-on `om9_matrix` |
+| 17 | `TransformOrientPerpendiculartoCurve` | Orient Perpendicular to Curve | `transform-minimal/TransformOrientPerpendiculartoCurve.svg` | add-on `om9_matrix` |
+| 18 | `TransformSymmetry` | Symmetry | `transform-minimal/TransformSymmetry.svg` | add-on `om9_matrix` |
+| 19 | `TransformSolidPtOn` | Solid Points ON | `transform-minimal/TransformSolidPtOn.svg` | add-on `om9_matrix` |
+| 20 | `TransformCageEditingCageEdit` | Cage Edit | `transform-minimal/TransformCageEditingCageEdit.svg` | add-on `om9_matrix` |
+| 21 | `TransformArrayAlongCurve` | Array Along Curve | `transform-minimal/TransformArrayAlongCurve.svg` | add-on `om9_matrix` |
+| 22 | `TransformArrayArrayLinear` | Array Linear | `transform-minimal/TransformArrayArrayLinear.svg` | add-on `om9_matrix` |
+| 23 | `TransformArrayAlongSurface` | Array Along Surface | `transform-minimal/TransformArrayAlongSurface.svg` | add-on `om9_matrix` |
+| 24 | `TransformArrayAlongCurveonSurface` | Array Along Curve | `transform-minimal/TransformArrayAlongCurveonSurface.svg` | add-on `om9_matrix` |
+| 25 | `TransformArrayRectangular` | Array | `transform-minimal/TransformArrayRectangular.svg` | add-on `om9_matrix` |
+| 26 | `TransformFlowAlongCurve` | Flow Along Curve | `transform-minimal/TransformFlowAlongCurve.svg` | add-on `om9_matrix` |
+| 27 | `TransformFlowAlongSurface` | Flow Along Surface | `transform-minimal/TransformFlowAlongSurface.svg` | add-on `om9_matrix` |
+| 28 | `TransformSplop` | Splop | `transform-minimal/TransformSplop.svg` | add-on `om9_matrix` |
+| 29 | `TransformSetPoints` | Set Points | `transform-minimal/TransformSetPoints.svg` | add-on `om9_matrix` |
+| 30 | `TransformScaleScaleByPlane` | Scale By Plane | `transform-minimal/TransformScaleScaleByPlane.svg` | add-on `om9_matrix` |
+| 31 | `TransformStretch` | Stretch | `transform-minimal/TransformStretch.svg` | add-on `om9_matrix` |
+| 32 | `TransformTaper` | Taper | `transform-minimal/TransformTaper.svg` | add-on `om9_matrix` |
+| 33 | `TransformShear` | Shear | `transform-minimal/TransformShear.svg` | add-on `om9_matrix` |
+| 34 | `TransformTwist` | Twist | `transform-minimal/TransformTwist.svg` | add-on `om9_matrix` |
+| 35 | `TransformMaelstrom` | Maelstrom | `transform-minimal/TransformMaelstrom.svg` | add-on `om9_matrix` |
+| 36 | `BuilderMakeDownFacing` | Make Down Facing | `transform-minimal/BuilderMakeDownFacing.svg` | add-on `om9_matrix` |
+| 37 | `TransformOrientRemaptoCPlane` | Remap to C-Plane | `transform-minimal/TransformOrientRemaptoCPlane.svg` | add-on `om9_matrix` |
+| 38 | `TransformMoveUVN` | MoveUVN | `transform-minimal/TransformMoveUVN.svg` | add-on `om9_matrix` |
+| 39 | `TransformSoftMove` | Soft Move | `transform-minimal/TransformSoftMove.svg` | add-on `om9_matrix` |
+| 40 | `TransformCageEditingCreateCage` | Create Cage | `transform-minimal/TransformCageEditingCreateCage.svg` | add-on `om9_matrix` |
 
 ## SubD (Clayoo)
 
-Menu colour: tred. OM9: 0, add-on: 0, planned: 58 of 58.
+Menu colour: tred. OM9 built in: 0, OM9 Matrix add-on: 58, neither: 0 of 58.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `ClayooEditItem` | ClayooEditItem | `subd-minimal/ClayooEditItem.svg` | planned |
-| 2 | `ClayooEditDivide` | Subdivide Simple | `subd-minimal/ClayooEditDivide.svg` | planned |
-| 3 | `ClayooEditSplitSides` | Split Sides | `subd-minimal/ClayooEditSplitSides.svg` | planned |
-| 4 | `ClayooEditInset` | Inset | `subd-minimal/ClayooEditInset.svg` | planned |
-| 5 | `ClayooEditKnife` | Clayoo Knife | `subd-minimal/ClayooEditKnife.svg` | planned |
-| 6 | `ClayooEditOffset` | Clayoo Offset | `subd-minimal/ClayooEditOffset.svg` | planned |
-| 7 | `ClayooEditExtrude` | Extrude | `subd-minimal/ClayooEditExtrude.svg` | planned |
-| 8 | `ClayooEditBridge` | Bridge | `subd-minimal/ClayooEditBridge.svg` | planned |
-| 9 | `ClayooCreationAppendFace` | Append Face | `subd-minimal/ClayooCreationAppendFace.svg` | planned |
-| 10 | `ClayooCreationPipe` | Pipe | `subd-minimal/ClayooCreationPipe.svg` | planned |
-| 11 | `ClayooCreationClayooBezel` | Clayoo Bezel | `subd-minimal/ClayooCreationClayooBezel.svg` | planned |
-| 12 | `ClayooCreationRing` | Ring Select | `builder-minimal/ClayooCreationRing.svg` | planned |
-| 13 | `ClayooCreationSignetRing` | Clayoo Signet Ring | `builder-minimal/ClayooCreationSignetRing.svg` | planned |
-| 14 | `ClayooEditCrease` | Crease | `subd-minimal/ClayooEditCrease.svg` | planned |
-| 15 | `ClayooEditFlipNormals` | Flip Normals | `subd-minimal/ClayooEditFlipNormals.svg` | planned |
-| 16 | `ClayooEditProjectToPlane` | Clayoo Project to Plane | `subd-minimal/ClayooEditProjectToPlane.svg` | planned |
-| 17 | `ClayooEditCollapse` | Collapse | `subd-minimal/ClayooEditCollapse.svg` | planned |
-| 18 | `ClayooEditMatch` | Match | `subd-minimal/ClayooEditMatch.svg` | planned |
-| 19 | `ClayooEditWeld` | Unweld | `subd-minimal/ClayooEditWeld.svg` | planned |
-| 20 | `ClayooEditSymmetry` | Symmetry | `subd-minimal/ClayooEditSymmetry.svg` | planned |
-| 21 | `ClayooPrimitivesBox` | Clayoo Box | `subd-minimal/ClayooPrimitivesBox.svg` | planned |
-| 22 | `ClayooPrimitivesSphere` | T-Spline Sphere | `subd-minimal/ClayooPrimitivesSphere.svg` | planned |
-| 23 | `ClayooPrimitivesCylinder` | T-Spline Cylinder | `subd-minimal/ClayooPrimitivesCylinder.svg` | planned |
-| 24 | `ClayooPrimitivesCone` | T-Spline Cone | `subd-minimal/ClayooPrimitivesCone.svg` | planned |
-| 25 | `ClayooPrimitivesTorus` | T-Spline Torus | `subd-minimal/ClayooPrimitivesTorus.svg` | planned |
-| 26 | `ClayooPrimitivesPlane` | Plane | `subd-minimal/ClayooPrimitivesPlane.svg` | planned |
-| 27 | `ClayooCreationSweep1Rail` | Clayoo Sweep 1 | `subd-minimal/ClayooCreationSweep1Rail.svg` | planned |
-| 28 | `ClayooCreationSweep2Rails` | Clayoo Sweep 2 | `subd-minimal/ClayooCreationSweep2Rails.svg` | planned |
-| 29 | `ClayooCreationLoft` | Loft | `subd-minimal/ClayooCreationLoft.svg` | planned |
-| 30 | `ClayooEditWrap` | Clayoo Wrap | `subd-minimal/ClayooEditWrap.svg` | planned |
-| 31 | `ClayooCreationRevolve` | Clayoo Revolve | `subd-minimal/ClayooCreationRevolve.svg` | planned |
-| 32 | `ClayooCreationFromCurve` | T-Splines Tube from Curves | `subd-minimal/ClayooCreationFromCurve.svg` | planned |
-| 33 | `ClayooCreationFrom2Curves` | ClayooCreationFrom2Curves | `subd-minimal/ClayooCreationFrom2Curves.svg` | planned |
-| 34 | `ClayooEditFill` | Fill Hole | `subd-minimal/ClayooEditFill.svg` | planned |
-| 35 | `ClayooEditShell` | Clayoo Shell | `subd-minimal/ClayooEditShell.svg` | planned |
-| 36 | `ClayooEditExtract` | Extract Wireframe | `subd-minimal/ClayooEditExtract.svg` | planned |
-| 37 | `ClayooCreationFromSurface` | ClayooCreationFromSurface | `subd-minimal/ClayooCreationFromSurface.svg` | planned |
-| 38 | `ClayooCreationFromTSplines` | ClayooCreationFromTSplines | `subd-minimal/ClayooCreationFromTSplines.svg` | planned |
-| 39 | `ClayooCreationFromMesh` | ClayooCreationFromMesh | `subd-minimal/ClayooCreationFromMesh.svg` | planned |
-| 40 | `ClayooCreationToNurbs` | Convert to Nurbs | `subd-minimal/ClayooCreationToNurbs.svg` | planned |
-| 41 | `ClayooSelectionSelectionSets` | Selection Sets | `subd-minimal/ClayooSelectionSelectionSets.svg` | planned |
-| 42 | `ClayooSelectionSelectRing` | Clayoo Ring | `subd-minimal/ClayooSelectionSelectRing.svg` | planned |
-| 43 | `ClayooSelectionSelectLoop` | ClayooSelectionSelectLoop | `subd-minimal/ClayooSelectionSelectLoop.svg` | planned |
-| 44 | `ClayooSelectUV` | Select U | `subd-minimal/ClayooSelectUV.svg` | planned |
-| 45 | `ClayooSelectionSelectAll` | Clayoo Select All | `subd-minimal/ClayooSelectionSelectAll.svg` | planned |
-| 46 | `ClayooSelectionSelectNone` | Clayoo Select None | `subd-minimal/ClayooSelectionSelectNone.svg` | planned |
-| 47 | `ClayooSelectionPaintSelection` | Clayoo Paint Selection | `subd-minimal/ClayooSelectionPaintSelection.svg` | planned |
-| 48 | `ClayooSelectionGrowSelection` | Grow | `subd-minimal/ClayooSelectionGrowSelection.svg` | planned |
-| 49 | `ClayooSelectionShrink` | Shrink | `subd-minimal/ClayooSelectionShrink.svg` | planned |
-| 50 | `ClayooSelectionInvertSelection` | Clayoo Invert | `subd-minimal/ClayooSelectionInvertSelection.svg` | planned |
-| 51 | `ClayooSelectionSelectCreased` | Crease | `subd-minimal/ClayooSelectionSelectCreased.svg` | planned |
-| 52 | `ClayooSelectionSelectNaked` | Clayoo Select Naked Edges | `subd-minimal/ClayooSelectionSelectNaked.svg` | planned |
-| 53 | `ClayooSelectionSelectCoplanar` | Select Coplanar | `subd-minimal/ClayooSelectionSelectCoplanar.svg` | planned |
-| 54 | `ClayooEditSubdivisionLevel` | Subdivision Level | `subd-minimal/ClayooEditSubdivisionLevel.svg` | planned |
-| 55 | `ClayooCreationClayooLibrary` | Clayoo Library | `subd-minimal/ClayooCreationClayooLibrary.svg` | planned |
-| 56 | `ClayooSelectionSetPlane` | Plane | `subd-minimal/ClayooSelectionSetPlane.svg` | planned |
-| 57 | `ClayooSelectionResetPlane` | Plane | `subd-minimal/ClayooSelectionResetPlane.svg` | planned |
-| 58 | `ClayooCreateIsocurves` | ClayooCreateIsocurves | `subd-minimal/ClayooCreateIsocurves.svg` | planned |
+| 1 | `ClayooEditItem` | ClayooEditItem | `subd-minimal/ClayooEditItem.svg` | add-on `om9_matrix` |
+| 2 | `ClayooEditDivide` | Subdivide Simple | `subd-minimal/ClayooEditDivide.svg` | add-on `om9_matrix` |
+| 3 | `ClayooEditSplitSides` | Split Sides | `subd-minimal/ClayooEditSplitSides.svg` | add-on `om9_matrix` |
+| 4 | `ClayooEditInset` | Inset | `subd-minimal/ClayooEditInset.svg` | add-on `om9_matrix` |
+| 5 | `ClayooEditKnife` | Clayoo Knife | `subd-minimal/ClayooEditKnife.svg` | add-on `om9_matrix` |
+| 6 | `ClayooEditOffset` | Clayoo Offset | `subd-minimal/ClayooEditOffset.svg` | add-on `om9_matrix` |
+| 7 | `ClayooEditExtrude` | Extrude | `subd-minimal/ClayooEditExtrude.svg` | add-on `om9_matrix` |
+| 8 | `ClayooEditBridge` | Bridge | `subd-minimal/ClayooEditBridge.svg` | add-on `om9_matrix` |
+| 9 | `ClayooCreationAppendFace` | Append Face | `subd-minimal/ClayooCreationAppendFace.svg` | add-on `om9_matrix` |
+| 10 | `ClayooCreationPipe` | Pipe | `subd-minimal/ClayooCreationPipe.svg` | add-on `om9_matrix` |
+| 11 | `ClayooCreationClayooBezel` | Clayoo Bezel | `subd-minimal/ClayooCreationClayooBezel.svg` | add-on `om9_matrix` |
+| 12 | `ClayooCreationRing` | Ring Select | `builder-minimal/ClayooCreationRing.svg` | add-on `om9_matrix` |
+| 13 | `ClayooCreationSignetRing` | Clayoo Signet Ring | `builder-minimal/ClayooCreationSignetRing.svg` | add-on `om9_matrix` |
+| 14 | `ClayooEditCrease` | Crease | `subd-minimal/ClayooEditCrease.svg` | add-on `om9_matrix` |
+| 15 | `ClayooEditFlipNormals` | Flip Normals | `subd-minimal/ClayooEditFlipNormals.svg` | add-on `om9_matrix` |
+| 16 | `ClayooEditProjectToPlane` | Clayoo Project to Plane | `subd-minimal/ClayooEditProjectToPlane.svg` | add-on `om9_matrix` |
+| 17 | `ClayooEditCollapse` | Collapse | `subd-minimal/ClayooEditCollapse.svg` | add-on `om9_matrix` |
+| 18 | `ClayooEditMatch` | Match | `subd-minimal/ClayooEditMatch.svg` | add-on `om9_matrix` |
+| 19 | `ClayooEditWeld` | Unweld | `subd-minimal/ClayooEditWeld.svg` | add-on `om9_matrix` |
+| 20 | `ClayooEditSymmetry` | Symmetry | `subd-minimal/ClayooEditSymmetry.svg` | add-on `om9_matrix` |
+| 21 | `ClayooPrimitivesBox` | Clayoo Box | `subd-minimal/ClayooPrimitivesBox.svg` | add-on `om9_matrix` |
+| 22 | `ClayooPrimitivesSphere` | T-Spline Sphere | `subd-minimal/ClayooPrimitivesSphere.svg` | add-on `om9_matrix` |
+| 23 | `ClayooPrimitivesCylinder` | T-Spline Cylinder | `subd-minimal/ClayooPrimitivesCylinder.svg` | add-on `om9_matrix` |
+| 24 | `ClayooPrimitivesCone` | T-Spline Cone | `subd-minimal/ClayooPrimitivesCone.svg` | add-on `om9_matrix` |
+| 25 | `ClayooPrimitivesTorus` | T-Spline Torus | `subd-minimal/ClayooPrimitivesTorus.svg` | add-on `om9_matrix` |
+| 26 | `ClayooPrimitivesPlane` | Plane | `subd-minimal/ClayooPrimitivesPlane.svg` | add-on `om9_matrix` |
+| 27 | `ClayooCreationSweep1Rail` | Clayoo Sweep 1 | `subd-minimal/ClayooCreationSweep1Rail.svg` | add-on `om9_matrix` |
+| 28 | `ClayooCreationSweep2Rails` | Clayoo Sweep 2 | `subd-minimal/ClayooCreationSweep2Rails.svg` | add-on `om9_matrix` |
+| 29 | `ClayooCreationLoft` | Loft | `subd-minimal/ClayooCreationLoft.svg` | add-on `om9_matrix` |
+| 30 | `ClayooEditWrap` | Clayoo Wrap | `subd-minimal/ClayooEditWrap.svg` | add-on `om9_matrix` |
+| 31 | `ClayooCreationRevolve` | Clayoo Revolve | `subd-minimal/ClayooCreationRevolve.svg` | add-on `om9_matrix` |
+| 32 | `ClayooCreationFromCurve` | T-Splines Tube from Curves | `subd-minimal/ClayooCreationFromCurve.svg` | add-on `om9_matrix` |
+| 33 | `ClayooCreationFrom2Curves` | ClayooCreationFrom2Curves | `subd-minimal/ClayooCreationFrom2Curves.svg` | add-on `om9_matrix` |
+| 34 | `ClayooEditFill` | Fill Hole | `subd-minimal/ClayooEditFill.svg` | add-on `om9_matrix` |
+| 35 | `ClayooEditShell` | Clayoo Shell | `subd-minimal/ClayooEditShell.svg` | add-on `om9_matrix` |
+| 36 | `ClayooEditExtract` | Extract Wireframe | `subd-minimal/ClayooEditExtract.svg` | add-on `om9_matrix` |
+| 37 | `ClayooCreationFromSurface` | ClayooCreationFromSurface | `subd-minimal/ClayooCreationFromSurface.svg` | add-on `om9_matrix` |
+| 38 | `ClayooCreationFromTSplines` | ClayooCreationFromTSplines | `subd-minimal/ClayooCreationFromTSplines.svg` | add-on `om9_matrix` |
+| 39 | `ClayooCreationFromMesh` | ClayooCreationFromMesh | `subd-minimal/ClayooCreationFromMesh.svg` | add-on `om9_matrix` |
+| 40 | `ClayooCreationToNurbs` | Convert to Nurbs | `subd-minimal/ClayooCreationToNurbs.svg` | add-on `om9_matrix` |
+| 41 | `ClayooSelectionSelectionSets` | Selection Sets | `subd-minimal/ClayooSelectionSelectionSets.svg` | add-on `om9_matrix` |
+| 42 | `ClayooSelectionSelectRing` | Clayoo Ring | `subd-minimal/ClayooSelectionSelectRing.svg` | add-on `om9_matrix` |
+| 43 | `ClayooSelectionSelectLoop` | ClayooSelectionSelectLoop | `subd-minimal/ClayooSelectionSelectLoop.svg` | add-on `om9_matrix` |
+| 44 | `ClayooSelectUV` | Select U | `subd-minimal/ClayooSelectUV.svg` | add-on `om9_matrix` |
+| 45 | `ClayooSelectionSelectAll` | Clayoo Select All | `subd-minimal/ClayooSelectionSelectAll.svg` | add-on `om9_matrix` |
+| 46 | `ClayooSelectionSelectNone` | Clayoo Select None | `subd-minimal/ClayooSelectionSelectNone.svg` | add-on `om9_matrix` |
+| 47 | `ClayooSelectionPaintSelection` | Clayoo Paint Selection | `subd-minimal/ClayooSelectionPaintSelection.svg` | add-on `om9_matrix` |
+| 48 | `ClayooSelectionGrowSelection` | Grow | `subd-minimal/ClayooSelectionGrowSelection.svg` | add-on `om9_matrix` |
+| 49 | `ClayooSelectionShrink` | Shrink | `subd-minimal/ClayooSelectionShrink.svg` | add-on `om9_matrix` |
+| 50 | `ClayooSelectionInvertSelection` | Clayoo Invert | `subd-minimal/ClayooSelectionInvertSelection.svg` | add-on `om9_matrix` |
+| 51 | `ClayooSelectionSelectCreased` | Crease | `subd-minimal/ClayooSelectionSelectCreased.svg` | add-on `om9_matrix` |
+| 52 | `ClayooSelectionSelectNaked` | Clayoo Select Naked Edges | `subd-minimal/ClayooSelectionSelectNaked.svg` | add-on `om9_matrix` |
+| 53 | `ClayooSelectionSelectCoplanar` | Select Coplanar | `subd-minimal/ClayooSelectionSelectCoplanar.svg` | add-on `om9_matrix` |
+| 54 | `ClayooEditSubdivisionLevel` | Subdivision Level | `subd-minimal/ClayooEditSubdivisionLevel.svg` | add-on `om9_matrix` |
+| 55 | `ClayooCreationClayooLibrary` | Clayoo Library | `subd-minimal/ClayooCreationClayooLibrary.svg` | add-on `om9_matrix` |
+| 56 | `ClayooSelectionSetPlane` | Plane | `subd-minimal/ClayooSelectionSetPlane.svg` | add-on `om9_matrix` |
+| 57 | `ClayooSelectionResetPlane` | Plane | `subd-minimal/ClayooSelectionResetPlane.svg` | add-on `om9_matrix` |
+| 58 | `ClayooCreateIsocurves` | ClayooCreateIsocurves | `subd-minimal/ClayooCreateIsocurves.svg` | add-on `om9_matrix` |
 
 ## Builder
 
-Menu colour: Red. OM9: 0, add-on: 0, planned: 16 of 16.
+Menu colour: Red. OM9 built in: 0, OM9 Matrix add-on: 16, neither: 0 of 16.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `BuilderEternity` | Eternity Band Builder | `builder-minimal/BuilderEternity.svg` | planned |
-| 2 | `BuilderSignet` | Signet Builder | `builder-minimal/BuilderSignet.svg` | planned |
-| 3 | `ClayooCreationSignetRing` | Clayoo Signet Ring | `builder-minimal/ClayooCreationSignetRing.svg` | planned |
-| 4 | `ClayooCreationRing` | Ring Select | `builder-minimal/ClayooCreationRing.svg` | planned |
-| 5 | `TextOnCurve` | TextOnCurve | `builder-minimal/TextOnCurve.svg` | planned |
-| 6 | `BuilderRaised` | Raised Band Builder | `builder-minimal/BuilderRaised.svg` | planned |
-| 7 | `BuilderAwardRingBuilder` | Award Ring Builder | `builder-minimal/BuilderAwardRingBuilder.svg` | planned |
-| 8 | `Builder_Rope` | Builder_Rope | `builder-minimal/Builder_Rope.svg` | planned |
-| 9 | `BuilderJump` | Jump Ring Builder | `builder-minimal/BuilderJump.svg` | planned |
-| 10 | `BuilderFreeFormKnot` | Freeform Knot Builder | `builder-minimal/BuilderFreeFormKnot.svg` | planned |
-| 11 | `BuilderKnot` | Knot Builder | `builder-minimal/BuilderKnot.svg` | planned |
-| 12 | `BuilderPatternBuilder` | Pattern Builder | `builder-minimal/BuilderPatternBuilder.svg` | planned |
-| 13 | `BuilderNautilusBuilder` | Nautilus Builder | `builder-minimal/BuilderNautilusBuilder.svg` | planned |
-| 14 | `BuilderMillWork` | BuilderMillWork | `builder-minimal/BuilderMillWork.svg` | planned |
-| 15 | `BuilderMillArea` | BuilderMillArea | `builder-minimal/BuilderMillArea.svg` | planned |
-| 16 | `BuilderMillWorkC` | BuilderMillWorkC | `builder-minimal/BuilderMillWorkC.svg` | planned |
+| 1 | `BuilderEternity` | Eternity Band Builder | `builder-minimal/BuilderEternity.svg` | add-on `om9_matrix` |
+| 2 | `BuilderSignet` | Signet Builder | `builder-minimal/BuilderSignet.svg` | add-on `om9_matrix` |
+| 3 | `ClayooCreationSignetRing` | Clayoo Signet Ring | `builder-minimal/ClayooCreationSignetRing.svg` | add-on `om9_matrix` |
+| 4 | `ClayooCreationRing` | Ring Select | `builder-minimal/ClayooCreationRing.svg` | add-on `om9_matrix` |
+| 5 | `TextOnCurve` | TextOnCurve | `builder-minimal/TextOnCurve.svg` | add-on `om9_matrix` |
+| 6 | `BuilderRaised` | Raised Band Builder | `builder-minimal/BuilderRaised.svg` | add-on `om9_matrix` |
+| 7 | `BuilderAwardRingBuilder` | Award Ring Builder | `builder-minimal/BuilderAwardRingBuilder.svg` | add-on `om9_matrix` |
+| 8 | `Builder_Rope` | Builder_Rope | `builder-minimal/Builder_Rope.svg` | add-on `om9_matrix` |
+| 9 | `BuilderJump` | Jump Ring Builder | `builder-minimal/BuilderJump.svg` | add-on `om9_matrix` |
+| 10 | `BuilderFreeFormKnot` | Freeform Knot Builder | `builder-minimal/BuilderFreeFormKnot.svg` | add-on `om9_matrix` |
+| 11 | `BuilderKnot` | Knot Builder | `builder-minimal/BuilderKnot.svg` | add-on `om9_matrix` |
+| 12 | `BuilderPatternBuilder` | Pattern Builder | `builder-minimal/BuilderPatternBuilder.svg` | add-on `om9_matrix` |
+| 13 | `BuilderNautilusBuilder` | Nautilus Builder | `builder-minimal/BuilderNautilusBuilder.svg` | add-on `om9_matrix` |
+| 14 | `BuilderMillWork` | BuilderMillWork | `builder-minimal/BuilderMillWork.svg` | add-on `om9_matrix` |
+| 15 | `BuilderMillArea` | BuilderMillArea | `builder-minimal/BuilderMillArea.svg` | add-on `om9_matrix` |
+| 16 | `BuilderMillWorkC` | BuilderMillWorkC | `builder-minimal/BuilderMillWorkC.svg` | add-on `om9_matrix` |
 
 ## Tools
 
-Menu colour: Blue. OM9: 2, add-on: 0, planned: 29 of 31.
+Menu colour: Blue. OM9 built in: 2, OM9 Matrix add-on: 31, neither: 0 of 31.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `BuilderRingRail` | Ring Rail | `tools-minimal/BuilderRingRail.svg` | OM9 (Top 11) |
-| 2 | `BuilderProfilePlacer` | Profile Placer | `tools-minimal/BuilderProfilePlacer.svg` | planned |
-| 3 | `BuilderOutsideRingRail` | Outside Ring Rail | `tools-minimal/BuilderOutsideRingRail.svg` | planned |
-| 4 | `BuilderCustomRail` | Custom Rail | `tools-minimal/BuilderCustomRail.svg` | OM9 |
-| 5 | `BuilderFourProfile` | Profile | `tools-minimal/BuilderFourProfile.svg` | planned |
-| 6 | `BuilderMetalWeights` | Metal Weights | `tools-minimal/BuilderMetalWeights.svg` | planned |
-| 7 | `BuilderResize` | Ring Resizer | `tools-minimal/BuilderResize.svg` | planned |
-| 8 | `BuilderSurfacePullback` | Surface Pullback | `tools-minimal/BuilderSurfacePullback.svg` | planned |
-| 9 | `BuilderBermarkLibrary` | Bermark Library | `tools-minimal/BuilderBermarkLibrary.svg` | planned |
-| 10 | `BuilderStullerFindingsLibrary` | Stuller Findings Library | `tools-minimal/BuilderStullerFindingsLibrary.svg` | planned |
-| 11 | `gvSmartTarget` | Smart Target | `tools-minimal/gvSmartTarget.svg` | planned |
-| 12 | `gvSmartTargetAdd` | Smart Target Add | `tools-minimal/gvSmartTargetAdd.svg` | planned |
-| 13 | `gvSmartTargetOnCrvEnd` | Smart Target | `tools-minimal/gvSmartTargetOnCrvEnd.svg` | planned |
-| 14 | `gvSmartBlend` | Smart Blend | `tools-minimal/gvSmartBlend.svg` | planned |
-| 15 | `gvSmartMSR` | Smart MSR | `tools-minimal/gvSmartMSR.svg` | planned |
-| 16 | `gvJoinHistory` | Join History | `tools-minimal/gvJoinHistory.svg` | planned |
-| 17 | `BuilderImageTrace` | Image Trace | `tools-minimal/BuilderImageTrace.svg` | planned |
-| 18 | `BuilderObjectChecker` | Object Checker | `tools-minimal/BuilderObjectChecker.svg` | planned |
-| 19 | `BuilderMeshRepair` | Mesh Repair | `tools-minimal/BuilderMeshRepair.svg` | planned |
-| 20 | `Builder3dPrinting` | 3D Printing | `tools-minimal/Builder3dPrinting.svg` | planned |
-| 21 | `BuilderProfile` | Profile Placer | `tools-minimal/BuilderProfile.svg` | planned |
-| 22 | `BuilderProfileMerge` | Profile Merge | `tools-minimal/BuilderProfileMerge.svg` | planned |
-| 23 | `BuilderProfileEndCap` | Profile End Cap | `tools-minimal/BuilderProfileEndCap.svg` | planned |
-| 24 | `BuilderCustomRailAdvanced` | Custom Rail Advanced | `tools-minimal/BuilderCustomRailAdvanced.svg` | planned |
-| 25 | `BuilderObjectOnCrv` | BuilderObjectOnCrv | `tools-minimal/BuilderObjectOnCrv.svg` | planned |
-| 26 | `BuilderSurfaceInset` | Surface Inset | `tools-minimal/BuilderSurfaceInset.svg` | planned |
-| 27 | `BuilderMeshReducer` | Mesh Reducer | `tools-minimal/BuilderMeshReducer.svg` | planned |
-| 28 | `BuilderMesh` | Mesh Repair | `tools-minimal/BuilderMesh.svg` | planned |
-| 29 | `BuilderCurveTransformTool` | Curve Transform | `tools-minimal/BuilderCurveTransformTool.svg` | planned |
-| 30 | `BuilderCenterLine` | Center Line Builder | `tools-minimal/BuilderCenterLine.svg` | planned |
-| 31 | `BuilderBooleanBuilder` | Boolean Builder | `tools-minimal/BuilderBooleanBuilder.svg` | planned |
+| 1 | `BuilderRingRail` | Ring Rail | `tools-minimal/BuilderRingRail.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 2 | `BuilderProfilePlacer` | Profile Placer | `tools-minimal/BuilderProfilePlacer.svg` | add-on `om9_matrix` |
+| 3 | `BuilderOutsideRingRail` | Outside Ring Rail | `tools-minimal/BuilderOutsideRingRail.svg` | add-on `om9_matrix` |
+| 4 | `BuilderCustomRail` | Custom Rail | `tools-minimal/BuilderCustomRail.svg` | add-on `om9_matrix` (OM9 also has it) |
+| 5 | `BuilderFourProfile` | Profile | `tools-minimal/BuilderFourProfile.svg` | add-on `om9_matrix` |
+| 6 | `BuilderMetalWeights` | Metal Weights | `tools-minimal/BuilderMetalWeights.svg` | add-on `om9_matrix` |
+| 7 | `BuilderResize` | Ring Resizer | `tools-minimal/BuilderResize.svg` | add-on `om9_matrix` |
+| 8 | `BuilderSurfacePullback` | Surface Pullback | `tools-minimal/BuilderSurfacePullback.svg` | add-on `om9_matrix` |
+| 9 | `BuilderBermarkLibrary` | Bermark Library | `tools-minimal/BuilderBermarkLibrary.svg` | add-on `om9_matrix` |
+| 10 | `BuilderStullerFindingsLibrary` | Stuller Findings Library | `tools-minimal/BuilderStullerFindingsLibrary.svg` | add-on `om9_matrix` |
+| 11 | `gvSmartTarget` | Smart Target | `tools-minimal/gvSmartTarget.svg` | add-on `om9_matrix` |
+| 12 | `gvSmartTargetAdd` | Smart Target Add | `tools-minimal/gvSmartTargetAdd.svg` | add-on `om9_matrix` |
+| 13 | `gvSmartTargetOnCrvEnd` | Smart Target | `tools-minimal/gvSmartTargetOnCrvEnd.svg` | add-on `om9_matrix` |
+| 14 | `gvSmartBlend` | Smart Blend | `tools-minimal/gvSmartBlend.svg` | add-on `om9_matrix` |
+| 15 | `gvSmartMSR` | Smart MSR | `tools-minimal/gvSmartMSR.svg` | add-on `om9_matrix` |
+| 16 | `gvJoinHistory` | Join History | `tools-minimal/gvJoinHistory.svg` | add-on `om9_matrix` |
+| 17 | `BuilderImageTrace` | Image Trace | `tools-minimal/BuilderImageTrace.svg` | add-on `om9_matrix` |
+| 18 | `BuilderObjectChecker` | Object Checker | `tools-minimal/BuilderObjectChecker.svg` | add-on `om9_matrix` |
+| 19 | `BuilderMeshRepair` | Mesh Repair | `tools-minimal/BuilderMeshRepair.svg` | add-on `om9_matrix` |
+| 20 | `Builder3dPrinting` | 3D Printing | `tools-minimal/Builder3dPrinting.svg` | add-on `om9_matrix` |
+| 21 | `BuilderProfile` | Profile Placer | `tools-minimal/BuilderProfile.svg` | add-on `om9_matrix` |
+| 22 | `BuilderProfileMerge` | Profile Merge | `tools-minimal/BuilderProfileMerge.svg` | add-on `om9_matrix` |
+| 23 | `BuilderProfileEndCap` | Profile End Cap | `tools-minimal/BuilderProfileEndCap.svg` | add-on `om9_matrix` |
+| 24 | `BuilderCustomRailAdvanced` | Custom Rail Advanced | `tools-minimal/BuilderCustomRailAdvanced.svg` | add-on `om9_matrix` |
+| 25 | `BuilderObjectOnCrv` | BuilderObjectOnCrv | `tools-minimal/BuilderObjectOnCrv.svg` | add-on `om9_matrix` |
+| 26 | `BuilderSurfaceInset` | Surface Inset | `tools-minimal/BuilderSurfaceInset.svg` | add-on `om9_matrix` |
+| 27 | `BuilderMeshReducer` | Mesh Reducer | `tools-minimal/BuilderMeshReducer.svg` | add-on `om9_matrix` |
+| 28 | `BuilderMesh` | Mesh Repair | `tools-minimal/BuilderMesh.svg` | add-on `om9_matrix` |
+| 29 | `BuilderCurveTransformTool` | Curve Transform | `tools-minimal/BuilderCurveTransformTool.svg` | add-on `om9_matrix` |
+| 30 | `BuilderCenterLine` | Center Line Builder | `tools-minimal/BuilderCenterLine.svg` | add-on `om9_matrix` |
+| 31 | `BuilderBooleanBuilder` | Boolean Builder | `tools-minimal/BuilderBooleanBuilder.svg` | add-on `om9_matrix` |
 
 ## Gems
 
-Menu colour: LBlue. OM9: 0, add-on: 2, planned: 33 of 35.
+Menu colour: LBlue. OM9 built in: 0, OM9 Matrix add-on: 35, neither: 0 of 35.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `BuilderGemLoader` | Gem Loader | `gems-minimal/BuilderGemLoader.svg` | planned |
-| 2 | `BuilderGemOnCrv` | Gem on Curve | `gems-minimal/BuilderGemOnCrv.svg` | add-on `gem_on_curve` |
-| 3 | `BuilderGemOnCrvAdvanced` | Gem on Curve Advanced | `gems-minimal/BuilderGemOnCrvAdvanced.svg` | planned |
-| 4 | `BuilderGemCountOnCrv` | Gem Count on Curve | `gems-minimal/BuilderGemCountOnCrv.svg` | add-on `gem_on_curve` |
-| 5 | `BuilderGemListOnCrv` | Gem List on Curve | `gems-minimal/BuilderGemListOnCrv.svg` | planned |
-| 6 | `BuilderGemOnCrvMulti` | Gem on Curve Multi | `gems-minimal/BuilderGemOnCrvMulti.svg` | planned |
-| 7 | `BuilderGemProfile` | BuilderGemProfile | `gems-minimal/BuilderGemProfile.svg` | planned |
-| 8 | `BuilderGemGuides` | Gem Guides | `gems-minimal/BuilderGemGuides.svg` | planned |
-| 9 | `BuilderOrientToGem` | Orient to Gem | `gems-minimal/BuilderOrientToGem.svg` | planned |
-| 10 | `BuilderHalo` | BuilderHalo | `gems-minimal/BuilderHalo.svg` | planned |
-| 11 | `BuilderGemOnSurface` | Gem on Surface | `gems-minimal/BuilderGemOnSurface.svg` | planned |
-| 12 | `BuilderCustomGem` | BuilderCustomGem | `gems-minimal/BuilderCustomGem.svg` | planned |
-| 13 | `BuilderEmerald` | Emerald Builder | `gems-minimal/BuilderEmerald.svg` | planned |
-| 14 | `BuilderBaguette` | Baguette Builder | `gems-minimal/BuilderBaguette.svg` | planned |
-| 15 | `BuilderTaperBagChannel` | Baguette Channel | `gems-minimal/BuilderTaperBagChannel.svg` | planned |
-| 16 | `BuilderTaperBagBetweenTwoCurves` | BuilderTaperBagBetweenTwoCurves | `gems-minimal/BuilderTaperBagBetweenTwoCurves.svg` | planned |
-| 17 | `BuilderGemBetweenTwoCurves` | BuilderGemBetweenTwoCurves | `gems-minimal/BuilderGemBetweenTwoCurves.svg` | planned |
-| 18 | `BuilderClusterBuilderOld` | BuilderClusterBuilderOld | `gems-minimal/BuilderClusterBuilderOld.svg` | planned |
-| 19 | `BuilderGemReporter` | BuilderGemReporter | `gems-minimal/BuilderGemReporter.svg` | planned |
-| 20 | `BuilderGemMap` | Gem Map | `gems-minimal/BuilderGemMap.svg` | planned |
-| 21 | `BuilderPaveDialog` | BuilderPaveDialog | `gems-minimal/BuilderPaveDialog.svg` | planned |
-| 22 | `BuilderPaveBuilder` | BuilderPaveBuilder | `gems-minimal/BuilderPaveBuilder.svg` | planned |
-| 23 | `BuilderPaveAzureBuilder` | BuilderPaveAzureBuilder | `gems-minimal/BuilderPaveAzureBuilder.svg` | planned |
-| 24 | `BuilderPaveProngBuilder` | BuilderPaveProngBuilder | `gems-minimal/BuilderPaveProngBuilder.svg` | planned |
-| 25 | `BuilderGemSprings` | BuilderGemSprings | `gems-minimal/BuilderGemSprings.svg` | planned |
-| 26 | `BuilderGemFollow` | Gem Follow | `gems-minimal/BuilderGemFollow.svg` | planned |
-| 27 | `BuilderGemControl` | Gem Control | `gems-minimal/BuilderGemControl.svg` | planned |
-| 28 | `OthersMatchAttributes` | Match Attributes | `gems-minimal/OthersMatchAttributes.svg` | planned |
-| 29 | `OthersSaveStyle` | OthersSaveStyle | `gems-minimal/OthersSaveStyle.svg` | planned |
-| 30 | `OthersLoadStyle` | OthersLoadStyle | `gems-minimal/OthersLoadStyle.svg` | planned |
-| 31 | `BuilderGVDGemFlow` | Gem Flow | `gems-minimal/BuilderGVDGemFlow.svg` | planned |
-| 32 | `BuilderGVDGemSplop` | Gem Splop | `gems-minimal/BuilderGVDGemSplop.svg` | planned |
-| 33 | `BuilderPaveSphere` | BuilderPaveSphere | `gems-minimal/BuilderPaveSphere.svg` | planned |
-| 34 | `BuilderGemUpdate` | BuilderGemUpdate | `gems-minimal/BuilderGemUpdate.svg` | planned |
-| 35 | `BuilderGemPositioner` | Gem Positioner (MSR) | `gems-minimal/BuilderGemPositioner.svg` | planned |
+| 1 | `BuilderGemLoader` | Gem Loader | `gems-minimal/BuilderGemLoader.svg` | add-on `om9_matrix` |
+| 2 | `BuilderGemOnCrv` | Gem on Curve | `gems-minimal/BuilderGemOnCrv.svg` | add-on `om9_matrix` |
+| 3 | `BuilderGemOnCrvAdvanced` | Gem on Curve Advanced | `gems-minimal/BuilderGemOnCrvAdvanced.svg` | add-on `om9_matrix` |
+| 4 | `BuilderGemCountOnCrv` | Gem Count on Curve | `gems-minimal/BuilderGemCountOnCrv.svg` | add-on `om9_matrix` |
+| 5 | `BuilderGemListOnCrv` | Gem List on Curve | `gems-minimal/BuilderGemListOnCrv.svg` | add-on `om9_matrix` |
+| 6 | `BuilderGemOnCrvMulti` | Gem on Curve Multi | `gems-minimal/BuilderGemOnCrvMulti.svg` | add-on `om9_matrix` |
+| 7 | `BuilderGemProfile` | BuilderGemProfile | `gems-minimal/BuilderGemProfile.svg` | add-on `om9_matrix` |
+| 8 | `BuilderGemGuides` | Gem Guides | `gems-minimal/BuilderGemGuides.svg` | add-on `om9_matrix` |
+| 9 | `BuilderOrientToGem` | Orient to Gem | `gems-minimal/BuilderOrientToGem.svg` | add-on `om9_matrix` |
+| 10 | `BuilderHalo` | BuilderHalo | `gems-minimal/BuilderHalo.svg` | add-on `om9_matrix` |
+| 11 | `BuilderGemOnSurface` | Gem on Surface | `gems-minimal/BuilderGemOnSurface.svg` | add-on `om9_matrix` |
+| 12 | `BuilderCustomGem` | BuilderCustomGem | `gems-minimal/BuilderCustomGem.svg` | add-on `om9_matrix` |
+| 13 | `BuilderEmerald` | Emerald Builder | `gems-minimal/BuilderEmerald.svg` | add-on `om9_matrix` |
+| 14 | `BuilderBaguette` | Baguette Builder | `gems-minimal/BuilderBaguette.svg` | add-on `om9_matrix` |
+| 15 | `BuilderTaperBagChannel` | Baguette Channel | `gems-minimal/BuilderTaperBagChannel.svg` | add-on `om9_matrix` |
+| 16 | `BuilderTaperBagBetweenTwoCurves` | BuilderTaperBagBetweenTwoCurves | `gems-minimal/BuilderTaperBagBetweenTwoCurves.svg` | add-on `om9_matrix` |
+| 17 | `BuilderGemBetweenTwoCurves` | BuilderGemBetweenTwoCurves | `gems-minimal/BuilderGemBetweenTwoCurves.svg` | add-on `om9_matrix` |
+| 18 | `BuilderClusterBuilderOld` | BuilderClusterBuilderOld | `gems-minimal/BuilderClusterBuilderOld.svg` | add-on `om9_matrix` |
+| 19 | `BuilderGemReporter` | BuilderGemReporter | `gems-minimal/BuilderGemReporter.svg` | add-on `om9_matrix` |
+| 20 | `BuilderGemMap` | Gem Map | `gems-minimal/BuilderGemMap.svg` | add-on `om9_matrix` |
+| 21 | `BuilderPaveDialog` | BuilderPaveDialog | `gems-minimal/BuilderPaveDialog.svg` | add-on `om9_matrix` |
+| 22 | `BuilderPaveBuilder` | BuilderPaveBuilder | `gems-minimal/BuilderPaveBuilder.svg` | add-on `om9_matrix` |
+| 23 | `BuilderPaveAzureBuilder` | BuilderPaveAzureBuilder | `gems-minimal/BuilderPaveAzureBuilder.svg` | add-on `om9_matrix` |
+| 24 | `BuilderPaveProngBuilder` | BuilderPaveProngBuilder | `gems-minimal/BuilderPaveProngBuilder.svg` | add-on `om9_matrix` |
+| 25 | `BuilderGemSprings` | BuilderGemSprings | `gems-minimal/BuilderGemSprings.svg` | add-on `om9_matrix` |
+| 26 | `BuilderGemFollow` | Gem Follow | `gems-minimal/BuilderGemFollow.svg` | add-on `om9_matrix` |
+| 27 | `BuilderGemControl` | Gem Control | `gems-minimal/BuilderGemControl.svg` | add-on `om9_matrix` |
+| 28 | `OthersMatchAttributes` | Match Attributes | `gems-minimal/OthersMatchAttributes.svg` | add-on `om9_matrix` |
+| 29 | `OthersSaveStyle` | OthersSaveStyle | `gems-minimal/OthersSaveStyle.svg` | add-on `om9_matrix` |
+| 30 | `OthersLoadStyle` | OthersLoadStyle | `gems-minimal/OthersLoadStyle.svg` | add-on `om9_matrix` |
+| 31 | `BuilderGVDGemFlow` | Gem Flow | `gems-minimal/BuilderGVDGemFlow.svg` | add-on `om9_matrix` |
+| 32 | `BuilderGVDGemSplop` | Gem Splop | `gems-minimal/BuilderGVDGemSplop.svg` | add-on `om9_matrix` |
+| 33 | `BuilderPaveSphere` | BuilderPaveSphere | `gems-minimal/BuilderPaveSphere.svg` | add-on `om9_matrix` |
+| 34 | `BuilderGemUpdate` | BuilderGemUpdate | `gems-minimal/BuilderGemUpdate.svg` | add-on `om9_matrix` |
+| 35 | `BuilderGemPositioner` | Gem Positioner (MSR) | `gems-minimal/BuilderGemPositioner.svg` | add-on `om9_matrix` |
 
 ## Settings
 
-Menu colour: SPurple. OM9: 0, add-on: 0, planned: 12 of 12.
+Menu colour: SPurple. OM9 built in: 0, OM9 Matrix add-on: 12, neither: 0 of 12.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `BuilderHead` | Head Builder | `settings-minimal/BuilderHead.svg` | planned |
-| 2 | `BuilderBezel` | Bezel Builder | `settings-minimal/BuilderBezel.svg` | planned |
-| 3 | `ClayooCreationClayooBezel` | Clayoo Bezel | `subd-minimal/ClayooCreationClayooBezel.svg` | planned |
-| 4 | `BuilderPullToRail` | Pull Object to Rail | `settings-minimal/BuilderPullToRail.svg` | planned |
-| 5 | `BuilderBezelCutter` | Bezel Cutter Builder | `settings-minimal/BuilderBezelCutter.svg` | planned |
-| 6 | `BuilderProngAdder` | Prong Builder | `settings-minimal/BuilderProngAdder.svg` | planned |
-| 7 | `BuilderProngEditor` | Prong Editor | `settings-minimal/BuilderProngEditor.svg` | planned |
-| 8 | `BuilderProngOnSurface` | Prong on Surface | `settings-minimal/BuilderProngOnSurface.svg` | planned |
-| 9 | `BuilderBeadOnSurface` | Bead on Surface | `settings-minimal/BuilderBeadOnSurface.svg` | planned |
-| 10 | `BuilderMetalPiece` | Metal from Gems | `settings-minimal/BuilderMetalPiece.svg` | planned |
-| 11 | `BuilderBeadOnCrv` | Bead on Curve | `settings-minimal/BuilderBeadOnCrv.svg` | planned |
-| 12 | `BuilderChannelBorderCurve` | Channel Border Curve | `settings-minimal/BuilderChannelBorderCurve.svg` | planned |
+| 1 | `BuilderHead` | Head Builder | `settings-minimal/BuilderHead.svg` | add-on `om9_matrix` |
+| 2 | `BuilderBezel` | Bezel Builder | `settings-minimal/BuilderBezel.svg` | add-on `om9_matrix` |
+| 3 | `ClayooCreationClayooBezel` | Clayoo Bezel | `subd-minimal/ClayooCreationClayooBezel.svg` | add-on `om9_matrix` |
+| 4 | `BuilderPullToRail` | Pull Object to Rail | `settings-minimal/BuilderPullToRail.svg` | add-on `om9_matrix` |
+| 5 | `BuilderBezelCutter` | Bezel Cutter Builder | `settings-minimal/BuilderBezelCutter.svg` | add-on `om9_matrix` |
+| 6 | `BuilderProngAdder` | Prong Builder | `settings-minimal/BuilderProngAdder.svg` | add-on `om9_matrix` |
+| 7 | `BuilderProngEditor` | Prong Editor | `settings-minimal/BuilderProngEditor.svg` | add-on `om9_matrix` |
+| 8 | `BuilderProngOnSurface` | Prong on Surface | `settings-minimal/BuilderProngOnSurface.svg` | add-on `om9_matrix` |
+| 9 | `BuilderBeadOnSurface` | Bead on Surface | `settings-minimal/BuilderBeadOnSurface.svg` | add-on `om9_matrix` |
+| 10 | `BuilderMetalPiece` | Metal from Gems | `settings-minimal/BuilderMetalPiece.svg` | add-on `om9_matrix` |
+| 11 | `BuilderBeadOnCrv` | Bead on Curve | `settings-minimal/BuilderBeadOnCrv.svg` | add-on `om9_matrix` |
+| 12 | `BuilderChannelBorderCurve` | Channel Border Curve | `settings-minimal/BuilderChannelBorderCurve.svg` | add-on `om9_matrix` |
 
 ## Cutters
 
-Menu colour: Orange. OM9: 0, add-on: 1, planned: 10 of 11.
+Menu colour: Orange. OM9 built in: 0, OM9 Matrix add-on: 11, neither: 0 of 11.
 
 | Position | Code | Name | Icon | Runs |
 |---|---|---|---|---|
-| 1 | `BuilderGemCutter` | Cutters | `cutters-minimal/BuilderGemCutter.svg` | add-on `gem_cutter` |
-| 2 | `BuilderGemCutterLibrary` | Gem Cutter Library | `cutters-minimal/BuilderGemCutterLibrary.svg` | planned |
-| 3 | `BuilderChannelBuilder` | Channel Builder | `cutters-minimal/BuilderChannelBuilder.svg` | planned |
-| 4 | `BuilderMicroProngCutter` | Micro Prong Cutter | `cutters-minimal/BuilderMicroProngCutter.svg` | planned |
-| 5 | `BuilderBrightCutChannel` | Bright Cut Channel Builder | `cutters-minimal/BuilderBrightCutChannel.svg` | planned |
-| 6 | `BuilderBrightCutter` | Bright Cutter | `cutters-minimal/BuilderBrightCutter.svg` | planned |
-| 7 | `BuilderBezelCutter` | Bezel Cutter Builder | `settings-minimal/BuilderBezelCutter.svg` | planned |
-| 8 | `OthersCuttoFingerRail` | Cut to Finger Rail | `cutters-minimal/OthersCuttoFingerRail.svg` | planned |
-| 9 | `BuilderPlaneandCubeCutters` | BuilderPlaneandCubeCutters | `cutters-minimal/BuilderPlaneandCubeCutters.svg` | planned |
-| 10 | `BuilderQuadFlip` | BuilderQuadFlip | `cutters-minimal/BuilderQuadFlip.svg` | planned |
-| 11 | `BuilderBooleanBuilder` | Boolean Builder | `tools-minimal/BuilderBooleanBuilder.svg` | planned |
+| 1 | `BuilderGemCutter` | Cutters | `cutters-minimal/BuilderGemCutter.svg` | add-on `om9_matrix` |
+| 2 | `BuilderGemCutterLibrary` | Gem Cutter Library | `cutters-minimal/BuilderGemCutterLibrary.svg` | add-on `om9_matrix` |
+| 3 | `BuilderChannelBuilder` | Channel Builder | `cutters-minimal/BuilderChannelBuilder.svg` | add-on `om9_matrix` |
+| 4 | `BuilderMicroProngCutter` | Micro Prong Cutter | `cutters-minimal/BuilderMicroProngCutter.svg` | add-on `om9_matrix` |
+| 5 | `BuilderBrightCutChannel` | Bright Cut Channel Builder | `cutters-minimal/BuilderBrightCutChannel.svg` | add-on `om9_matrix` |
+| 6 | `BuilderBrightCutter` | Bright Cutter | `cutters-minimal/BuilderBrightCutter.svg` | add-on `om9_matrix` |
+| 7 | `BuilderBezelCutter` | Bezel Cutter Builder | `settings-minimal/BuilderBezelCutter.svg` | add-on `om9_matrix` |
+| 8 | `OthersCuttoFingerRail` | Cut to Finger Rail | `cutters-minimal/OthersCuttoFingerRail.svg` | add-on `om9_matrix` |
+| 9 | `BuilderPlaneandCubeCutters` | BuilderPlaneandCubeCutters | `cutters-minimal/BuilderPlaneandCubeCutters.svg` | add-on `om9_matrix` |
+| 10 | `BuilderQuadFlip` | BuilderQuadFlip | `cutters-minimal/BuilderQuadFlip.svg` | add-on `om9_matrix` |
+| 11 | `BuilderBooleanBuilder` | Boolean Builder | `tools-minimal/BuilderBooleanBuilder.svg` | add-on `om9_matrix` |
