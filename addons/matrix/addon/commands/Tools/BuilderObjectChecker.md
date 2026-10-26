@@ -6,7 +6,7 @@ Kiểm tra vật: cạnh hở, không manifold, tam giác suy biến, thể tíc
 - **Vị trí:** menu Tools, ô số 18
 - **Icon:** `Resources/icons/tools-minimal/BuilderObjectChecker.svg`
 - **Gọi bằng dòng lệnh:** `BuilderObjectChecker`, `ObjectChecker`
-- **Cách chạy:** từng bước trên dòng lệnh, kèm bảng BUILDERS; Enter để tạo, Esc để huỷ
+- **Cách chạy:** từng bước trên dòng lệnh; Enter để tạo, Esc để huỷ
 
 ## Cách dùng
 

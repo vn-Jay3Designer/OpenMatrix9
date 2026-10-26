@@ -6,7 +6,7 @@
 - **Vị trí:** menu Tools, ô số 30
 - **Icon:** `Resources/icons/tools-minimal/BuilderCenterLine.svg`
 - **Gọi bằng dòng lệnh:** `BuilderCenterLine`, `CenterLine`
-- **Cách chạy:** từng bước trên dòng lệnh, kèm bảng BUILDERS; Enter để tạo, Esc để huỷ
+- **Cách chạy:** từng bước trên dòng lệnh; Enter để tạo, Esc để huỷ
 
 ## Cách dùng
 
