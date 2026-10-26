@@ -1,6 +1,6 @@
 # Solid Points On
 
-Bật điểm của khối: dùng nút Edit Points / Control Points của Top 11.
+Bật điểm của khối (đỉnh lưới, điểm điều khiển NURBS) để sửa: bấm điểm, bấm chỗ mới, lặp lại.
 
 - **Mã lệnh:** `SolidPtOn`
 - **Vị trí:** menu Solid, ô số 30
@@ -10,4 +10,7 @@ Bật điểm của khối: dùng nút Edit Points / Control Points của Top 11
 
 ## Cách dùng
 
-1. Gọi lệnh: hướng dẫn.
+1. Chọn khối.
+2. Bấm điểm cần dời.
+3. Bấm (hoặc gõ) vị trí mới. Lặp lại.
+4. Enter.

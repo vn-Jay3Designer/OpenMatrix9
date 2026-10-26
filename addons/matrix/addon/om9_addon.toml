@@ -1711,9 +1711,10 @@ id = "SolidPtOn"
 label = "Solid Points On"
 handler = "om9_addon_session"
 interactive = true
+mesh_data = true
 aliases = ["SolidPtOnCmd"]
-summary = "Bật điểm của khối: dùng nút Edit Points / Control Points của Top 11."
-steps = ["Gọi lệnh: hướng dẫn."]
+summary = "Bật điểm của khối (đỉnh lưới, điểm điều khiển NURBS) để sửa: bấm điểm, bấm chỗ mới, lặp lại."
+steps = ["Chọn khối.", "Bấm điểm cần dời.", "Bấm (hoặc gõ) vị trí mới. Lặp lại.", "Enter."]
 
 [[settings]]
 key = "text_string"
@@ -2193,9 +2194,10 @@ id = "TransformSolidPtOn"
 label = "Solid Points ON"
 handler = "om9_addon_session"
 interactive = true
+mesh_data = true
 aliases = ["TransformSolidPoints"]
-summary = "Bật điểm điều khiển của khối: dùng nút Edit Points / Control Points của Top 11."
-steps = ["Gọi lệnh: hướng dẫn cách bật điểm."]
+summary = "Bật điểm điều khiển của khối để sửa: bấm điểm, bấm chỗ mới, lặp lại."
+steps = ["Chọn khối.", "Bấm điểm cần dời.", "Bấm (hoặc gõ) vị trí mới. Lặp lại.", "Enter."]
 
 # ---- SubD (addons/subd) ----
 

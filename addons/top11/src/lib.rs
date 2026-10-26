@@ -197,13 +197,17 @@ fn nearest(
     dir: Vec3,
 ) -> Option<(usize, usize)> {
     let d = unit(dir);
-    let mut best: Option<(f64, usize, usize)> = None;
+    let mut best: Option<(f64, usize, usize, f64)> = None;
     for (o, (_, _, pts)) in objects.iter().enumerate() {
         for (i, q) in pts.iter().enumerate() {
             let c = sub(*q, p);
             let off = norm(sub(c, scale(d, dot(c, d))));
-            if best.is_none_or(|b| off < b.0) {
-                best = Some((off, o, i));
+            // Points stacked along the view: the one nearest the viewer wins.
+            let better = best.is_none_or(|b: (f64, usize, usize, f64)| {
+                off < b.0 - 1e-9 || (off < b.0 + 1e-9 && dot(*q, d) > b.3 + 1e-9)
+            });
+            if better {
+                best = Some((off, o, i, dot(*q, d)));
             }
         }
     }
@@ -217,6 +221,13 @@ fn points(e: &Event) -> Reply {
     } else {
         "Edit Points On"
     };
+    edit_points(e, control, label)
+}
+
+/// The point editor (also behind Solid / Transform "Solid Points On"): select objects, click a
+/// point, click (or type) where it goes, repeat, Enter. `control` picks control points of
+/// NURBS over points on the curve.
+pub fn edit_points(e: &Event, control: bool, label: &str) -> Reply {
     let mut st: Editing = load(e);
     if st.objects.is_empty() {
         st.objects = e

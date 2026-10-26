@@ -13,5 +13,6 @@ name = "om9_transform_tools"
 [dependencies]
 om9-addon-abi = { path = "../../crates/om9-addon-abi", features = ["session"] }
 om9-addon-geom = { path = "../geom" }
+om9-addon-top11 = { path = "../top11" }
 serde = { workspace = true }
 serde_json = { workspace = true }

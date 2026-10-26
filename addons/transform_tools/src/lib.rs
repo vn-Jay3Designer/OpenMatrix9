@@ -221,8 +221,10 @@ fn copy_flow(label: &str) -> Flow {
 
 /// The curves and the other objects of the selection; the target curve is the longest.
 fn split_curve_target(e: &Event) -> Option<(Path, String, Vec<&Selected>)> {
-    let (curves, _): (Vec<&Selected>, Vec<&Selected>) =
-        e.selection.iter().partition(|s| s.kind == "curve" && s.points.len() >= 2);
+    let (curves, _): (Vec<&Selected>, Vec<&Selected>) = e
+        .selection
+        .iter()
+        .partition(|s| s.kind == "curve" && s.points.len() >= 2);
     let target = curves.iter().max_by(|a, b| {
         Path::new(&a.points, a.closed)
             .map_or(0.0, |p| p.length())
@@ -269,21 +271,17 @@ fn nonuniform(e: &Event) -> Reply {
             [c.n(0)?, c.n(1).unwrap_or(1.0), c.n(2).unwrap_or(1.0)],
         ))
     };
-    flow.step(
-        e,
-        &|c, _| show_matrix(m(c)),
-        &|c| {
-            let (x, y, z) = (c.n(0).unwrap(), c.n(1).unwrap(), c.n(2).unwrap());
-            if x * y * z == 0.0 {
-                return Err("a scale factor of 0 flattens the objects; use Project to CPlane".into());
-            }
-            finish_matrix(
-                m(c).unwrap(),
-                c.yes(&flow, "Copy"),
-                format!("Scale Non-Uniform: {} × {} × {}", fmt(x), fmt(y), fmt(z)),
-            )
-        },
-    )
+    flow.step(e, &|c, _| show_matrix(m(c)), &|c| {
+        let (x, y, z) = (c.n(0).unwrap(), c.n(1).unwrap(), c.n(2).unwrap());
+        if x * y * z == 0.0 {
+            return Err("a scale factor of 0 flattens the objects; use Project to CPlane".into());
+        }
+        finish_matrix(
+            m(c).unwrap(),
+            c.yes(&flow, "Copy"),
+            format!("Scale Non-Uniform: {} × {} × {}", fmt(x), fmt(y), fmt(z)),
+        )
+    })
 }
 
 fn scale_by_plane(e: &Event) -> Reply {
@@ -479,7 +477,10 @@ fn symmetry(e: &Event) -> Reply {
                 keep_original: true,
                 per_object: Vec::new(),
             })
-            .say(format!("Symmetry: mirrored across {}", c.opt(&flow, "Axis"))))
+            .say(format!(
+                "Symmetry: mirrored across {}",
+                c.opt(&flow, "Axis")
+            )))
         },
     )
 }
@@ -523,7 +524,10 @@ fn move_uvn(e: &Event) -> Reply {
         .number("Distance along N (CPlane normal)", 0.0);
     let m = |c: &Collected| {
         let d = add(
-            add(scale(e.plane.x, c.n(0)?), scale(e.plane.y, c.n(1).unwrap_or(0.0))),
+            add(
+                scale(e.plane.x, c.n(0)?),
+                scale(e.plane.y, c.n(1).unwrap_or(0.0)),
+            ),
             scale(e.plane.normal(), c.n(2).unwrap_or(0.0)),
         );
         Some(translation(d))
@@ -578,7 +582,10 @@ fn down_facing(e: &Event) -> Reply {
         keep_original: false,
         per_object,
     })
-    .say(format!("Make Down Facing: {} objects turned", e.selection.len()))
+    .say(format!(
+        "Make Down Facing: {} objects turned",
+        e.selection.len()
+    ))
 }
 
 // ---- deformations ----------------------------------------------------------------------------
@@ -657,7 +664,13 @@ fn taper(e: &Event) -> Reply {
     };
     flow.step(
         e,
-        &|c, _| if c.n(1).is_some() { show_deform(e, &f(c)) } else { Show::default() },
+        &|c, _| {
+            if c.n(1).is_some() {
+                show_deform(e, &f(c))
+            } else {
+                Show::default()
+            }
+        },
         &|c| finish_deform(e, "Taper", &f(c)),
     )
 }
@@ -686,7 +699,13 @@ fn twist(e: &Event) -> Reply {
     };
     flow.step(
         e,
-        &|c, _| if c.n(0).is_some() { show_deform(e, &f(c)) } else { Show::default() },
+        &|c, _| {
+            if c.n(0).is_some() {
+                show_deform(e, &f(c))
+            } else {
+                Show::default()
+            }
+        },
         &|c| finish_deform(e, "Twist", &f(c)),
     )
 }
@@ -714,7 +733,13 @@ fn stretch(e: &Event) -> Reply {
     };
     flow.step(
         e,
-        &|c, h| if c.p(1).is_some() { show_deform(e, &f(c, h)) } else { Show::default() },
+        &|c, h| {
+            if c.p(1).is_some() {
+                show_deform(e, &f(c, h))
+            } else {
+                Show::default()
+            }
+        },
         &|c| finish_deform(e, "Stretch", &f(c, None)),
     )
 }
@@ -745,7 +770,13 @@ fn maelstrom(e: &Event) -> Reply {
     };
     flow.step(
         e,
-        &|c, _| if c.n(1).is_some() { show_deform(e, &f(c)) } else { Show::default() },
+        &|c, _| {
+            if c.n(1).is_some() {
+                show_deform(e, &f(c))
+            } else {
+                Show::default()
+            }
+        },
         &|c| finish_deform(e, "Maelstrom", &f(c)),
     )
 }
@@ -773,7 +804,13 @@ fn soft_move(e: &Event) -> Reply {
     };
     flow.step(
         e,
-        &|c, h| if c.p(0).is_some() { show_deform(e, &f(c, h)) } else { Show::default() },
+        &|c, h| {
+            if c.p(0).is_some() {
+                show_deform(e, &f(c, h))
+            } else {
+                Show::default()
+            }
+        },
         &|c| finish_deform(e, "Soft Move", &f(c, None)),
     )
 }
@@ -858,10 +895,27 @@ pub fn flow_point(
     f.point([0.0, l[1], l[2]])
 }
 
-fn flow_finish(e: &Event, label: &str, rigid: bool, base: Frame, base_len: f64, target: &Path, target_id: &str, others: &[&Selected], stretch: bool, up: Option<Vec3>) -> Result<Reply, String> {
-    let objects: Vec<&Selected> = others.iter().copied().filter(|s| s.id != target_id).collect();
+fn flow_finish(
+    e: &Event,
+    label: &str,
+    rigid: bool,
+    base: Frame,
+    base_len: f64,
+    target: &Path,
+    target_id: &str,
+    others: &[&Selected],
+    stretch: bool,
+    up: Option<Vec3>,
+) -> Result<Reply, String> {
+    let objects: Vec<&Selected> = others
+        .iter()
+        .copied()
+        .filter(|s| s.id != target_id)
+        .collect();
     if objects.is_empty() {
-        return Err(format!("{label}: select the objects as well as the target curve"));
+        return Err(format!(
+            "{label}: select the objects as well as the target curve"
+        ));
     }
     if rigid {
         let per_object = objects
@@ -887,21 +941,31 @@ fn flow_finish(e: &Event, label: &str, rigid: bool, base: Frame, base_len: f64, 
             keep_original: false,
             per_object,
         })
-        .say(format!("{label}: {} objects placed along the curve", objects.len())));
+        .say(format!(
+            "{label}: {} objects placed along the curve",
+            objects.len()
+        )));
     }
     let e2 = only(e, &objects);
-    finish_deform(&e2, label, &|p| flow_point(p, &base, base_len, target, up, stretch))
+    finish_deform(&e2, label, &|p| {
+        flow_point(p, &base, base_len, target, up, stretch)
+    })
 }
 
 fn smart_flow(e: &Event, rigid: bool) -> Reply {
-    let label = if rigid { "Smart Flow Rigid" } else { "Smart Flow" };
+    let label = if rigid {
+        "Smart Flow Rigid"
+    } else {
+        "Smart Flow"
+    };
     let flow = Flow::new(label).toggle("Stretch", true);
     let mut flow = flow;
     flow.select = true;
     let c: Collected = om9_addon_geom::cmd::load(e);
     let compute = |c: &Collected| -> Result<(Frame, f64, Path, String, Vec<&Selected>), String> {
-        let (path, id, others) = split_curve_target(e)
-            .ok_or_else(|| format!("{label}: select the objects and the target curve (ring rail)"))?;
+        let (path, id, others) = split_curve_target(e).ok_or_else(|| {
+            format!("{label}: select the objects and the target curve (ring rail)")
+        })?;
         let objs: Vec<&Selected> = others.into_iter().collect();
         let b = bbox(&objs).ok_or_else(|| format!("{label}: select the objects to flow"))?;
         // The design lies along the CPlane x axis; its length is the base.
@@ -923,24 +987,39 @@ fn smart_flow(e: &Event, rigid: bool) -> Reply {
                     Err(why) => flow.step(e, &|_, _| Show::default(), &|_| Err(why.clone())),
                 }
             }
-            Err(why) => Reply::ask(format!("{label}: select the objects and the target curve"), om9_addon_geom::cmd::save(&c))
-                .want(Want::Objects)
-                .refuse(why),
+            Err(why) => Reply::ask(
+                format!("{label}: select the objects and the target curve"),
+                om9_addon_geom::cmd::save(&c),
+            )
+            .want(Want::Objects)
+            .refuse(why),
         },
         _ => {
             let mut r = flow.step(e, &|_, _| Show::default(), &|_| Err(String::new()));
             r.error = r.error.filter(|w| !w.is_empty());
-            let stretch = om9_addon_geom::cmd::load::<Collected>(&Event { state: r.state.clone(), ..e.clone() }).yes(&flow, "Stretch");
+            let stretch = om9_addon_geom::cmd::load::<Collected>(&Event {
+                state: r.state.clone(),
+                ..e.clone()
+            })
+            .yes(&flow, "Stretch");
             r.prompt = match compute(&c) {
                 Ok((base, len, path, id, objs)) => {
                     if !rigid {
                         let e2 = only(e, &objs);
-                        r.preview = show_deform(&e2, &|p| flow_point(p, &base, len, &path, None, stretch)).geo;
+                        r.preview =
+                            show_deform(&e2, &|p| flow_point(p, &base, len, &path, None, stretch))
+                                .geo;
                     }
                     let _ = id;
-                    format!("{label}: {} objects onto a {} mm curve. Enter to flow", objs.len(), fmt(path.length()))
+                    format!(
+                        "{label}: {} objects onto a {} mm curve. Enter to flow",
+                        objs.len(),
+                        fmt(path.length())
+                    )
                 }
-                Err(_) => format!("{label}: select the objects and the target curve (ring rail), then Enter"),
+                Err(_) => format!(
+                    "{label}: select the objects and the target curve (ring rail), then Enter"
+                ),
             };
             r.want = Want::Objects;
             r
@@ -958,7 +1037,9 @@ fn smart_flow_break(e: &Event) -> Reply {
 }
 
 fn flow_along_curve(e: &Event) -> Reply {
-    let flow = Flow::new("Flow Along Curve").toggle("Stretch", false).toggle("Rigid", false);
+    let flow = Flow::new("Flow Along Curve")
+        .toggle("Stretch", false)
+        .toggle("Rigid", false);
     let c: Collected = om9_addon_geom::cmd::load(e);
     // Base: the selected curve nearest the objects; target: the other curve.
     let compute = || -> Result<(Path, Path, String, String, Vec<&Selected>), String> {
@@ -976,7 +1057,9 @@ fn flow_along_curve(e: &Event) -> Reply {
             // Curves being flowed: the two longest are base and target.
             let mut cs = curves.clone();
             cs.sort_by(|a, b| {
-                Path::new(&b.points, b.closed).map_or(0.0, |p| p.length()).total_cmp(&Path::new(&a.points, a.closed).map_or(0.0, |p| p.length()))
+                Path::new(&b.points, b.closed)
+                    .map_or(0.0, |p| p.length())
+                    .total_cmp(&Path::new(&a.points, a.closed).map_or(0.0, |p| p.length()))
             });
             let rest: Vec<&Selected> = cs[2..].iter().copied().chain(objects).collect();
             (cs[..2].to_vec(), rest)
@@ -984,7 +1067,9 @@ fn flow_along_curve(e: &Event) -> Reply {
             (curves, objects)
         };
         if curves.len() != 2 || objects.is_empty() {
-            return Err("Flow Along Curve: select the objects, the base curve and the target curve".into());
+            return Err(
+                "Flow Along Curve: select the objects, the base curve and the target curve".into(),
+            );
         }
         let b = bbox(&objects).unwrap();
         let mid = center(b);
@@ -1008,8 +1093,14 @@ fn flow_along_curve(e: &Event) -> Reply {
         let s = base.closest(p);
         let bf = base.frame(s, Some(e.plane.normal()));
         let l = bf.local(p);
-        let st = if stretch { s / base.length() * target.length() } else { s };
-        target.frame(st, Some(e.plane.normal())).point([0.0, l[1], l[2]])
+        let st = if stretch {
+            s / base.length() * target.length()
+        } else {
+            s
+        };
+        target
+            .frame(st, Some(e.plane.normal()))
+            .point([0.0, l[1], l[2]])
     };
     match &e.input {
         Input::Enter => match compute() {
@@ -1022,10 +1113,18 @@ fn flow_along_curve(e: &Event) -> Reply {
                             let m = center(s.bbox);
                             let sb = base.closest(m);
                             let from = base.frame(sb, Some(e.plane.normal()));
-                            let st = if stretch { sb / base.length() * target.length() } else { sb };
+                            let st = if stretch {
+                                sb / base.length() * target.length()
+                            } else {
+                                sb
+                            };
                             ObjectMatrix {
                                 id: s.id.clone(),
-                                matrix: frame_matrix(&from, &target.frame(st, Some(e.plane.normal())), 1.0),
+                                matrix: frame_matrix(
+                                    &from,
+                                    &target.frame(st, Some(e.plane.normal())),
+                                    1.0,
+                                ),
                             }
                         })
                         .collect();
@@ -1034,16 +1133,27 @@ fn flow_along_curve(e: &Event) -> Reply {
                         keep_original: false,
                         per_object,
                     })
-                    .say(format!("Flow Along Curve: {} objects placed", objects.len()));
+                    .say(format!(
+                        "Flow Along Curve: {} objects placed",
+                        objects.len()
+                    ));
                 }
                 let e2 = only(e, &objects);
-                finish_deform(&e2, "Flow Along Curve", &|p| map(p, &base, &target, stretch)).unwrap_or_else(|why| {
-                    Reply::ask("Flow Along Curve", om9_addon_geom::cmd::save(&c)).want(Want::Objects).refuse(why)
+                finish_deform(&e2, "Flow Along Curve", &|p| {
+                    map(p, &base, &target, stretch)
+                })
+                .unwrap_or_else(|why| {
+                    Reply::ask("Flow Along Curve", om9_addon_geom::cmd::save(&c))
+                        .want(Want::Objects)
+                        .refuse(why)
                 })
             }
-            Err(why) => Reply::ask("Flow Along Curve: select the objects and two curves", om9_addon_geom::cmd::save(&c))
-                .want(Want::Objects)
-                .refuse(why),
+            Err(why) => Reply::ask(
+                "Flow Along Curve: select the objects and two curves",
+                om9_addon_geom::cmd::save(&c),
+            )
+            .want(Want::Objects)
+            .refuse(why),
         },
         _ => {
             let mut r = flow.step(e, &|_, _| Show::default(), &|_| Err(String::new()));
@@ -1077,7 +1187,9 @@ fn flow_along_surface(e: &Event, splop: bool) -> Reply {
         let (surface, others) = split_surface_target(e)
             .ok_or_else(|| format!("{label}: select the objects and the target surface"))?;
         if others.is_empty() {
-            return Err(format!("{label}: select the objects as well as the surface"));
+            return Err(format!(
+                "{label}: select the objects as well as the surface"
+            ));
         }
         let target = Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?;
         let c = center(bbox(&others).unwrap());
@@ -1101,23 +1213,37 @@ fn flow_along_surface(e: &Event, splop: bool) -> Reply {
     let finish = |c: &Collected| -> Result<Reply, String> {
         let (target, objs, mid) = prepared()?;
         let to = if splop { c.p(0).unwrap() } else { mid };
-        let (rot, s) = if splop { (c.n(0).unwrap(), c.n(1).unwrap()) } else { (0.0, 1.0) };
+        let (rot, s) = if splop {
+            (c.n(0).unwrap(), c.n(1).unwrap())
+        } else {
+            (0.0, 1.0)
+        };
         // Heights are measured from the design's lowest point.
         let low = bbox(&objs).unwrap()[0];
-        let base = e.plane.at(e.plane.local(mid)[0], e.plane.local(mid)[1], e.plane.local(low)[2]);
+        let base = e.plane.at(
+            e.plane.local(mid)[0],
+            e.plane.local(mid)[1],
+            e.plane.local(low)[2],
+        );
         let e2 = only(e, &objs);
         finish_deform(&e2, label, &|p| map(&target, p, base, to, rot, s))
     };
     if !splop {
         if matches!(e.input, Input::Enter) && !e.selection.is_empty() {
             return finish(&Collected::default()).unwrap_or_else(|why| {
-                Reply::ask(format!("{label}: select the objects and the surface"), json!({}))
-                    .want(Want::Objects)
-                    .refuse(why)
+                Reply::ask(
+                    format!("{label}: select the objects and the surface"),
+                    json!({}),
+                )
+                .want(Want::Objects)
+                .refuse(why)
             });
         }
         let prompt = match prepared() {
-            Ok((_, objs, _)) => format!("{label}: {} objects onto the surface. Enter to flow", objs.len()),
+            Ok((_, objs, _)) => format!(
+                "{label}: {} objects onto the surface. Enter to flow",
+                objs.len()
+            ),
             Err(why) => why,
         };
         return Reply::ask(prompt, json!({})).want(Want::Objects);
@@ -1134,11 +1260,17 @@ fn pull_down(e: &Event) -> Reply {
         if curves.is_empty() {
             return Err("Smart Flow Pull Down Curves: select curves above the surface".into());
         }
-        Ok((Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?, curves))
+        Ok((
+            Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?,
+            curves,
+        ))
     };
     if !matches!(e.input, Input::Enter) {
         let prompt = match compute() {
-            Ok((_, c)) => format!("Smart Flow Pull Down Curves: {} curves. Enter pulls them onto the surface", c.len()),
+            Ok((_, c)) => format!(
+                "Smart Flow Pull Down Curves: {} curves. Enter pulls them onto the surface",
+                c.len()
+            ),
             Err(w) => w,
         };
         return Reply::ask(prompt, json!({})).want(Want::Objects);
@@ -1149,9 +1281,20 @@ fn pull_down(e: &Event) -> Reply {
             finish_deform(&e2, "Smart Flow Pull Down Curves", &|p| {
                 target.drop(add(p, scale(n, 1e6))).map_or(p, |h| h.0)
             })
-            .unwrap_or_else(|w| Reply::ask("Smart Flow Pull Down Curves: select the curves and the target, Enter", json!({})).refuse(w))
+            .unwrap_or_else(|w| {
+                Reply::ask(
+                    "Smart Flow Pull Down Curves: select the curves and the target, Enter",
+                    json!({}),
+                )
+                .refuse(w)
+            })
         }
-        Err(w) => Reply::ask("Smart Flow Pull Down Curves: select the curves and the target, Enter", json!({})).want(Want::Objects).refuse(w),
+        Err(w) => Reply::ask(
+            "Smart Flow Pull Down Curves: select the curves and the target, Enter",
+            json!({}),
+        )
+        .want(Want::Objects)
+        .refuse(w),
     }
 }
 
@@ -1182,9 +1325,19 @@ fn array_along_curve(e: &Event, label: &str) -> Reply {
         for k in 0..n {
             let s = k as f64 * step;
             let to = if orient {
-                path.frame(s, if path.closed { None } else { Some(e.plane.normal()) })
+                path.frame(
+                    s,
+                    if path.closed {
+                        None
+                    } else {
+                        Some(e.plane.normal())
+                    },
+                )
             } else {
-                Frame { origin: path.at(s), ..from }
+                Frame {
+                    origin: path.at(s),
+                    ..from
+                }
             };
             let m = frame_matrix(&from, &to, 1.0);
             for o in &objects {
@@ -1248,7 +1401,13 @@ fn array_curve_on_surface(e: &Event) -> Reply {
         let mid = e.plane.local(center(b));
         let from = Frame::new(e.plane.at(mid[0], mid[1], low), n, e.plane.x);
         let count = count.max(1);
-        let step = if path.closed { path.length() / count as f64 } else if count > 1 { path.length() / (count - 1) as f64 } else { 0.0 };
+        let step = if path.closed {
+            path.length() / count as f64
+        } else if count > 1 {
+            path.length() / (count - 1) as f64
+        } else {
+            0.0
+        };
         let mut out = Vec::new();
         for k in 0..count {
             let s = k as f64 * step;
@@ -1256,15 +1415,22 @@ fn array_curve_on_surface(e: &Event) -> Reply {
             let (hit, normal) = target.drop(add(p, scale(n, 1e6))).unwrap_or((p, n));
             let to = Frame::new(hit, normal, path.tangent(s));
             let m = frame_matrix(&from, &to, 1.0);
-            out.extend(objects.iter().map(|o| ObjectMatrix { id: o.id.clone(), matrix: m }));
+            out.extend(objects.iter().map(|o| ObjectMatrix {
+                id: o.id.clone(),
+                matrix: m,
+            }));
         }
         Ok(out)
     };
     flow.step(e, &|_, _| Show::default(), &|c| {
         let count = c.n(0).unwrap().round().max(1.0) as usize;
         let per_object = plan(count)?;
-        Ok(Reply::finish_transform(TransformOp { matrices: Vec::new(), keep_original: true, per_object })
-            .say(format!("Array Along Curve on Surface: {count} items")))
+        Ok(Reply::finish_transform(TransformOp {
+            matrices: Vec::new(),
+            keep_original: true,
+            per_object,
+        })
+        .say(format!("Array Along Curve on Surface: {count} items")))
     })
 }
 
@@ -1273,8 +1439,12 @@ fn array_along_surface(e: &Event) -> Reply {
         .number("Number in the CPlane x direction", 4.0)
         .number("Number in the CPlane y direction", 4.0);
     flow.step(e, &|_, _| Show::default(), &|c| {
-        let (nu, nv) = (c.n(0).unwrap().round().max(1.0) as usize, c.n(1).unwrap().round().max(1.0) as usize);
-        let (surface, objects) = split_surface_target(e).ok_or("Array Along Surface: select the objects and the surface")?;
+        let (nu, nv) = (
+            c.n(0).unwrap().round().max(1.0) as usize,
+            c.n(1).unwrap().round().max(1.0) as usize,
+        );
+        let (surface, objects) = split_surface_target(e)
+            .ok_or("Array Along Surface: select the objects and the surface")?;
         if objects.is_empty() {
             return Err("Array Along Surface: select the objects as well as the surface".into());
         }
@@ -1282,8 +1452,15 @@ fn array_along_surface(e: &Event) -> Reply {
         let target = Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?;
         let b = bbox(&objects).unwrap();
         let mid = e.plane.local(center(b));
-        let from = Frame::new(e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]), n, e.plane.x);
-        let (lo, hi) = (e.plane.local(surface.bbox[0]), e.plane.local(surface.bbox[1]));
+        let from = Frame::new(
+            e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]),
+            n,
+            e.plane.x,
+        );
+        let (lo, hi) = (
+            e.plane.local(surface.bbox[0]),
+            e.plane.local(surface.bbox[1]),
+        );
         let (x0, x1) = (lo[0].min(hi[0]), lo[0].max(hi[0]));
         let (y0, y1) = (lo[1].min(hi[1]), lo[1].max(hi[1]));
         let mut per_object = Vec::new();
@@ -1291,17 +1468,26 @@ fn array_along_surface(e: &Event) -> Reply {
             for j in 0..nv {
                 let u = x0 + (x1 - x0) * (i as f64 + 0.5) / nu as f64;
                 let v = y0 + (y1 - y0) * (j as f64 + 0.5) / nv as f64;
-                let Some((hit, normal)) = target.drop(e.plane.at(u, v, 1e6)) else { continue };
+                let Some((hit, normal)) = target.drop(e.plane.at(u, v, 1e6)) else {
+                    continue;
+                };
                 let m = frame_matrix(&from, &Frame::new(hit, normal, e.plane.x), 1.0);
-                per_object.extend(objects.iter().map(|o| ObjectMatrix { id: o.id.clone(), matrix: m }));
+                per_object.extend(objects.iter().map(|o| ObjectMatrix {
+                    id: o.id.clone(),
+                    matrix: m,
+                }));
             }
         }
         if per_object.is_empty() {
             return Err("Array Along Surface: the grid misses the surface".into());
         }
         let items = per_object.len() / objects.len();
-        Ok(Reply::finish_transform(TransformOp { matrices: Vec::new(), keep_original: true, per_object })
-            .say(format!("Array Along Surface: {items} items")))
+        Ok(Reply::finish_transform(TransformOp {
+            matrices: Vec::new(),
+            keep_original: true,
+            per_object,
+        })
+        .say(format!("Array Along Surface: {items} items")))
     })
 }
 
@@ -1311,31 +1497,44 @@ fn orient_on_surface(e: &Event) -> Reply {
         .point("Point on the surface (picked through the top of the CPlane)");
     let n = e.plane.normal();
     let plan = |p: Vec3| -> Result<[f64; 16], String> {
-        let (surface, objects) = split_surface_target(e).ok_or("Orient on Surface: select the objects and the surface")?;
+        let (surface, objects) = split_surface_target(e)
+            .ok_or("Orient on Surface: select the objects and the surface")?;
         if objects.is_empty() {
             return Err("Orient on Surface: select the objects as well as the surface".into());
         }
         let target = Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?;
-        let (hit, normal) = target.drop(add(p, scale(n, 1e6))).ok_or("Orient on Surface: the point is not over the surface")?;
+        let (hit, normal) = target
+            .drop(add(p, scale(n, 1e6)))
+            .ok_or("Orient on Surface: the point is not over the surface")?;
         let b = bbox(&objects).unwrap();
         let mid = e.plane.local(center(b));
-        let from = Frame::new(e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]), n, e.plane.x);
-        Ok(frame_matrix(&from, &Frame::new(hit, normal, e.plane.x), 1.0))
+        let from = Frame::new(
+            e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]),
+            n,
+            e.plane.x,
+        );
+        Ok(frame_matrix(
+            &from,
+            &Frame::new(hit, normal, e.plane.x),
+            1.0,
+        ))
     };
-    flow.step(
-        e,
-        &|_, h| show_matrix(h.and_then(|p| plan(p).ok())),
-        &|c| {
-            let m = plan(c.p(0).unwrap())?;
-            let (_, objects) = split_surface_target(e).unwrap();
-            Ok(Reply::finish_transform(TransformOp {
-                matrices: Vec::new(),
-                keep_original: c.yes(&flow, "Copy"),
-                per_object: objects.iter().map(|o| ObjectMatrix { id: o.id.clone(), matrix: m }).collect(),
-            })
-            .say("Orient on Surface: placed"))
-        },
-    )
+    flow.step(e, &|_, h| show_matrix(h.and_then(|p| plan(p).ok())), &|c| {
+        let m = plan(c.p(0).unwrap())?;
+        let (_, objects) = split_surface_target(e).unwrap();
+        Ok(Reply::finish_transform(TransformOp {
+            matrices: Vec::new(),
+            keep_original: c.yes(&flow, "Copy"),
+            per_object: objects
+                .iter()
+                .map(|o| ObjectMatrix {
+                    id: o.id.clone(),
+                    matrix: m,
+                })
+                .collect(),
+        })
+        .say("Orient on Surface: placed"))
+    })
 }
 
 fn orient_perpendicular(e: &Event) -> Reply {
@@ -1343,27 +1542,46 @@ fn orient_perpendicular(e: &Event) -> Reply {
         .toggle("Copy", true)
         .point("Point near the curve to orient to");
     let plan = |p: Vec3| -> Result<(Vec<ObjectMatrix>, ()), String> {
-        let (path, id, objects) = split_curve_target(e).ok_or("Orient Perpendicular to Curve: select the objects and the curve")?;
+        let (path, id, objects) = split_curve_target(e)
+            .ok_or("Orient Perpendicular to Curve: select the objects and the curve")?;
         let objects: Vec<&Selected> = objects.into_iter().filter(|s| s.id != id).collect();
-        let b = bbox(&objects).ok_or("Orient Perpendicular to Curve: select the objects as well as the curve")?;
+        let b = bbox(&objects)
+            .ok_or("Orient Perpendicular to Curve: select the objects as well as the curve")?;
         let from = Frame::new(center(b), e.plane.normal(), e.plane.x);
         let s = path.closest(p);
         // The objects' CPlane normal follows the curve direction there.
         let t = path.tangent(s);
         let to = Frame::new(path.at(s), t, cross(t, e.plane.normal()));
         let m = frame_matrix(&from, &to, 1.0);
-        Ok((objects.iter().map(|o| ObjectMatrix { id: o.id.clone(), matrix: m }).collect(), ()))
+        Ok((
+            objects
+                .iter()
+                .map(|o| ObjectMatrix {
+                    id: o.id.clone(),
+                    matrix: m,
+                })
+                .collect(),
+            (),
+        ))
     };
     flow.step(
         e,
         &|_, h| Show {
-            transforms: h.and_then(|p| plan(p).ok()).and_then(|(m, _)| m.first().map(|m| m.matrix)).into_iter().collect(),
+            transforms: h
+                .and_then(|p| plan(p).ok())
+                .and_then(|(m, _)| m.first().map(|m| m.matrix))
+                .into_iter()
+                .collect(),
             ..Default::default()
         },
         &|c| {
             let (per_object, _) = plan(c.p(0).unwrap())?;
-            Ok(Reply::finish_transform(TransformOp { matrices: Vec::new(), keep_original: c.yes(&flow, "Copy"), per_object })
-                .say("Orient Perpendicular to Curve: placed"))
+            Ok(Reply::finish_transform(TransformOp {
+                matrices: Vec::new(),
+                keep_original: c.yes(&flow, "Copy"),
+                per_object,
+            })
+            .say("Orient Perpendicular to Curve: placed"))
         },
     )
 }
@@ -1388,7 +1606,10 @@ fn box_corners(e: &Event, lo: Vec3, hi: Vec3) -> [Vec3; 8] {
 fn create_cage(e: &Event) -> Reply {
     if e.selection.is_empty() || !matches!(e.input, Input::Enter) {
         let r = Reply::ask(
-            format!("Create Cage: {} objects. Enter creates a box cage around them", e.selection.len()),
+            format!(
+                "Create Cage: {} objects. Enter creates a box cage around them",
+                e.selection.len()
+            ),
             json!({}),
         )
         .want(Want::Objects);
@@ -1443,7 +1664,11 @@ pub fn cage_map(p: Vec3, original: &[Vec3; 8], current: &[Vec3; 8]) -> Vec3 {
     let ey = sub(o[3], o[0]);
     let ez = sub(o[4], o[0]);
     let q = sub(p, o[0]);
-    let (u, v, w) = (dot(q, ex) / dot(ex, ex), dot(q, ey) / dot(ey, ey), dot(q, ez) / dot(ez, ez));
+    let (u, v, w) = (
+        dot(q, ex) / dot(ex, ex),
+        dot(q, ey) / dot(ey, ey),
+        dot(q, ez) / dot(ez, ez),
+    );
     let c = current;
     let lerp = |a: Vec3, b: Vec3, t: f64| add(a, scale(sub(b, a), t));
     let bottom = lerp(lerp(c[0], c[1], u), lerp(c[3], c[2], u), v);
@@ -1459,8 +1684,12 @@ fn cage_edit(e: &Event) -> Reply {
             .find(|s| s.gem.as_ref().is_some_and(|g| g.get("om9_cage").is_some()))
             .ok_or("Cage Edit: select a cage (from Create Cage) and the objects")?;
         let rec = &cage.gem.as_ref().unwrap()["om9_cage"]["corners"];
-        let original: Vec<Vec3> = serde_json::from_value(rec.clone()).map_err(|_| "Cage Edit: the cage record is damaged")?;
-        let current = cage.mesh.as_ref().ok_or("Cage Edit: the cage has no points")?;
+        let original: Vec<Vec3> = serde_json::from_value(rec.clone())
+            .map_err(|_| "Cage Edit: the cage record is damaged")?;
+        let current = cage
+            .mesh
+            .as_ref()
+            .ok_or("Cage Edit: the cage has no points")?;
         if original.len() != 8 || current.vertices.len() != 8 {
             return Err("Cage Edit: the cage must keep its 8 points".into());
         }
@@ -1477,7 +1706,10 @@ fn cage_edit(e: &Event) -> Reply {
     };
     if !matches!(e.input, Input::Enter) {
         let prompt = match find() {
-            Ok((_, _, _, objs)) => format!("Cage Edit: {} objects follow the cage. Enter to apply", objs.len()),
+            Ok((_, _, _, objs)) => format!(
+                "Cage Edit: {} objects follow the cage. Enter to apply",
+                objs.len()
+            ),
             Err(w) => w,
         };
         let mut r = Reply::ask(prompt, json!({})).want(Want::Objects);
@@ -1487,20 +1719,29 @@ fn cage_edit(e: &Event) -> Reply {
         return r;
     }
     match find() {
-        Ok((o, c, _, objs)) => finish_deform(&only(e, &objs), "Cage Edit", &|p| cage_map(p, &o, &c))
-            .unwrap_or_else(|w| Reply::ask("Cage Edit: select the cage and the objects, Enter", json!({})).want(Want::Objects).refuse(w)),
-        Err(w) => Reply::ask("Cage Edit: select the cage and the objects, Enter", json!({})).want(Want::Objects).refuse(w),
+        Ok((o, c, _, objs)) => {
+            finish_deform(&only(e, &objs), "Cage Edit", &|p| cage_map(p, &o, &c)).unwrap_or_else(
+                |w| {
+                    Reply::ask(
+                        "Cage Edit: select the cage and the objects, Enter",
+                        json!({}),
+                    )
+                    .want(Want::Objects)
+                    .refuse(w)
+                },
+            )
+        }
+        Err(w) => Reply::ask(
+            "Cage Edit: select the cage and the objects, Enter",
+            json!({}),
+        )
+        .want(Want::Objects)
+        .refuse(w),
     }
 }
 
 fn solid_points(e: &Event) -> Reply {
-    let _ = e;
-    let mut r = Reply::finish(Vec::new());
-    r.messages.push(
-        "Solid Points On: OM9 edits points with the Top 11 Edit Points / Control Points buttons; select the object and use them (meshes and NURBS objects show their points there)."
-            .into(),
-    );
-    r
+    om9_top11::edit_points(e, true, "Solid Points On")
 }
 
 #[cfg(test)]

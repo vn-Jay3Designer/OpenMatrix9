@@ -1,6 +1,6 @@
 # Solid Points ON
 
-Bật điểm điều khiển của khối: dùng nút Edit Points / Control Points của Top 11.
+Bật điểm điều khiển của khối để sửa: bấm điểm, bấm chỗ mới, lặp lại.
 
 - **Mã lệnh:** `TransformSolidPtOn`
 - **Vị trí:** menu Transform, ô số 19
@@ -10,4 +10,7 @@ Bật điểm điều khiển của khối: dùng nút Edit Points / Control Poi
 
 ## Cách dùng
 
-1. Gọi lệnh: hướng dẫn cách bật điểm.
+1. Chọn khối.
+2. Bấm điểm cần dời.
+3. Bấm (hoặc gõ) vị trí mới. Lặp lại.
+4. Enter.

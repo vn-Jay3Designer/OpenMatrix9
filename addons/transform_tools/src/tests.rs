@@ -85,14 +85,20 @@ fn box_mesh(id: &str, lo: Vec3, hi: Vec3) -> Selected {
         kind: "mesh".into(),
         name: "Box".into(),
         bbox: [lo, hi],
-        mesh: Some(SelectedMesh { vertices: m.vertices, triangles: m.triangles }),
+        mesh: Some(SelectedMesh {
+            vertices: m.vertices,
+            triangles: m.triangles,
+        }),
         ..Default::default()
     }
 }
 
 fn first_matrix(r: &Reply) -> [f64; 16] {
     let op = r.transform.as_ref().unwrap();
-    op.matrices.first().copied().unwrap_or_else(|| op.per_object[0].matrix)
+    op.matrices
+        .first()
+        .copied()
+        .unwrap_or_else(|| op.per_object[0].matrix)
 }
 
 fn close(a: Vec3, b: Vec3) -> bool {
@@ -102,18 +108,92 @@ fn close(a: Vec3, b: Vec3) -> bool {
 #[test]
 fn matrices() {
     let sel = vec![line("a", [0.0; 3], [1.0, 0.0, 0.0])];
-    let r = run(NONUNIFORM, sel.clone(), vec![Input::Selection, pt([1.0, 1.0, 0.0]), num(2.0), num(3.0), num(1.0)]);
+    let r = run(
+        NONUNIFORM,
+        sel.clone(),
+        vec![
+            Input::Selection,
+            pt([1.0, 1.0, 0.0]),
+            num(2.0),
+            num(3.0),
+            num(1.0),
+        ],
+    );
     assert!(r.done);
-    assert!(close(apply(&first_matrix(&r), [2.0, 2.0, 1.0]), [3.0, 4.0, 1.0]));
-    let r = run(ORIENT2, sel.clone(), vec![Input::Selection, pt([0.0; 3]), pt([1.0, 0.0, 0.0]), pt([5.0, 5.0, 0.0]), pt([5.0, 7.0, 0.0])]);
-    assert!(close(apply(&first_matrix(&r), [1.0, 0.0, 0.0]), [5.0, 6.0, 0.0]));
-    let r = run(ORIENT2, sel.clone(), vec![Input::Selection, Input::Option { name: "Scale".into(), value: None }, pt([0.0; 3]), pt([1.0, 0.0, 0.0]), pt([5.0, 5.0, 0.0]), pt([5.0, 7.0, 0.0])]);
-    assert!(close(apply(&first_matrix(&r), [1.0, 0.0, 0.0]), [5.0, 7.0, 0.0]), "scaled");
-    let r = run(ORIENT3, sel.clone(), vec![Input::Selection, pt([0.0; 3]), pt([1.0, 0.0, 0.0]), pt([0.0, 1.0, 0.0]), pt([0.0; 3]), pt([0.0, 0.0, 1.0]), pt([1.0, 0.0, 0.0])]);
-    assert!(close(apply(&first_matrix(&r), [0.0, 1.0, 0.0]), [1.0, 0.0, 0.0]));
-    let r = run(SHEAR, sel.clone(), vec![Input::Selection, pt([0.0; 3]), pt([1.0, 0.0, 0.0]), num(45.0)]);
-    assert!(close(apply(&first_matrix(&r), [0.0, 2.0, 0.0]), [2.0, 2.0, 0.0]));
-    let r = run(MOVE_UVN, sel.clone(), vec![Input::Selection, num(1.0), num(2.0), num(3.0)]);
+    assert!(close(
+        apply(&first_matrix(&r), [2.0, 2.0, 1.0]),
+        [3.0, 4.0, 1.0]
+    ));
+    let r = run(
+        ORIENT2,
+        sel.clone(),
+        vec![
+            Input::Selection,
+            pt([0.0; 3]),
+            pt([1.0, 0.0, 0.0]),
+            pt([5.0, 5.0, 0.0]),
+            pt([5.0, 7.0, 0.0]),
+        ],
+    );
+    assert!(close(
+        apply(&first_matrix(&r), [1.0, 0.0, 0.0]),
+        [5.0, 6.0, 0.0]
+    ));
+    let r = run(
+        ORIENT2,
+        sel.clone(),
+        vec![
+            Input::Selection,
+            Input::Option {
+                name: "Scale".into(),
+                value: None,
+            },
+            pt([0.0; 3]),
+            pt([1.0, 0.0, 0.0]),
+            pt([5.0, 5.0, 0.0]),
+            pt([5.0, 7.0, 0.0]),
+        ],
+    );
+    assert!(
+        close(apply(&first_matrix(&r), [1.0, 0.0, 0.0]), [5.0, 7.0, 0.0]),
+        "scaled"
+    );
+    let r = run(
+        ORIENT3,
+        sel.clone(),
+        vec![
+            Input::Selection,
+            pt([0.0; 3]),
+            pt([1.0, 0.0, 0.0]),
+            pt([0.0, 1.0, 0.0]),
+            pt([0.0; 3]),
+            pt([0.0, 0.0, 1.0]),
+            pt([1.0, 0.0, 0.0]),
+        ],
+    );
+    assert!(close(
+        apply(&first_matrix(&r), [0.0, 1.0, 0.0]),
+        [1.0, 0.0, 0.0]
+    ));
+    let r = run(
+        SHEAR,
+        sel.clone(),
+        vec![
+            Input::Selection,
+            pt([0.0; 3]),
+            pt([1.0, 0.0, 0.0]),
+            num(45.0),
+        ],
+    );
+    assert!(close(
+        apply(&first_matrix(&r), [0.0, 2.0, 0.0]),
+        [2.0, 2.0, 0.0]
+    ));
+    let r = run(
+        MOVE_UVN,
+        sel.clone(),
+        vec![Input::Selection, num(1.0), num(2.0), num(3.0)],
+    );
     assert!(close(apply(&first_matrix(&r), [0.0; 3]), [1.0, 2.0, 3.0]));
     let mut e = event(SYMMETRY, Input::Selection, sel.clone());
     let r = TransformTools::step(&e).unwrap();
@@ -121,7 +201,10 @@ fn matrices() {
     e.input = Input::Enter;
     let r = TransformTools::step(&e).unwrap();
     assert!(r.transform.as_ref().unwrap().keep_original);
-    assert!(close(apply(&first_matrix(&r), [2.0, 1.0, 0.0]), [-2.0, 1.0, 0.0]));
+    assert!(close(
+        apply(&first_matrix(&r), [2.0, 1.0, 0.0]),
+        [-2.0, 1.0, 0.0]
+    ));
 }
 
 #[test]
@@ -136,23 +219,55 @@ fn stones_turn_down_about_their_own_girdle() {
     };
     let r = TransformTools::step(&event(DOWN_FACING, Input::Enter, vec![s])).unwrap();
     let m = first_matrix(&r);
-    assert!(close(apply(&m, [5.0, 0.0, 2.0]), [5.0, 0.0, 0.0]), "table flips below the girdle");
-    assert!(close(apply(&m, [5.0, 0.0, 1.0]), [5.0, 0.0, 1.0]), "girdle center stays");
+    assert!(
+        close(apply(&m, [5.0, 0.0, 2.0]), [5.0, 0.0, 0.0]),
+        "table flips below the girdle"
+    );
+    assert!(
+        close(apply(&m, [5.0, 0.0, 1.0]), [5.0, 0.0, 1.0]),
+        "girdle center stays"
+    );
 }
 
 #[test]
 fn bend_keeps_the_spine_length() {
     // A 10 mm bar bent 180° toward +z becomes a half circle of radius 10/π.
-    let p = bend_point([10.0, 0.0, 0.0], [0.0; 3], [10.0, 0.0, 0.0], [0.0, 0.0, 1.0], 180.0);
+    let p = bend_point(
+        [10.0, 0.0, 0.0],
+        [0.0; 3],
+        [10.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        180.0,
+    );
     let r = 10.0 / PI;
     assert!(close(p, [0.0, 0.0, 2.0 * r]), "{p:?}");
-    let mid = bend_point([5.0, 0.0, 0.0], [0.0; 3], [10.0, 0.0, 0.0], [0.0, 0.0, 1.0], 180.0);
+    let mid = bend_point(
+        [5.0, 0.0, 0.0],
+        [0.0; 3],
+        [10.0, 0.0, 0.0],
+        [0.0, 0.0, 1.0],
+        180.0,
+    );
     assert!(close(mid, [r, 0.0, r]), "{mid:?}");
     let sel = vec![line("a", [0.0; 3], [10.0, 0.0, 0.0])];
-    let r = run(BEND, sel, vec![Input::Selection, pt([0.0; 3]), pt([10.0, 0.0, 0.0]), num(90.0)]);
+    let r = run(
+        BEND,
+        sel,
+        vec![
+            Input::Selection,
+            pt([0.0; 3]),
+            pt([10.0, 0.0, 0.0]),
+            num(90.0),
+        ],
+    );
     assert!(r.done);
-    let Geo::Nurbs { points, .. } = &r.replace[0].geo else { panic!("{:?}", r.replace[0].geo) };
-    assert!(points.last().unwrap()[2] > 1.0, "the end lifted toward the normal");
+    let Geo::Nurbs { points, .. } = &r.replace[0].geo else {
+        panic!("{:?}", r.replace[0].geo)
+    };
+    assert!(
+        points.last().unwrap()[2] > 1.0,
+        "the end lifted toward the normal"
+    );
 }
 
 #[test]
@@ -164,25 +279,48 @@ fn taper_twist_maelstrom_soft_move() {
     let p = maelstrom_point([1.0, 0.0, 0.0], [0.0; 3], [0.0, 0.0, 1.0], 2.0, 90.0);
     let expected = 90.0f64.to_radians() * 0.25;
     assert!(close(p, [expected.cos(), expected.sin(), 0.0]));
-    assert_eq!(maelstrom_point([3.0, 0.0, 0.0], [0.0; 3], [0.0, 0.0, 1.0], 2.0, 90.0), [3.0, 0.0, 0.0]);
+    assert_eq!(
+        maelstrom_point([3.0, 0.0, 0.0], [0.0; 3], [0.0, 0.0, 1.0], 2.0, 90.0),
+        [3.0, 0.0, 0.0]
+    );
     let p = soft_move_point([0.0; 3], [0.0; 3], [0.0, 0.0, 2.0], 5.0);
     assert!(close(p, [0.0, 0.0, 2.0]));
     let far = soft_move_point([6.0, 0.0, 0.0], [0.0; 3], [0.0, 0.0, 2.0], 5.0);
     assert_eq!(far, [6.0, 0.0, 0.0]);
     // Meshes deform through their triangles.
-    let r = run(TAPER, vec![box_mesh("b", [0.0, -1.0, -1.0], [10.0, 1.0, 1.0])], vec![Input::Selection, pt([0.0; 3]), pt([10.0, 0.0, 0.0]), num(1.0), num(0.5)]);
-    let Geo::Mesh { vertices, .. } = &r.replace[0].geo else { panic!() };
+    let r = run(
+        TAPER,
+        vec![box_mesh("b", [0.0, -1.0, -1.0], [10.0, 1.0, 1.0])],
+        vec![
+            Input::Selection,
+            pt([0.0; 3]),
+            pt([10.0, 0.0, 0.0]),
+            num(1.0),
+            num(0.5),
+        ],
+    );
+    let Geo::Mesh { vertices, .. } = &r.replace[0].geo else {
+        panic!()
+    };
     assert!(vertices.iter().any(|v| close(*v, [10.0, 0.5, 0.5])));
 }
 
 #[test]
 fn set_points_and_project() {
     let sel = vec![line("a", [0.0, 0.0, 1.0], [10.0, 0.0, 5.0])];
-    let r = run(SET_POINTS, sel.clone(), vec![Input::Selection, pt([0.0, 0.0, 3.0])]);
-    let Geo::Nurbs { points, .. } = &r.replace[0].geo else { panic!() };
+    let r = run(
+        SET_POINTS,
+        sel.clone(),
+        vec![Input::Selection, pt([0.0, 0.0, 3.0])],
+    );
+    let Geo::Nurbs { points, .. } = &r.replace[0].geo else {
+        panic!()
+    };
     assert!(points.iter().all(|p| (p[2] - 3.0).abs() < 1e-9));
     let r = TransformTools::step(&event(PROJECT_CPLANE, Input::Enter, sel)).unwrap();
-    let Geo::Nurbs { points, .. } = &r.replace[0].geo else { panic!() };
+    let Geo::Nurbs { points, .. } = &r.replace[0].geo else {
+        panic!()
+    };
     assert!(points.iter().all(|p| p[2].abs() < 1e-9));
 }
 
@@ -206,10 +344,15 @@ fn smart_flow_wraps_a_band_around_the_ring() {
     let r = TransformTools::step(&e).unwrap();
     assert!(r.done, "{:?}", r.error);
     assert_eq!(r.replace.len(), 1);
-    let Geo::Nurbs { points, .. } = &r.replace[0].geo else { panic!() };
+    let Geo::Nurbs { points, .. } = &r.replace[0].geo else {
+        panic!()
+    };
     // Stretched around the whole ring: every point lies on the ring.
     for p in points {
-        assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 10.0).abs() < 0.01, "{p:?}");
+        assert!(
+            ((p[0] * p[0] + p[1] * p[1]).sqrt() - 10.0).abs() < 0.01,
+            "{p:?}"
+        );
     }
     // Rigid: one placement per object, onto the ring.
     let mut e = event(SMART_FLOW_RIGID, Input::Enter, sel);
@@ -218,14 +361,21 @@ fn smart_flow_wraps_a_band_around_the_ring() {
     let op = r.transform.unwrap();
     assert_eq!(op.per_object.len(), 1);
     let c = apply(&op.per_object[0].matrix, [5.0, 0.0, 0.0]);
-    assert!(((c[0] * c[0] + c[1] * c[1]).sqrt() - 10.0).abs() < 0.01, "{c:?}");
+    assert!(
+        ((c[0] * c[0] + c[1] * c[1]).sqrt() - 10.0).abs() < 0.01,
+        "{c:?}"
+    );
 }
 
 #[test]
 fn arrays_along_curves_and_surfaces() {
     let obj = box_mesh("o", [-0.5, -0.5, 0.0], [0.5, 0.5, 1.0]);
     let curve = polyline("c", vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0]], false);
-    let r = run(ARRAY_CURVE, vec![obj.clone(), curve.clone()], vec![Input::Selection, num(5.0)]);
+    let r = run(
+        ARRAY_CURVE,
+        vec![obj.clone(), curve.clone()],
+        vec![Input::Selection, num(5.0)],
+    );
     let op = r.transform.unwrap();
     assert!(op.keep_original);
     assert_eq!(op.per_object.len(), 5);
@@ -237,17 +387,33 @@ fn arrays_along_curves_and_surfaces() {
         kind: "surface".into(),
         bbox: [[-20.0, -20.0, 0.0], [20.0, 20.0, 4.0]],
         mesh: Some(SelectedMesh {
-            vertices: vec![[-20.0, -20.0, 0.0], [20.0, -20.0, 4.0], [20.0, 20.0, 4.0], [-20.0, 20.0, 0.0]],
+            vertices: vec![
+                [-20.0, -20.0, 0.0],
+                [20.0, -20.0, 4.0],
+                [20.0, 20.0, 4.0],
+                [-20.0, 20.0, 0.0],
+            ],
             triangles: vec![[0, 1, 2], [0, 2, 3]],
         }),
         ..Default::default()
     };
-    let r = run(ARRAY_SURFACE, vec![obj.clone(), plane.clone()], vec![Input::Selection, num(2.0), num(2.0)]);
+    let r = run(
+        ARRAY_SURFACE,
+        vec![obj.clone(), plane.clone()],
+        vec![Input::Selection, num(2.0), num(2.0)],
+    );
     let op = r.transform.unwrap();
     assert_eq!(op.per_object.len(), 4);
     let p = apply(&op.per_object[0].matrix, [0.0, 0.0, 0.0]);
-    assert!((p[2] - (p[0] + 20.0) / 10.0).abs() < 1e-6, "on the plane: {p:?}");
-    let r = run(ORIENT_SURFACE, vec![obj, plane], vec![Input::Selection, pt([0.0, 0.0, 0.0])]);
+    assert!(
+        (p[2] - (p[0] + 20.0) / 10.0).abs() < 1e-6,
+        "on the plane: {p:?}"
+    );
+    let r = run(
+        ORIENT_SURFACE,
+        vec![obj, plane],
+        vec![Input::Selection, pt([0.0, 0.0, 0.0])],
+    );
     let p = apply(&first_matrix(&r), [0.0, 0.0, 0.0]);
     assert!(close(p, [0.0, 0.0, 2.0]), "{p:?}");
 }
@@ -256,7 +422,15 @@ fn arrays_along_curves_and_surfaces() {
 fn cage_edit_follows_moved_corners() {
     let obj = box_mesh("o", [0.0; 3], [2.0, 2.0, 2.0]);
     let r = TransformTools::step(&event(CREATE_CAGE, Input::Enter, vec![obj.clone()])).unwrap();
-    let Geo::Mesh { vertices, triangles, meta, .. } = &r.create[0] else { panic!() };
+    let Geo::Mesh {
+        vertices,
+        triangles,
+        meta,
+        ..
+    } = &r.create[0]
+    else {
+        panic!()
+    };
     // Lift the top four cage points by 1.
     let mut moved = vertices.clone();
     for v in moved.iter_mut().skip(4) {
@@ -267,12 +441,17 @@ fn cage_edit_follows_moved_corners() {
         kind: "mesh".into(),
         bbox: [[0.0; 3], [2.0, 2.0, 3.0]],
         gem: meta.clone(),
-        mesh: Some(SelectedMesh { vertices: moved, triangles: triangles.clone() }),
+        mesh: Some(SelectedMesh {
+            vertices: moved,
+            triangles: triangles.clone(),
+        }),
         ..Default::default()
     };
     let r = TransformTools::step(&event(CAGE_EDIT, Input::Enter, vec![obj, cage])).unwrap();
     assert!(r.done, "{:?}", r.error);
-    let Geo::Mesh { vertices, .. } = &r.replace[0].geo else { panic!() };
+    let Geo::Mesh { vertices, .. } = &r.replace[0].geo else {
+        panic!()
+    };
     let top = vertices.iter().map(|v| v[2]).fold(f64::MIN, f64::max);
     assert!(top > 2.5, "the top of the object rose with the cage: {top}");
 }
