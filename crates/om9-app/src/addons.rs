@@ -28,23 +28,33 @@ pub struct FeatureName<'a> {
 
 /// lowercase name (catalog code, feature id or typed command) → catalog code.
 pub fn provided_names<'a>(host: &Host, features: &[FeatureName<'a>]) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for (code, _owner, _label) in host.bound_commands() {
-        map.insert(code.to_ascii_lowercase(), code.clone());
-        if let Some(info) = host.command_info(&code) {
+    let bound = host.bound_commands();
+    // A command's own code always names it, whatever feature or alias another command has.
+    let mut map: BTreeMap<String, String> = bound
+        .iter()
+        .map(|(code, _, _)| (code.to_ascii_lowercase(), code.clone()))
+        .collect();
+    let codes: std::collections::BTreeSet<String> = map.keys().cloned().collect();
+    for (code, _owner, _label) in &bound {
+        if let Some(info) = host.command_info(code) {
             for alias in &info.command.aliases {
                 map.entry(alias.to_ascii_lowercase())
                     .or_insert_with(|| code.clone());
             }
         }
-        if let Some(feature) = crate::icons::feature_for(&code) {
-            map.insert(feature.to_ascii_lowercase(), code.clone());
+        if let Some(feature) = crate::icons::feature_for(code) {
+            let mut names = vec![feature.to_ascii_lowercase()];
             for f in features {
                 if f.id == feature
                     && let Some(cmd) = f.command
                     && !cmd.trim().is_empty()
                 {
-                    map.insert(cmd.trim().to_ascii_lowercase(), code.clone());
+                    names.push(cmd.trim().to_ascii_lowercase());
+                }
+            }
+            for name in names {
+                if !codes.contains(&name) {
+                    map.insert(name, code.clone());
                 }
             }
         }

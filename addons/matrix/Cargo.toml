@@ -27,6 +27,7 @@ om9-addon-settings = { path = "../settings" }
 om9-addon-cutters = { path = "../cutters" }
 om9-addon-transform-tools = { path = "../transform_tools" }
 om9-addon-solid = { path = "../solid" }
+om9-addon-curve-tools = { path = "../curve_tools" }
 serde_json = { workspace = true }
 
 [dev-dependencies]

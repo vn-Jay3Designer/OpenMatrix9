@@ -7,9 +7,9 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 114 lệnh.
+Tổng cộng: 159 lệnh.
 
-## Curve (13 lệnh)
+## Curve (58 lệnh)
 
 | Mã lệnh | Lệnh | Vị trí menu |
 |---|---|---|
@@ -26,6 +26,51 @@ Tổng cộng: 114 lệnh.
 | `CurveSpiral` | [Spiral](commands/Curve/CurveSpiral.md) | Curve #29 |
 | `CurveHelix` | [Helix](commands/Curve/CurveHelix.md) | Curve #30 |
 | `CurvePointObjectSinglePoint` | [Point](commands/Curve/CurvePointObjectSinglePoint.md) | Curve #31 |
+| `OthersCurveRebuild` | [Rebuild Curve](commands/Curve/OthersCurveRebuild.md) | Curve #9 |
+| `CurveCurveEditToolsRefitToTolerance` | [Refit to Tolerance](commands/Curve/CurveCurveEditToolsRefitToTolerance.md) | Curve #10 |
+| `CurveBlendCurvesBlendCurves` | [Quick Curve Blend](commands/Curve/CurveBlendCurvesBlendCurves.md) | Curve #11 |
+| `CurveBlendCurvesBlendCrv` | [Adjustable Curve Blend](commands/Curve/CurveBlendCurvesBlendCrv.md) | Curve #12 |
+| `CurveBlendCurvesArcBlend` | [Arc Blend](commands/Curve/CurveBlendCurvesArcBlend.md) | Curve #57 |
+| `CurveCurveFrom2Views` | [Curve from 2 Views](commands/Curve/CurveCurveFrom2Views.md) | Curve #13 |
+| `BuilderCrv2ViewHistory` | [Curve from 2 Views Builder](commands/Curve/BuilderCrv2ViewHistory.md) | Curve #14 |
+| `CurveCurveFromObjectsPullback` | [Pullback](commands/Curve/CurveCurveFromObjectsPullback.md) | Curve #15 |
+| `CurveCurveFromObjectsProject` | [Project](commands/Curve/CurveCurveFromObjectsProject.md) | Curve #16 |
+| `CurveCurveFromObjectsIntersection` | [Intersection](commands/Curve/CurveCurveFromObjectsIntersection.md) | Curve #17 |
+| `CurveCurveFromObjectsIntersectTwoSets` | [Intersect Two Sets](commands/Curve/CurveCurveFromObjectsIntersectTwoSets.md) | Curve #58 |
+| `CurveOffsetCurve` | [Offset Curve](commands/Curve/CurveOffsetCurve.md) | Curve #18 |
+| `CurveOffsetOffsetCrvOnSrf` | [Offset Curve on Surface](commands/Curve/CurveOffsetOffsetCrvOnSrf.md) | Curve #19 |
+| `CurveOffsetOffsetCrvNormalToSurface` | [Offset Curve Normal to Surface](commands/Curve/CurveOffsetOffsetCrvNormalToSurface.md) | Curve #56 |
+| `CurveCurveFromObjectsExtractIsocurve` | [Extract Isocurve](commands/Curve/CurveCurveFromObjectsExtractIsocurve.md) | Curve #20 |
+| `CurveGVExtractIsocurve` | [Extract Angle Isocurve](commands/Curve/CurveGVExtractIsocurve.md) | Curve #43 |
+| `CurveFilletCurves` | [Fillet Curves](commands/Curve/CurveFilletCurves.md) | Curve #21 |
+| `CurveFilletCorners` | [Fillet Corners](commands/Curve/CurveFilletCorners.md) | Curve #22 |
+| `CurveChamferCurves` | [Chamfer Curves](commands/Curve/CurveChamferCurves.md) | Curve #23 |
+| `CurveCurveFromObjectsCreateUVCurves` | [Create UV Curves](commands/Curve/CurveCurveFromObjectsCreateUVCurves.md) | Curve #24 |
+| `CurveCurveFromObjectsApplyUVCurves` | [Apply UV Curves](commands/Curve/CurveCurveFromObjectsApplyUVCurves.md) | Curve #25 |
+| `CurveFreeFormThroughPoints` | [Curve Through Points](commands/Curve/CurveFreeFormThroughPoints.md) | Curve #26 |
+| `CurveExtendCurveExtendCurve` | [Extend Curve](commands/Curve/CurveExtendCurveExtendCurve.md) | Curve #27 |
+| `CurvePointObjectMarkCurveStart` | [Mark Curve Start](commands/Curve/CurvePointObjectMarkCurveStart.md) | Curve #32 |
+| `CurvePointObjectMarkCurveEnd` | [Mark Curve End](commands/Curve/CurvePointObjectMarkCurveEnd.md) | Curve #33 |
+| `CurveCurveEditToolsAdjustClosedCurveSeam` | [Adjust Closed Curve Seam](commands/Curve/CurveCurveEditToolsAdjustClosedCurveSeam.md) | Curve #34 |
+| `CurveFreeFormContinueInterpCurve` | [Continue Interp Curve](commands/Curve/CurveFreeFormContinueInterpCurve.md) | Curve #35 |
+| `CurveFreeFormContinueCurve` | [Continue Control Point Curve](commands/Curve/CurveFreeFormContinueCurve.md) | Curve #42 |
+| `OthersCurveDivideCurve` | [Divide Curve](commands/Curve/OthersCurveDivideCurve.md) | Curve #36 |
+| `CurveCurveEditToolsCurveBoolean` | [Curve Boolean](commands/Curve/CurveCurveEditToolsCurveBoolean.md) | Curve #37 |
+| `CurveTweenCurves` | [Tween Curves](commands/Curve/CurveTweenCurves.md) | Curve #38 |
+| `CurveCurveFromObjectsDuplicateEdge` | [Duplicate Edge](commands/Curve/CurveCurveFromObjectsDuplicateEdge.md) | Curve #39 |
+| `CurveCurveFromObjectsDuplicateBorder` | [Duplicate Border](commands/Curve/CurveCurveFromObjectsDuplicateBorder.md) | Curve #40 |
+| `CurveCrossSectionProfiles` | [Cross Section Profiles](commands/Curve/CurveCrossSectionProfiles.md) | Curve #44 |
+| `CurveFreeFormSketch` | [Sketch](commands/Curve/CurveFreeFormSketch.md) | Curve #45 |
+| `CurveFreeFormSketchonSurface` | [Sketch on Surface](commands/Curve/CurveFreeFormSketchonSurface.md) | Curve #46 |
+| `CurveFreeFormSketchonPolygonMesh` | [Sketch on Polygon Mesh](commands/Curve/CurveFreeFormSketchonPolygonMesh.md) | Curve #47 |
+| `BuilderPolylineOnSurface` | [Polyline on Surface](commands/Curve/BuilderPolylineOnSurface.md) | Curve #48 |
+| `CurveFreeFormInterpolateonSurface` | [Interpolate on Surface](commands/Curve/CurveFreeFormInterpolateonSurface.md) | Curve #49 |
+| `CurveConvertCurveToLines` | [Curve to Lines](commands/Curve/CurveConvertCurveToLines.md) | Curve #50 |
+| `CurveCurveFromObjectsSection` | [Section](commands/Curve/CurveCurveFromObjectsSection.md) | Curve #51 |
+| `CurveCurveEditToolsMatch` | [Match Curve](commands/Curve/CurveCurveEditToolsMatch.md) | Curve #52 |
+| `CurveCurveFromObjectsSilhouette` | [Silhouette](commands/Curve/CurveCurveFromObjectsSilhouette.md) | Curve #53 |
+| `CurveCurveFromObjectsExtractWireframe` | [Extract Wireframe](commands/Curve/CurveCurveFromObjectsExtractWireframe.md) | Curve #54 |
+| `CurveCurveEditToolsSoftEdit` | [Soft Edit Curve](commands/Curve/CurveCurveEditToolsSoftEdit.md) | Curve #55 |
 
 ## Cutters (10 lệnh)
 

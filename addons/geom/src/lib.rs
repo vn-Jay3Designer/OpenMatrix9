@@ -13,8 +13,10 @@ pub mod cmd;
 pub mod csg;
 pub mod gems;
 pub mod mesh;
+pub mod nurbs;
 pub mod path;
 pub mod sdf;
+pub mod section;
 pub mod shapes;
 
 pub const EPS: f64 = 1e-9;
@@ -42,7 +44,7 @@ pub fn control_curve(poles: &[Vec3], degree: usize) -> Option<Geo> {
     })
 }
 
-fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
+pub(crate) fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
     if u >= k[n] {
         return n - 1;
     }
@@ -59,7 +61,7 @@ fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
     mid
 }
 
-fn basis(span: usize, u: f64, p: usize, k: &[f64]) -> Vec<f64> {
+pub(crate) fn basis(span: usize, u: f64, p: usize, k: &[f64]) -> Vec<f64> {
     let mut n = vec![0.0; p + 1];
     let mut left = vec![0.0; p + 1];
     let mut right = vec![0.0; p + 1];

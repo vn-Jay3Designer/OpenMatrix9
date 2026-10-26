@@ -1,0 +1,448 @@
+# Manifest của gói add-on. tools/ci/build-addons-windows.ps1 điền @ENTRY@/@PLATFORM@ theo nền tảng build.
+schema_version = "1.0.0"
+id = "om9_curve_tools"
+version = "0.1.0"
+name = "Curve Tools"
+tagline = "Menu Curve kiểu Matrix: blend, offset, fillet, chiếu, giao, mặt cắt …"
+maintainer = "OpenMatrix9 contributors"
+type = "add-on"
+license = ["SPDX:LGPL-2.1-or-later"]
+om9_version_min = "0.1.0"
+platforms = ["@PLATFORM@"]
+runtime = "native"
+entry = "@ENTRY@"
+tags = ["Curve"]
+
+[[commands]]
+id = "OthersCurveRebuild"
+label = "Rebuild Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Rebuild", "RebuildCrv"]
+summary = "Dựng lại đường cong với số điểm và bậc mới (đường cong được thay tại chỗ)."
+steps = ["Chọn đường cong, Enter.", "Gõ số điểm.", "Gõ bậc (1 = polyline)."]
+
+[[commands]]
+id = "CurveCurveEditToolsRefitToTolerance"
+label = "Refit to Tolerance"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Refit", "FitCrv"]
+summary = "Làm lại đường cong ít điểm nhất mà vẫn nằm trong dung sai."
+steps = ["Chọn đường cong, Enter.", "Gõ dung sai (mm)."]
+
+[[commands]]
+id = "CurveBlendCurvesBlendCurves"
+label = "Quick Curve Blend"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["BlendCrv", "QuickBlend"]
+summary = "Nối hai đầu gần nhau của hai đường cong bằng đường chuyển tiếp mượt."
+steps = ["Chọn hai đường cong.", "Continuity=Tangency/Curvature.", "Enter."]
+options = ["Continuity: liên tục tiếp tuyến hoặc độ cong."]
+
+[[commands]]
+id = "CurveBlendCurvesBlendCrv"
+label = "Adjustable Curve Blend"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["AdjustableBlend"]
+summary = "Nối hai đường cong, chỉnh độ phình ở mỗi đầu."
+steps = ["Chọn hai đường cong, Enter.", "Gõ độ phình đầu 1.", "Gõ độ phình đầu 2."]
+options = ["Continuity: Tangency/Curvature."]
+
+[[commands]]
+id = "CurveBlendCurvesArcBlend"
+label = "Arc Blend"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ArcBlend"]
+summary = "Nối hai đường cong bằng hai cung tròn (biarc) tiếp tuyến."
+steps = ["Chọn hai đường cong.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFrom2Views"
+label = "Curve from 2 Views"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Crv2View"]
+summary = "Tạo đường cong 3D từ một đường nhìn từ trên (Top) và một đường nhìn từ trước (Front)."
+steps = ["Chọn đường Top và đường Front.", "Enter."]
+
+[[commands]]
+id = "BuilderCrv2ViewHistory"
+label = "Curve from 2 Views Builder"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Crv2ViewBuilder"]
+summary = "Như Curve from 2 Views, dạng builder."
+steps = ["Chọn hai đường cong.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsPullback"
+label = "Pullback"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["Pull", "PullCrv"]
+summary = "Kéo đường cong lên mặt theo điểm gần nhất."
+steps = ["Chọn đường cong và mặt/khối.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsProject"
+label = "Project"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["ProjectCrv"]
+summary = "Chiếu đường cong lên mặt theo hướng CPlane (từ trên xuống)."
+steps = ["Chọn đường cong và mặt/khối.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsIntersection"
+label = "Intersection"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["Intersect"]
+summary = "Tạo đường giao giữa các mặt/khối."
+steps = ["Chọn hai mặt/khối trở lên.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsIntersectTwoSets"
+label = "Intersect Two Sets"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["IntersectTwoSets"]
+summary = "Đường giao giữa nhóm thứ nhất và nhóm thứ hai."
+steps = ["Chọn nhóm 1, Enter.", "Chọn nhóm 2, Enter."]
+
+[[commands]]
+id = "CurveOffsetCurve"
+label = "Offset Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Offset", "OffsetCrv"]
+summary = "Tạo đường song song cách đều trên CPlane."
+steps = ["Chọn đường cong, Enter.", "Gõ khoảng cách.", "Bấm phía cần offset."]
+
+[[commands]]
+id = "CurveOffsetOffsetCrvOnSrf"
+label = "Offset Curve on Surface"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["OffsetCrvOnSrf"]
+summary = "Offset đường cong nằm trên mặt, kết quả bám mặt."
+steps = ["Chọn đường cong và mặt, Enter.", "Gõ khoảng cách.", "Bấm phía."]
+
+[[commands]]
+id = "CurveOffsetOffsetCrvNormalToSurface"
+label = "Offset Curve Normal to Surface"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["OffsetNormalToSrf"]
+summary = "Dời đường cong trên mặt ra theo pháp tuyến của mặt."
+steps = ["Chọn đường cong và mặt, Enter.", "Gõ khoảng cách."]
+
+[[commands]]
+id = "CurveCurveFromObjectsExtractIsocurve"
+label = "Extract Isocurve"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["ExtractIsocurve"]
+summary = "Lấy đường đẳng tham số U/V của mặt tại điểm bấm (lưới: lấy mặt cắt)."
+steps = ["Chọn mặt, Enter.", "Direction=U/V/Both.", "Bấm điểm trên mặt."]
+options = ["Direction: U, V hoặc cả hai."]
+
+[[commands]]
+id = "CurveGVExtractIsocurve"
+label = "Extract Angle Isocurve"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["AngleIsocurve"]
+summary = "Lấy đường cắt mặt theo góc so với trục x của CPlane qua điểm bấm."
+steps = ["Chọn mặt, Enter.", "Gõ góc.", "Bấm điểm."]
+
+[[commands]]
+id = "CurveFilletCurves"
+label = "Fillet Curves"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Fillet", "FilletCrv"]
+summary = "Bo cung tròn giữa hai đường cong, cắt bớt đường cũ."
+steps = ["Chọn hai đường cong, Enter.", "Gõ bán kính."]
+options = ["Trim: cắt hai đường tới điểm tiếp xúc."]
+
+[[commands]]
+id = "CurveFilletCorners"
+label = "Fillet Corners"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["FilletCorners"]
+summary = "Bo tròn mọi góc của polyline."
+steps = ["Chọn đường cong, Enter.", "Gõ bán kính."]
+
+[[commands]]
+id = "CurveChamferCurves"
+label = "Chamfer Curves"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Chamfer", "ChamferCrv"]
+summary = "Vát góc giữa hai đường cong."
+steps = ["Chọn hai đường cong, Enter.", "Gõ khoảng vát 1 và 2."]
+options = ["Trim: cắt hai đường."]
+
+[[commands]]
+id = "CurveCurveFromObjectsCreateUVCurves"
+label = "Create UV Curves"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["CreateUVCrv"]
+summary = "Trải phẳng mặt NURBS thành khung UV (và các đường cong nằm trên mặt)."
+steps = ["Chọn mặt (và đường cong trên mặt).", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsApplyUVCurves"
+label = "Apply UV Curves"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["ApplyCrv"]
+summary = "Đắp đường cong phẳng (trong khung UV) lên mặt NURBS."
+steps = ["Chọn đường cong phẳng và mặt.", "Enter."]
+
+[[commands]]
+id = "CurveFreeFormThroughPoints"
+label = "Curve Through Points"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["CrvThroughPt"]
+summary = "Vẽ đường cong qua các điểm đã chọn."
+steps = ["Chọn các điểm.", "Type=Interpolate/Polyline.", "Enter."]
+options = ["Type: đường cong mượt hoặc polyline."]
+
+[[commands]]
+id = "CurveExtendCurveExtendCurve"
+label = "Extend Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Extend", "ExtendCrv"]
+summary = "Kéo dài đầu đường cong theo độ dài."
+steps = ["Chọn đường cong, Enter.", "Type=Line/Smooth, End=End/Start/Both.", "Gõ độ dài."]
+options = ["Type: kéo thẳng hoặc mượt.", "End: đầu nào."]
+
+[[commands]]
+id = "CurvePointObjectMarkCurveStart"
+label = "Mark Curve Start"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["MarkStart"]
+summary = "Đặt điểm và mũi tên hướng ở đầu đường cong."
+steps = ["Chọn đường cong, Enter."]
+
+[[commands]]
+id = "CurvePointObjectMarkCurveEnd"
+label = "Mark Curve End"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["MarkEnd"]
+summary = "Đặt điểm và mũi tên hướng ở cuối đường cong."
+steps = ["Chọn đường cong, Enter."]
+
+[[commands]]
+id = "CurveCurveEditToolsAdjustClosedCurveSeam"
+label = "Adjust Closed Curve Seam"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["CrvSeam"]
+summary = "Dời điểm nối (seam) của đường cong kín."
+steps = ["Chọn đường cong kín, Enter.", "Bấm điểm nối mới."]
+
+[[commands]]
+id = "CurveFreeFormContinueInterpCurve"
+label = "Continue Interp Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ContinueInterpCrv"]
+summary = "Vẽ tiếp đường cong nội suy từ cuối đường cũ."
+steps = ["Chọn đường cong.", "Bấm các điểm mới, Enter."]
+
+[[commands]]
+id = "CurveFreeFormContinueCurve"
+label = "Continue Control Point Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["ContinueCurve"]
+summary = "Vẽ tiếp đường cong điểm điều khiển."
+steps = ["Chọn đường cong.", "Bấm các điểm điều khiển mới, Enter."]
+
+[[commands]]
+id = "OthersCurveDivideCurve"
+label = "Divide Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Divide"]
+summary = "Chia đường cong thành các đoạn bằng nhau (đặt điểm)."
+steps = ["Chọn đường cong, Enter.", "Mode=Count/Length.", "Gõ số đoạn hoặc độ dài đoạn."]
+options = ["Mode: theo số đoạn hoặc theo độ dài."]
+
+[[commands]]
+id = "CurveCurveEditToolsCurveBoolean"
+label = "Curve Boolean"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["CrvBoolean"]
+summary = "Hợp / giao / trừ các đường cong kín phẳng."
+steps = ["Chọn các đường cong kín.", "Mode=Union/Intersection/Difference.", "Enter."]
+options = ["Mode: kiểu boolean.", "DeleteInput: xoá đường gốc."]
+
+[[commands]]
+id = "CurveTweenCurves"
+label = "Tween Curves"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Tween"]
+summary = "Tạo các đường trung gian giữa hai đường cong."
+steps = ["Chọn hai đường cong, Enter.", "Gõ số đường."]
+
+[[commands]]
+id = "CurveCurveFromObjectsDuplicateEdge"
+label = "Duplicate Edge"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["DupEdge"]
+summary = "Sao chép các cạnh sắc / mép của mặt, khối."
+steps = ["Chọn mặt/khối.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsDuplicateBorder"
+label = "Duplicate Border"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["DupBorder"]
+summary = "Sao chép đường viền hở của mặt."
+steps = ["Chọn mặt.", "Enter."]
+
+[[commands]]
+id = "CurveCrossSectionProfiles"
+label = "Cross Section Profiles"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["CSec"]
+summary = "Tạo các mặt cắt ngang qua nhiều đường ray (để dựng mặt)."
+steps = ["Chọn hai đường ray trở lên, Enter.", "Gõ số mặt cắt."]
+
+[[commands]]
+id = "CurveFreeFormSketch"
+label = "Sketch"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Sketch"]
+summary = "Vẽ phác: bấm các điểm, Enter để tạo đường mượt."
+steps = ["Bấm điểm liên tục.", "Enter."]
+
+[[commands]]
+id = "CurveFreeFormSketchonSurface"
+label = "Sketch on Surface"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["SketchOnSrf"]
+summary = "Vẽ phác trên mặt."
+steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+
+[[commands]]
+id = "CurveFreeFormSketchonPolygonMesh"
+label = "Sketch on Polygon Mesh"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["SketchOnMesh"]
+summary = "Vẽ phác trên lưới đa giác."
+steps = ["Chọn lưới.", "Bấm các điểm, Enter."]
+
+[[commands]]
+id = "BuilderPolylineOnSurface"
+label = "Polyline on Surface"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["PolylineOnSrf"]
+summary = "Vẽ polyline bám theo mặt."
+steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+
+[[commands]]
+id = "CurveFreeFormInterpolateonSurface"
+label = "Interpolate on Surface"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["InterpCrvOnSrf"]
+summary = "Vẽ đường cong nội suy nằm trên mặt."
+steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+
+[[commands]]
+id = "CurveConvertCurveToLines"
+label = "Curve to Lines"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Convert", "CrvToLines"]
+summary = "Đổi đường cong thành polyline theo dung sai góc."
+steps = ["Chọn đường cong, Enter.", "Gõ dung sai góc."]
+
+[[commands]]
+id = "CurveCurveFromObjectsSection"
+label = "Section"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["Section"]
+summary = "Cắt mặt/khối bằng mặt phẳng vuông CPlane theo đường bấm."
+steps = ["Chọn mặt/khối, Enter.", "Gõ số mặt cắt và khoảng cách.", "Bấm đầu và cuối đường cắt."]
+
+[[commands]]
+id = "CurveCurveEditToolsMatch"
+label = "Match Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["Match", "MatchCrv"]
+summary = "Khớp đầu đường cong thứ nhất vào đường thứ hai (vị trí / tiếp tuyến)."
+steps = ["Chọn đường cần sửa và đường đích.", "Enter."]
+options = ["Continuity: Position/Tangency."]
+
+[[commands]]
+id = "CurveCurveFromObjectsSilhouette"
+label = "Silhouette"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["Silhouette"]
+summary = "Tạo đường viền bóng của vật nhìn theo hướng CPlane."
+steps = ["Chọn vật.", "Enter."]
+
+[[commands]]
+id = "CurveCurveFromObjectsExtractWireframe"
+label = "Extract Wireframe"
+handler = "om9_addon_session"
+interactive = true
+mesh_data = true
+aliases = ["ExtractWireframe"]
+summary = "Lấy khung dây (isocurve / cạnh) của mặt, khối."
+steps = ["Chọn vật.", "Enter."]
+
+[[commands]]
+id = "CurveCurveEditToolsSoftEdit"
+label = "Soft Edit Curve"
+handler = "om9_addon_session"
+interactive = true
+aliases = ["SoftEditCrv"]
+summary = "Kéo một điểm trên đường cong, vùng lân cận đi theo mềm mại."
+steps = ["Chọn đường cong, Enter.", "Gõ khoảng ảnh hưởng.", "Bấm điểm trên đường cong.", "Bấm điểm đích."]

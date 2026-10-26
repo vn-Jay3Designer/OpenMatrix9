@@ -26,6 +26,11 @@ pub const CATEGORIES: &[Category] = &[
         step: <om9_curves::Curves as Interactive>::step,
     },
     Category {
+        name: "Curve",
+        commands: <om9_curve_tools::CurveTools as Interactive>::SESSION_COMMANDS,
+        step: <om9_curve_tools::CurveTools as Interactive>::step,
+    },
+    Category {
         name: "Transform",
         commands: <om9_transform::Transforms as Interactive>::SESSION_COMMANDS,
         step: <om9_transform::Transforms as Interactive>::step,
@@ -66,6 +71,7 @@ pub const CATEGORIES: &[Category] = &[
 /// `[[commands]]` and `[[settings]]` make up the package manifest.
 pub const SOURCES: &[(&str, &str)] = &[
     ("Curve", "curves"),
+    ("Curve", "curve_tools"),
     ("Solid", "solid"),
     ("Transform", "transform"),
     ("Transform", "transform_tools"),

@@ -1650,6 +1650,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "om9-addon-curve-tools"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-geom",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "om9-addon-curves"
 version = "0.1.0"
 dependencies = [
@@ -1714,6 +1724,7 @@ name = "om9-addon-matrix"
 version = "0.5.0"
 dependencies = [
  "om9-addon-abi",
+ "om9-addon-curve-tools",
  "om9-addon-curves",
  "om9-addon-cutters",
  "om9-addon-gem-cutter",
