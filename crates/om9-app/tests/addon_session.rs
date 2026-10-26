@@ -458,6 +458,14 @@ fn every_addon_command_has_an_icon_that_calls_it() {
         .map(|v| v.trim_matches('"'))
         .collect();
     assert_eq!(codes.len(), om9_matrix::ALL.len());
+    // OM9 draws a few commands with the same icon name (Ring Rail on the Top 11 bar and in
+    // Tools): that icon runs one of them; both are the same Matrix command.
+    let mut by_icon: std::collections::BTreeMap<&str, Vec<&str>> = Default::default();
+    for code in &codes {
+        if let Some(icon) = om9_app::icons::icon_for_command(code) {
+            by_icon.entry(icon).or_default().push(code);
+        }
+    }
     for code in codes {
         let icon = om9_app::icons::icon_for_command(code)
             .unwrap_or_else(|| panic!("no OM9 icon for {code}"));
@@ -465,7 +473,10 @@ fn every_addon_command_has_an_icon_that_calls_it() {
             .icon_target(icon, None)
             .unwrap_or_else(|| panic!("{icon}: no command"));
         assert!(target.enabled && target.addon, "{icon} → {target:?}");
-        assert_eq!(target.command, code, "{icon}");
+        assert!(by_icon[icon].contains(&target.command.as_str()), "{icon}: {} is not one of {:?}", target.command, by_icon[icon]);
+        if by_icon[icon].len() == 1 {
+            assert_eq!(target.command, code, "{icon}");
+        }
         assert!(c.is_available(code), "{code}");
     }
     fs::remove_dir_all(&tmp).unwrap();

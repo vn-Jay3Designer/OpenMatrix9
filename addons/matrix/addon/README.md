@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 330 lệnh.
+Tổng cộng: 337 lệnh.
 
 ## Builder (16 lệnh)
 
@@ -339,6 +339,18 @@ Tổng cộng: 330 lệnh.
 | `BuilderMesh` | [Mesh](commands/Tools/BuilderMesh.md) | Tools #28 |
 | `BuilderCurveTransformTool` | [Curve Transform](commands/Tools/BuilderCurveTransformTool.md) | Tools #29 |
 | `BuilderCenterLine` | [Center Line](commands/Tools/BuilderCenterLine.md) | Tools #30 |
+
+## Top11 (7 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `TopIconEditPointsOn` | [Edit Points On](commands/Top11/TopIconEditPointsOn.md) | Top 11 #2 |
+| `TopIconControlPointsOn` | [Control Points On](commands/Top11/TopIconControlPointsOn.md) | Top 11 #3 |
+| `TopIconExplode` | [Explode](commands/Top11/TopIconExplode.md) | Top 11 #7 |
+| `TopIconJoin` | [Join](commands/Top11/TopIconJoin.md) | Top 11 #8 |
+| `TopIconSplit` | [Split](commands/Top11/TopIconSplit.md) | Top 11 #9 |
+| `TopIconTrim` | [Trim](commands/Top11/TopIconTrim.md) | Top 11 #10 |
+| `TopIconRingRail` | [Ring Rail](commands/Top11/TopIconRingRail.md) | Top 11 #11 |
 
 ## Transform (44 lệnh)
 

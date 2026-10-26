@@ -1761,6 +1761,7 @@ dependencies = [
  "om9-addon-subd",
  "om9-addon-surfaces",
  "om9-addon-tools",
+ "om9-addon-top11",
  "om9-addon-transform",
  "om9-addon-transform-tools",
  "om9-addons",
@@ -1826,6 +1827,18 @@ dependencies = [
  "om9-addon-abi",
  "om9-addon-geom",
  "png 0.18.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "om9-addon-top11"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-geom",
+ "om9-addon-surfaces",
+ "om9-addon-tools",
  "serde",
  "serde_json",
 ]

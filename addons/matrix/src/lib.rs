@@ -21,6 +21,11 @@ pub struct Category {
 /// Every menu with interactive commands, in menu order.
 pub const CATEGORIES: &[Category] = &[
     Category {
+        name: "Top11",
+        commands: <om9_top11::Top11 as Interactive>::SESSION_COMMANDS,
+        step: <om9_top11::Top11 as Interactive>::step,
+    },
+    Category {
         name: "Curve",
         commands: <om9_curves::Curves as Interactive>::SESSION_COMMANDS,
         step: <om9_curves::Curves as Interactive>::step,
@@ -105,6 +110,7 @@ pub const CATEGORIES: &[Category] = &[
 /// The category crates' manifests (relative to `addons/`), in package order. Their
 /// `[[commands]]` and `[[settings]]` make up the package manifest.
 pub const SOURCES: &[(&str, &str)] = &[
+    ("Top11", "top11"),
     ("Curve", "curves"),
     ("Curve", "curve_tools"),
     ("Surface", "surfaces"),
