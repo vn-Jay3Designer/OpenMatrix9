@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 205 lệnh.
+Tổng cộng: 235 lệnh.
 
 ## Builder (16 lệnh)
 
@@ -199,6 +199,41 @@ Tổng cộng: 205 lệnh.
 | `SolidSolidEditToolsFacesMoveFace` | [Move Face](commands/Solid/SolidSolidEditToolsFacesMoveFace.md) | Solid #28 |
 | `SolidShell` | [Shell](commands/Solid/SolidShell.md) | Solid #29 |
 | `SolidPtOn` | [Solid Points On](commands/Solid/SolidPtOn.md) | Solid #30 |
+
+## Tools (30 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `BuilderRingRail` | [Ring Rail](commands/Tools/BuilderRingRail.md) | Tools #1 |
+| `BuilderProfilePlacer` | [Profile Placer](commands/Tools/BuilderProfilePlacer.md) | Tools #2 |
+| `BuilderOutsideRingRail` | [Outside Ring Rail](commands/Tools/BuilderOutsideRingRail.md) | Tools #3 |
+| `BuilderCustomRail` | [Custom Rail](commands/Tools/BuilderCustomRail.md) | Tools #4 |
+| `BuilderFourProfile` | [Four Rail Profile](commands/Tools/BuilderFourProfile.md) | Tools #5 |
+| `BuilderMetalWeights` | [Metal Weights](commands/Tools/BuilderMetalWeights.md) | Tools #6 |
+| `BuilderResize` | [Ring Resizer](commands/Tools/BuilderResize.md) | Tools #7 |
+| `BuilderSurfacePullback` | [Surface Pullback](commands/Tools/BuilderSurfacePullback.md) | Tools #8 |
+| `BuilderBermarkLibrary` | [Settings Library](commands/Tools/BuilderBermarkLibrary.md) | Tools #9 |
+| `BuilderStullerFindingsLibrary` | [Findings Library](commands/Tools/BuilderStullerFindingsLibrary.md) | Tools #10 |
+| `gvSmartTarget` | [Smart Target](commands/Tools/gvSmartTarget.md) | Tools #11 |
+| `gvSmartTargetAdd` | [Smart Target Add](commands/Tools/gvSmartTargetAdd.md) | Tools #12 |
+| `gvSmartTargetOnCrvEnd` | [Smart Target on Curve End](commands/Tools/gvSmartTargetOnCrvEnd.md) | Tools #13 |
+| `gvSmartBlend` | [Smart Blend](commands/Tools/gvSmartBlend.md) | Tools #14 |
+| `gvSmartMSR` | [Smart MSR](commands/Tools/gvSmartMSR.md) | Tools #15 |
+| `gvJoinHistory` | [Join](commands/Tools/gvJoinHistory.md) | Tools #16 |
+| `BuilderImageTrace` | [Image Trace](commands/Tools/BuilderImageTrace.md) | Tools #17 |
+| `BuilderObjectChecker` | [Object Checker](commands/Tools/BuilderObjectChecker.md) | Tools #18 |
+| `BuilderMeshRepair` | [Mesh Repair](commands/Tools/BuilderMeshRepair.md) | Tools #19 |
+| `Builder3dPrinting` | [3D Printing Supports](commands/Tools/Builder3dPrinting.md) | Tools #20 |
+| `BuilderProfile` | [Profile](commands/Tools/BuilderProfile.md) | Tools #21 |
+| `BuilderProfileMerge` | [Profile Merge](commands/Tools/BuilderProfileMerge.md) | Tools #22 |
+| `BuilderProfileEndCap` | [Profile End Cap](commands/Tools/BuilderProfileEndCap.md) | Tools #23 |
+| `BuilderCustomRailAdvanced` | [Custom Rail Advanced](commands/Tools/BuilderCustomRailAdvanced.md) | Tools #24 |
+| `BuilderObjectOnCrv` | [Object on Curve](commands/Tools/BuilderObjectOnCrv.md) | Tools #25 |
+| `BuilderSurfaceInset` | [Surface Inset](commands/Tools/BuilderSurfaceInset.md) | Tools #26 |
+| `BuilderMeshReducer` | [Mesh Reducer](commands/Tools/BuilderMeshReducer.md) | Tools #27 |
+| `BuilderMesh` | [Mesh](commands/Tools/BuilderMesh.md) | Tools #28 |
+| `BuilderCurveTransformTool` | [Curve Transform](commands/Tools/BuilderCurveTransformTool.md) | Tools #29 |
+| `BuilderCenterLine` | [Center Line](commands/Tools/BuilderCenterLine.md) | Tools #30 |
 
 ## Transform (44 lệnh)
 
