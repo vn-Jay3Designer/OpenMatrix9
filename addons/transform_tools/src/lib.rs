@@ -1149,9 +1149,9 @@ fn pull_down(e: &Event) -> Reply {
             finish_deform(&e2, "Smart Flow Pull Down Curves", &|p| {
                 target.drop(add(p, scale(n, 1e6))).map_or(p, |h| h.0)
             })
-            .unwrap_or_else(|w| Reply::ask("Smart Flow Pull Down Curves", json!({})).refuse(w))
+            .unwrap_or_else(|w| Reply::ask("Smart Flow Pull Down Curves: select the curves and the target, Enter", json!({})).refuse(w))
         }
-        Err(w) => Reply::ask("Smart Flow Pull Down Curves", json!({})).want(Want::Objects).refuse(w),
+        Err(w) => Reply::ask("Smart Flow Pull Down Curves: select the curves and the target, Enter", json!({})).want(Want::Objects).refuse(w),
     }
 }
 
@@ -1488,8 +1488,8 @@ fn cage_edit(e: &Event) -> Reply {
     }
     match find() {
         Ok((o, c, _, objs)) => finish_deform(&only(e, &objs), "Cage Edit", &|p| cage_map(p, &o, &c))
-            .unwrap_or_else(|w| Reply::ask("Cage Edit", json!({})).refuse(w)),
-        Err(w) => Reply::ask("Cage Edit", json!({})).want(Want::Objects).refuse(w),
+            .unwrap_or_else(|w| Reply::ask("Cage Edit: select the cage and the objects, Enter", json!({})).want(Want::Objects).refuse(w)),
+        Err(w) => Reply::ask("Cage Edit: select the cage and the objects, Enter", json!({})).want(Want::Objects).refuse(w),
     }
 }
 

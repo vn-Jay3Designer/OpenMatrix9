@@ -576,7 +576,7 @@ fn intersect_two_sets(e: &Event) -> Reply {
         }
     }
     finish_curves("Intersect Two Sets", out)
-        .unwrap_or_else(|w| Reply::ask("Intersect Two Sets", save(&st)).refuse(w))
+        .unwrap_or_else(|w| Reply::ask("Intersect Two Sets: select the second set, Enter", save(&st)).want(Want::Objects).refuse(w))
 }
 
 // ---- offsets ---------------------------------------------------------------------------------
