@@ -567,6 +567,59 @@ fn jewelry_flow_through_the_controller() {
     fs::remove_dir_all(&tmp).unwrap();
 }
 
+/// A stone remembers the prongs made on it; Match Attributes makes the same prongs on another
+/// stone (two selection groups through the controller).
+#[test]
+fn styles_follow_stones_through_the_controller() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-styles-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("styles"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    c.run_addon_command("BuilderGemLoader").unwrap();
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([20.0, 0.0, 0.0]).unwrap();
+    c.submit("").unwrap();
+    let mut stones: Vec<_> = c.document().entities.keys().copied().collect();
+    stones.sort_by(|a, b| {
+        gem_record(&c, *a)["center"][0]
+            .as_f64()
+            .unwrap()
+            .total_cmp(&gem_record(&c, *b)["center"][0].as_f64().unwrap())
+    });
+    let (a, b) = (stones[0], stones[1]);
+    // Six prongs on stone a: a remembers them.
+    c.select_objects(&[a]).unwrap();
+    c.run_addon_command("BuilderProngAdder").unwrap();
+    c.submit("Count=6").unwrap();
+    c.submit("").unwrap();
+    let prongs = |c: &Controller| c.document().entities.values().filter(|e| e.label == "Prong").count();
+    assert_eq!(prongs(&c), 6);
+    let style = &gem_record(&c, a)["styles"]["BuilderProngAdder"];
+    assert_eq!(style["prong_count"], 6, "{style}");
+    assert!(style.get("halo_size").is_none(), "only the prong builder's own values: {style}");
+    // Match Attributes: first the stone that gets the style, then the stone that has it.
+    c.select_objects(&[b]).unwrap();
+    c.run_addon_command("OthersMatchAttributes").unwrap();
+    c.submit("").unwrap();
+    c.select_objects(&[a]).unwrap();
+    c.refresh_addon_session();
+    assert!(c.prompt_text().contains("BuilderProngAdder"), "{}", c.prompt_text());
+    c.submit("").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    assert_eq!(prongs(&c), 12);
+    assert_eq!(gem_record(&c, b)["styles"]["BuilderProngAdder"]["prong_count"], 6);
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
 /// A deformation (Taper) rebuilds a moved mesh in place: the object keeps its id and
 /// placement, its world shape follows the deformation.
 #[test]

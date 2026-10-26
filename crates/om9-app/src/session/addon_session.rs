@@ -867,6 +867,8 @@ impl Controller {
                     host.settings(&session.owner)
                         .ok()?
                         .into_iter()
+                        // Only this command's own parameters (its builder panel).
+                        .filter(|(spec, _)| spec.applies_to(&session.code))
                         .map(|(spec, v)| (spec.key, v))
                         .collect(),
                 )

@@ -28,14 +28,19 @@ impl Interactive for Settings {
     const SESSION_COMMANDS: &'static [&'static str] =
         &[PRONG_BUILDER, BEZEL, HEAD, BEAD_ON_CURVE, CHANNEL_BORDER];
     fn step(e: &Event) -> Result<Reply, String> {
-        Ok(match e.command.as_str() {
+        let mut r = match e.command.as_str() {
             PRONG_BUILDER => prongs(e),
             BEZEL => bezels(e),
             HEAD => heads(e),
             BEAD_ON_CURVE => beads(e),
             CHANNEL_BORDER => channel_border(e),
             other => return Err(format!("unknown command {other}")),
-        })
+        };
+        // The stones remember the setting made on them (Match Attributes, Load Style).
+        if r.done && matches!(e.command.as_str(), PRONG_BUILDER | BEZEL | HEAD) {
+            r.records.extend(om9_addon_geom::cmd::remember_style(e));
+        }
+        Ok(r)
     }
 }
 

@@ -51,9 +51,19 @@ pub const CATEGORIES: &[Category] = &[
         step: <om9_gems::Gems as Interactive>::step,
     },
     Category {
+        name: "Gems",
+        commands: <om9_gem_tools::GemTools as Interactive>::SESSION_COMMANDS,
+        step: <om9_gem_tools::GemTools as Interactive>::step,
+    },
+    Category {
         name: "Settings",
         commands: <om9_settings::Settings as Interactive>::SESSION_COMMANDS,
         step: <om9_settings::Settings as Interactive>::step,
+    },
+    Category {
+        name: "Settings",
+        commands: <om9_setting_tools::SettingTools as Interactive>::SESSION_COMMANDS,
+        step: <om9_setting_tools::SettingTools as Interactive>::step,
     },
     Category {
         name: "Cutters",
@@ -64,6 +74,11 @@ pub const CATEGORIES: &[Category] = &[
         name: "Cutters",
         commands: <om9_cutters::Cutters as Interactive>::SESSION_COMMANDS,
         step: <om9_cutters::Cutters as Interactive>::step,
+    },
+    Category {
+        name: "Cutters",
+        commands: <om9_setting_tools::BooleanTool as Interactive>::SESSION_COMMANDS,
+        step: <om9_setting_tools::BooleanTool as Interactive>::step,
     },
 ];
 
@@ -77,9 +92,12 @@ pub const SOURCES: &[(&str, &str)] = &[
     ("Transform", "transform_tools"),
     ("Gems", "gems"),
     ("Gems", "gem_on_curve"),
+    ("Gems", "gem_tools"),
     ("Settings", "settings"),
+    ("Settings", "setting_tools"),
     ("Cutters", "gem_cutter"),
     ("Cutters", "cutters"),
+    ("Cutters", "setting_tools/boolean"),
 ];
 
 /// Commands of the one-shot interface and their menu.

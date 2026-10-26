@@ -110,6 +110,7 @@ fn generate() -> Generated {
     let positions = menu_positions();
     let mut pages = BTreeMap::new();
     let mut index: BTreeMap<&str, Vec<String>> = BTreeMap::new();
+    let mut setting_keys = std::collections::BTreeSet::new();
     for (menu, dir) in om9_matrix::SOURCES {
         let text = fs::read_to_string(root().join(format!("addons/{dir}/addon/om9_addon.toml"))).unwrap();
         let parsed = toml::parse(&text).unwrap();
@@ -122,6 +123,11 @@ fn generate() -> Generated {
             _ => Vec::new(),
         };
         let ids: Vec<String> = commands.iter().filter_map(|c| s(c, "id").map(str::to_owned)).collect();
+        // Setting keys are shared by the whole package: one key, one setting.
+        for t in &settings {
+            let key = s(t, "key").unwrap_or_default().to_owned();
+            assert!(setting_keys.insert(key.clone()), "setting key {key} is used twice (addons/{dir})");
+        }
         manifest.push_str(&format!("\n# ---- {menu} (addons/{dir}) ----\n"));
         for (kind, body) in blocks(&text) {
             manifest.push_str(&format!("\n[[{kind}]]\n{}", body.trim_end_matches('\n')));

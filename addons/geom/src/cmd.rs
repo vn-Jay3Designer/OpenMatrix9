@@ -477,3 +477,37 @@ pub fn deform_selection(
     }
     (out, skipped)
 }
+
+// ---- styles ----------------------------------------------------------------------------------
+
+/// Matrix "styles": a stone remembers the builder values of the settings and cutters made on
+/// it, under `styles.<command>` in its gem record, so Match Attributes and Save / Load Style
+/// can make the same setting on other stones.
+pub fn remember_style(e: &Event) -> Vec<om9_addon_abi::session::RecordUpdate> {
+    let style: serde_json::Map<String, Value> =
+        e.settings.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    e.selection
+        .iter()
+        .filter_map(|s| {
+            let mut record = s.gem.clone()?;
+            if !record.is_object() {
+                return None;
+            }
+            if !record.get("styles").is_some_and(Value::is_object) {
+                record["styles"] = json!({});
+            }
+            record["styles"][e.command.as_str()] = Value::Object(style.clone());
+            Some(om9_addon_abi::session::RecordUpdate { id: s.id.clone(), record })
+        })
+        .collect()
+}
+
+/// The styles a stone remembers: command code → builder values.
+pub fn styles_of(s: &Selected) -> std::collections::BTreeMap<String, Value> {
+    s.gem
+        .as_ref()
+        .and_then(|g| g.get("styles"))
+        .and_then(Value::as_object)
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default()
+}

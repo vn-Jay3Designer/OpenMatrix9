@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 159 lệnh.
+Tổng cộng: 189 lệnh.
 
 ## Curve (58 lệnh)
 
@@ -72,7 +72,7 @@ Tổng cộng: 159 lệnh.
 | `CurveCurveFromObjectsExtractWireframe` | [Extract Wireframe](commands/Curve/CurveCurveFromObjectsExtractWireframe.md) | Curve #54 |
 | `CurveCurveEditToolsSoftEdit` | [Soft Edit Curve](commands/Curve/CurveCurveEditToolsSoftEdit.md) | Curve #55 |
 
-## Cutters (10 lệnh)
+## Cutters (11 lệnh)
 
 | Mã lệnh | Lệnh | Vị trí menu |
 |---|---|---|
@@ -86,8 +86,9 @@ Tổng cộng: 159 lệnh.
 | `BuilderPlaneandCubeCutters` | [Plane and Cube Cutters](commands/Cutters/BuilderPlaneandCubeCutters.md) | Cutters #9 |
 | `OthersCuttoFingerRail` | [Cut to Finger Rail](commands/Cutters/OthersCuttoFingerRail.md) | Cutters #8 |
 | `BuilderQuadFlip` | [Quad Flip](commands/Cutters/BuilderQuadFlip.md) | Cutters #10 |
+| `BuilderBooleanBuilder` | [Boolean Builder](commands/Cutters/BuilderBooleanBuilder.md) | Tools #31 |
 
-## Gems (12 lệnh)
+## Gems (35 lệnh)
 
 | Mã lệnh | Lệnh | Vị trí menu |
 |---|---|---|
@@ -103,8 +104,31 @@ Tổng cộng: 159 lệnh.
 | `BuilderGemUpdate` | [Gem Update](commands/Gems/BuilderGemUpdate.md) | Gems #34 |
 | `BuilderGemOnCrv` | [Gem On Crv](commands/Gems/BuilderGemOnCrv.md) | Gems #2 |
 | `BuilderGemCountOnCrv` | [Gem Count On Crv](commands/Gems/BuilderGemCountOnCrv.md) | Gems #4 |
+| `BuilderGemOnCrvAdvanced` | [Gem on Curve Advanced](commands/Gems/BuilderGemOnCrvAdvanced.md) | Gems #3 |
+| `BuilderGemListOnCrv` | [Gem List on Curve](commands/Gems/BuilderGemListOnCrv.md) | Gems #5 |
+| `BuilderGemOnCrvMulti` | [Gem on Curve Multi](commands/Gems/BuilderGemOnCrvMulti.md) | Gems #6 |
+| `BuilderGemProfile` | [Gem Profile](commands/Gems/BuilderGemProfile.md) | Gems #7 |
+| `BuilderOrientToGem` | [Orient to Gem](commands/Gems/BuilderOrientToGem.md) | Gems #9 |
+| `BuilderGemOnSurface` | [Gem on Surface](commands/Gems/BuilderGemOnSurface.md) | Gems #11 |
+| `BuilderTaperBagChannel` | [Baguette Channel](commands/Gems/BuilderTaperBagChannel.md) | Gems #15 |
+| `BuilderTaperBagBetweenTwoCurves` | [Tapered Baguette Between Two Curves](commands/Gems/BuilderTaperBagBetweenTwoCurves.md) | Gems #16 |
+| `BuilderClusterBuilderOld` | [Cluster Builder](commands/Gems/BuilderClusterBuilderOld.md) | Gems #18 |
+| `BuilderPaveDialog` | [Auto Pavé](commands/Gems/BuilderPaveDialog.md) | Gems #21 |
+| `BuilderPaveBuilder` | [Pavé Builder](commands/Gems/BuilderPaveBuilder.md) | Gems #22 |
+| `BuilderPaveAzureBuilder` | [Pavé Azure Builder](commands/Gems/BuilderPaveAzureBuilder.md) | Gems #23 |
+| `BuilderPaveProngBuilder` | [Pavé Prong Builder](commands/Gems/BuilderPaveProngBuilder.md) | Gems #24 |
+| `BuilderGemSprings` | [Gem Springs](commands/Gems/BuilderGemSprings.md) | Gems #25 |
+| `BuilderGemFollow` | [Gem Follow](commands/Gems/BuilderGemFollow.md) | Gems #26 |
+| `BuilderGemControl` | [Gem Control](commands/Gems/BuilderGemControl.md) | Gems #27 |
+| `OthersMatchAttributes` | [Match Attributes](commands/Gems/OthersMatchAttributes.md) | Gems #28 |
+| `OthersSaveStyle` | [Save Style](commands/Gems/OthersSaveStyle.md) | Gems #29 |
+| `OthersLoadStyle` | [Load Style](commands/Gems/OthersLoadStyle.md) | Gems #30 |
+| `BuilderGVDGemFlow` | [Gem Flow](commands/Gems/BuilderGVDGemFlow.md) | Gems #31 |
+| `BuilderGVDGemSplop` | [Gem Splop](commands/Gems/BuilderGVDGemSplop.md) | Gems #32 |
+| `BuilderPaveSphere` | [Pavé Sphere](commands/Gems/BuilderPaveSphere.md) | Gems #33 |
+| `BuilderGemPositioner` | [Gem Positioner](commands/Gems/BuilderGemPositioner.md) | Gems #35 |
 
-## Settings (5 lệnh)
+## Settings (11 lệnh)
 
 | Mã lệnh | Lệnh | Vị trí menu |
 |---|---|---|
@@ -113,6 +137,12 @@ Tổng cộng: 159 lệnh.
 | `BuilderHead` | [Head Builder](commands/Settings/BuilderHead.md) | Settings #1 |
 | `BuilderBeadOnCrv` | [Bead on Curve](commands/Settings/BuilderBeadOnCrv.md) | Settings #11 |
 | `BuilderChannelBorderCurve` | [Channel Border Curve](commands/Settings/BuilderChannelBorderCurve.md) | Settings #12 |
+| `ClayooCreationClayooBezel` | [SubD Bezel](commands/Settings/ClayooCreationClayooBezel.md) | Clayoo #11 |
+| `BuilderPullToRail` | [Pull Object to Rail](commands/Settings/BuilderPullToRail.md) | Settings #4 |
+| `BuilderProngEditor` | [Prong Editor](commands/Settings/BuilderProngEditor.md) | Settings #7 |
+| `BuilderProngOnSurface` | [Prong on Surface](commands/Settings/BuilderProngOnSurface.md) | Settings #8 |
+| `BuilderBeadOnSurface` | [Bead on Surface](commands/Settings/BuilderBeadOnSurface.md) | Settings #9 |
+| `BuilderMetalPiece` | [Metal from Gems](commands/Settings/BuilderMetalPiece.md) | Settings #10 |
 
 ## Solid (30 lệnh)
 

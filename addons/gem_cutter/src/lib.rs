@@ -224,9 +224,10 @@ impl Interactive for GemCutter {
             });
         }
         if matches!(e.input, Input::Enter) {
-            return Ok(
-                Reply::finish(geo).say(format!("Gem Cutter: {n} cutters on layer Cutting{note}"))
-            );
+            let mut r =
+                Reply::finish(geo).say(format!("Gem Cutter: {n} cutters on layer Cutting{note}"));
+            r.records = om9_addon_geom::cmd::remember_style(e);
+            return Ok(r);
         }
         Ok(Reply::ask(
             format!(
