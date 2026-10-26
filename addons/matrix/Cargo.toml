@@ -30,6 +30,7 @@ om9-addon-solid = { path = "../solid" }
 om9-addon-curve-tools = { path = "../curve_tools" }
 om9-addon-gem-tools = { path = "../gem_tools" }
 om9-addon-setting-tools = { path = "../setting_tools" }
+om9-addon-builders = { path = "../builders" }
 serde_json = { workspace = true }
 
 [dev-dependencies]

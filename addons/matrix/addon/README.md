@@ -7,7 +7,28 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 189 lệnh.
+Tổng cộng: 205 lệnh.
+
+## Builder (16 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `BuilderEternity` | [Eternity Band](commands/Builder/BuilderEternity.md) | Builder #1 |
+| `BuilderSignet` | [Signet](commands/Builder/BuilderSignet.md) | Builder #2 |
+| `ClayooCreationSignetRing` | [SubD Signet](commands/Builder/ClayooCreationSignetRing.md) | Clayoo #13 |
+| `ClayooCreationRing` | [SubD Ring](commands/Builder/ClayooCreationRing.md) | Clayoo #12 |
+| `TextOnCurve` | [Text on Curve](commands/Builder/TextOnCurve.md) | Builder #5 |
+| `BuilderRaised` | [Raised Band](commands/Builder/BuilderRaised.md) | Builder #6 |
+| `BuilderAwardRingBuilder` | [Award Ring Top](commands/Builder/BuilderAwardRingBuilder.md) | Builder #7 |
+| `Builder_Rope` | [Rope](commands/Builder/Builder_Rope.md) | Builder #8 |
+| `BuilderJump` | [Jump Ring](commands/Builder/BuilderJump.md) | Builder #9 |
+| `BuilderFreeFormKnot` | [Freeform Knot](commands/Builder/BuilderFreeFormKnot.md) | Builder #10 |
+| `BuilderKnot` | [Knot Builder](commands/Builder/BuilderKnot.md) | Builder #11 |
+| `BuilderPatternBuilder` | [Pattern Builder](commands/Builder/BuilderPatternBuilder.md) | Builder #12 |
+| `BuilderNautilusBuilder` | [Nautilus Builder](commands/Builder/BuilderNautilusBuilder.md) | Builder #13 |
+| `BuilderMillWork` | [Mill Work](commands/Builder/BuilderMillWork.md) | Builder #14 |
+| `BuilderMillArea` | [Mill Area](commands/Builder/BuilderMillArea.md) | Builder #15 |
+| `BuilderMillWorkC` | [Mill Work Across](commands/Builder/BuilderMillWorkC.md) | Builder #16 |
 
 ## Curve (58 lệnh)
 
