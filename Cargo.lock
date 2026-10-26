@@ -1758,6 +1758,7 @@ dependencies = [
  "om9-addon-setting-tools",
  "om9-addon-settings",
  "om9-addon-solid",
+ "om9-addon-surfaces",
  "om9-addon-tools",
  "om9-addon-transform",
  "om9-addon-transform-tools",
@@ -1791,6 +1792,17 @@ version = "0.1.0"
 dependencies = [
  "om9-addon-abi",
  "om9-addon-geom",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "om9-addon-surfaces"
+version = "0.1.0"
+dependencies = [
+ "om9-addon-abi",
+ "om9-addon-geom",
+ "om9-addon-tools",
  "serde",
  "serde_json",
 ]

@@ -11,6 +11,7 @@ use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub,
 
 pub mod cmd;
 pub mod csg;
+pub mod fit;
 pub mod gems;
 pub mod mesh;
 pub mod nurbs;
@@ -44,7 +45,7 @@ pub fn control_curve(poles: &[Vec3], degree: usize) -> Option<Geo> {
     })
 }
 
-pub(crate) fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
+pub fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
     if u >= k[n] {
         return n - 1;
     }
@@ -61,7 +62,7 @@ pub(crate) fn find_span(n: usize, p: usize, u: f64, k: &[f64]) -> usize {
     mid
 }
 
-pub(crate) fn basis(span: usize, u: f64, p: usize, k: &[f64]) -> Vec<f64> {
+pub fn basis(span: usize, u: f64, p: usize, k: &[f64]) -> Vec<f64> {
     let mut n = vec![0.0; p + 1];
     let mut left = vec![0.0; p + 1];
     let mut right = vec![0.0; p + 1];

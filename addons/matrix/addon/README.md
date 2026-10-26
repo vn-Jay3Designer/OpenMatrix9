@@ -7,7 +7,7 @@ gọi được từ icon trên menu, từ dòng lệnh (tên lệnh hoặc tên 
 
 Mỗi lệnh có một trang trong `commands/<Menu>/`.
 
-Tổng cộng: 235 lệnh.
+Tổng cộng: 275 lệnh.
 
 ## Builder (16 lệnh)
 
@@ -199,6 +199,51 @@ Tổng cộng: 235 lệnh.
 | `SolidSolidEditToolsFacesMoveFace` | [Move Face](commands/Solid/SolidSolidEditToolsFacesMoveFace.md) | Solid #28 |
 | `SolidShell` | [Shell](commands/Solid/SolidShell.md) | Solid #29 |
 | `SolidPtOn` | [Solid Points On](commands/Solid/SolidPtOn.md) | Solid #30 |
+
+## Surface (40 lệnh)
+
+| Mã lệnh | Lệnh | Vị trí menu |
+|---|---|---|
+| `SurfaceSweepSweep1Rail` | [Sweep 1 Rail](commands/Surface/SurfaceSweepSweep1Rail.md) | Surface #1 |
+| `SurfaceSweepSweep2Rails` | [Sweep 2 Rails](commands/Surface/SurfaceSweepSweep2Rails.md) | Surface #2 |
+| `SurfaceSweepProfileSweep` | [Profile Sweep](commands/Surface/SurfaceSweepProfileSweep.md) | Surface #3 |
+| `SurfacePlanarCurves` | [Planar Curves](commands/Surface/SurfacePlanarCurves.md) | Surface #4 |
+| `SurfacePlaneCornertoCorner` | [Plane](commands/Surface/SurfacePlaneCornertoCorner.md) | Surface #5 |
+| `OthersSurfaceRebuild` | [Rebuild Surface](commands/Surface/OthersSurfaceRebuild.md) | Surface #6 |
+| `SurfaceBlendSurface` | [Blend Surface](commands/Surface/SurfaceBlendSurface.md) | Surface #7 |
+| `SurfaceVariableFilletBlendChamferVariableBlendSurfaces` | [Variable Blend Surface](commands/Surface/SurfaceVariableFilletBlendChamferVariableBlendSurfaces.md) | Surface #8 |
+| `SurfaceLoft` | [Loft](commands/Surface/SurfaceLoft.md) | Surface #9 |
+| `SurfaceCurveNetwork` | [Curve Network](commands/Surface/SurfaceCurveNetwork.md) | Surface #10 |
+| `SurfaceSurfaceEditToolsShrinkTrimmedSurface` | [Shrink Trimmed Surface](commands/Surface/SurfaceSurfaceEditToolsShrinkTrimmedSurface.md) | Surface #11 |
+| `SurfacePatch` | [Patch](commands/Surface/SurfacePatch.md) | Surface #12 |
+| `SurfaceEdgeCurves` | [Edge Curves](commands/Surface/SurfaceEdgeCurves.md) | Surface #13 |
+| `SurfaceSurfaceEditToolsUntrim` | [Untrim](commands/Surface/SurfaceSurfaceEditToolsUntrim.md) | Surface #14 |
+| `SurfaceGVDExtrudeAll` | [Extrude All](commands/Surface/SurfaceGVDExtrudeAll.md) | Surface #15 |
+| `SurfaceRevolve` | [Revolve](commands/Surface/SurfaceRevolve.md) | Surface #16 |
+| `SurfaceRailRevolve` | [Rail Revolve](commands/Surface/SurfaceRailRevolve.md) | Surface #17 |
+| `BuilderFourProfileSweep` | [Four Profile Sweep](commands/Surface/BuilderFourProfileSweep.md) | Surface #18 |
+| `SurfaceSweepSweepMultiRail` | [Sweep Multi Rail](commands/Surface/SurfaceSweepSweepMultiRail.md) | Surface #19 |
+| `SurfaceTweenSurfaces` | [Tween Surfaces](commands/Surface/SurfaceTweenSurfaces.md) | Surface #20 |
+| `SurfaceFilletSurfaces` | [Fillet Surfaces](commands/Surface/SurfaceFilletSurfaces.md) | Surface #21 |
+| `SurfaceVariableFilletBlendChamferVariableFilletSurfaces` | [Variable Fillet](commands/Surface/SurfaceVariableFilletBlendChamferVariableFilletSurfaces.md) | Surface #22 |
+| `SurfaceChamferSurfaces` | [Chamfer Surfaces](commands/Surface/SurfaceChamferSurfaces.md) | Surface #23 |
+| `SurfaceVariableFilletBlendChamferVariableChamferSurfaces` | [Variable Chamfer](commands/Surface/SurfaceVariableFilletBlendChamferVariableChamferSurfaces.md) | Surface #24 |
+| `SurfaceOffsetSurface` | [Offset Surface](commands/Surface/SurfaceOffsetSurface.md) | Surface #25 |
+| `SurfaceVariableOffsetSurface` | [Variable Offset Surface](commands/Surface/SurfaceVariableOffsetSurface.md) | Surface #26 |
+| `SurfaceSurfaceEditToolsMerge` | [Merge Surfaces](commands/Surface/SurfaceSurfaceEditToolsMerge.md) | Surface #27 |
+| `SurfaceSurfaceEditToolsMatch` | [Match Surface](commands/Surface/SurfaceSurfaceEditToolsMatch.md) | Surface #28 |
+| `SurfaceDrape` | [Drape](commands/Surface/SurfaceDrape.md) | Surface #29 |
+| `SurfaceHeightfieldfromImage` | [Heightfield from Image](commands/Surface/SurfaceHeightfieldfromImage.md) | Surface #30 |
+| `SurfaceSurfaceEditToolsSplitatIsocurve` | [Split at Isocurve](commands/Surface/SurfaceSurfaceEditToolsSplitatIsocurve.md) | Surface #31 |
+| `SurfaceExtendSurface` | [Extend Surface](commands/Surface/SurfaceExtendSurface.md) | Surface #32 |
+| `SurfaceExtrudeCurveNormalToSurface` | [Extrude Curve Normal to Surface](commands/Surface/SurfaceExtrudeCurveNormalToSurface.md) | Surface #33 |
+| `SurfaceUnrollDevelopableSrf` | [Unroll Developable Surface](commands/Surface/SurfaceUnrollDevelopableSrf.md) | Surface #34 |
+| `SurfaceSmash` | [Smash](commands/Surface/SurfaceSmash.md) | Surface #35 |
+| `SurfaceSurfaceEditToolsSoftEdit` | [Soft Edit Surface](commands/Surface/SurfaceSurfaceEditToolsSoftEdit.md) | Surface #36 |
+| `SurfacePlaneCuttingPlane` | [Cutting Plane](commands/Surface/SurfacePlaneCuttingPlane.md) | Surface #37 |
+| `SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam` | [Adjust Closed Surface Seam](commands/Surface/SurfaceSurfaceEditToolsAdjustClosedSurfaceSeam.md) | Surface #38 |
+| `SurfaceSurfaceEditToolsSetSurfaceTangent` | [Set Surface Tangent](commands/Surface/SurfaceSurfaceEditToolsSetSurfaceTangent.md) | Surface #39 |
+| `SurfaceSurfaceEditToolsRefittoTolerance` | [Refit to Tolerance](commands/Surface/SurfaceSurfaceEditToolsRefittoTolerance.md) | Surface #40 |
 
 ## Tools (30 lệnh)
 

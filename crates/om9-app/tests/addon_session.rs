@@ -620,6 +620,60 @@ fn styles_follow_stones_through_the_controller() {
     fs::remove_dir_all(&tmp).unwrap();
 }
 
+/// Surface commands make NURBS surfaces in the document, and later commands see them (their
+/// exact definition and their tessellation).
+#[test]
+fn surfaces_round_trip_through_the_document() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-surfaces-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("surfaces"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    c.run_addon_command("SurfacePlaneCornertoCorner").unwrap();
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([4.0, 3.0, 0.0]).unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    let plane = *c.document().entities.keys().next().unwrap();
+    assert!(matches!(
+        c.document().entities[&plane].geometry,
+        Geometry::Surface(_)
+    ));
+    // Offset it 2 mm: the command reads the exact surface back.
+    c.select_objects(&[plane]).unwrap();
+    c.run_addon_command("SurfaceOffsetSurface").unwrap();
+    c.submit("Distance=2").unwrap();
+    c.submit("").unwrap();
+    assert!(c.addon_session().is_none(), "{}", c.prompt_text());
+    assert_eq!(c.document().entities.len(), 2);
+    // Extrude Normal to Surface needs the plane's tessellation (mesh_data).
+    c.select_objects(&[]).unwrap();
+    c.run_addon_command("CurvePolylinePolyline").unwrap();
+    c.session_point([1.0, 1.0, 0.0]).unwrap();
+    c.session_point([3.0, 1.0, 0.0]).unwrap();
+    c.submit("").unwrap();
+    let curve = *c
+        .document()
+        .entities
+        .keys()
+        .find(|id| matches!(c.document().entities[*id].geometry, Geometry::Curve(_)))
+        .unwrap();
+    c.select_objects(&[curve, plane]).unwrap();
+    c.run_addon_command("SurfaceExtrudeCurveNormalToSurface").unwrap();
+    c.refresh_addon_session();
+    assert!(c.prompt_text().contains("1 ribbons"), "{}", c.prompt_text());
+    c.submit("").unwrap();
+    assert_eq!(c.document().entities.len(), 4);
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
 /// A deformation (Taper) rebuilds a moved mesh in place: the object keeps its id and
 /// placement, its world shape follows the deformation.
 #[test]

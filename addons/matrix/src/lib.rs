@@ -36,6 +36,11 @@ pub const CATEGORIES: &[Category] = &[
         step: <om9_transform::Transforms as Interactive>::step,
     },
     Category {
+        name: "Surface",
+        commands: <om9_surfaces::Surfaces as Interactive>::SESSION_COMMANDS,
+        step: <om9_surfaces::Surfaces as Interactive>::step,
+    },
+    Category {
         name: "Solid",
         commands: <om9_solid::Solids as Interactive>::SESSION_COMMANDS,
         step: <om9_solid::Solids as Interactive>::step,
@@ -97,6 +102,7 @@ pub const CATEGORIES: &[Category] = &[
 pub const SOURCES: &[(&str, &str)] = &[
     ("Curve", "curves"),
     ("Curve", "curve_tools"),
+    ("Surface", "surfaces"),
     ("Solid", "solid"),
     ("Transform", "transform"),
     ("Transform", "transform_tools"),
