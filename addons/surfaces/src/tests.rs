@@ -128,6 +128,22 @@ fn sweep_a_tube_around_a_ring() {
             assert!((d - 1.0).abs() < 0.02, "{p:?} {d}");
         }
     }
+    // A window selection also catches the gem layout circle inside the ring: it does not touch
+    // the rail, so it is not a profile (found testing Profile Placer + Profile Sweep on Windows).
+    let rail = curve("r", circle_pts([0.0; 3], 10.0, 1, 128), true);
+    let prof = curve("p", circle_pts([10.0, 0.0, 0.0], 1.0, 0, 64), true);
+    let stray = curve("g", circle_pts([0.0; 3], 5.0, 0, 64), true);
+    let r = run(
+        PROFILE_SWEEP,
+        vec![rail, prof, stray],
+        json!({}),
+        vec![Input::Enter],
+    );
+    assert!(
+        r.messages.iter().any(|m| m.contains("1 profiles")),
+        "{:?}",
+        r.messages
+    );
 }
 
 #[test]

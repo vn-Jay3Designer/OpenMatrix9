@@ -391,7 +391,39 @@ fn rail_and_profiles<'a>(e: &'a Event) -> Result<(&'a Selected, Vec<&'a Selected
     }
     let len = |s: &Selected| Path::new(&s.points, s.closed).map_or(0.0, |p| p.length());
     let rail = *cs.iter().max_by(|a, b| len(a).total_cmp(&len(b))).unwrap();
-    Ok((rail, cs.into_iter().filter(|c| c.id != rail.id).collect()))
+    let others: Vec<&Selected> = cs.into_iter().filter(|c| c.id != rail.id).collect();
+    // Profiles sit on the rail (Profile Placer puts their base on it, a tube profile surrounds
+    // it). Other curves caught by a window selection - a gem layout circle, a guide - are not
+    // profiles; when none is on the rail, every curve is used, as before.
+    let touching: Vec<&Selected> = match Path::new(&rail.points, rail.closed) {
+        Some(path) => others
+            .iter()
+            .copied()
+            .filter(|c| {
+                // On the rail: the profile's middle is no farther from the rail than the
+                // profile is wide (a tube profile around the rail, a shank profile on it).
+                let pts = dense(c);
+                if pts.is_empty() {
+                    return false;
+                }
+                let mid = scale(
+                    pts.iter().fold([0.0; 3], |a, &q| add(a, q)),
+                    1.0 / pts.len() as f64,
+                );
+                let radius = pts.iter().map(|&q| dist(q, mid)).fold(0.0, f64::max);
+                dist(mid, path.at(path.closest(mid))) <= (0.75 * radius).max(0.5)
+            })
+            .collect(),
+        None => Vec::new(),
+    };
+    Ok((
+        rail,
+        if touching.is_empty() {
+            others
+        } else {
+            touching
+        },
+    ))
 }
 
 pub fn sweep_rows(
