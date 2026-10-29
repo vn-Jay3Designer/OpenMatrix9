@@ -738,6 +738,9 @@ fn metal_piece(e: &Event) -> Reply {
 
 // ---- Boolean Builder -------------------------------------------------------------------------
 
+/// Boolean Builder: the preview wires of the last computed result, by its inputs.
+static BOOLEAN_PREVIEW: std::sync::Mutex<Option<(String, Vec<Geo>)>> = std::sync::Mutex::new(None);
+
 #[derive(Default, Serialize, Deserialize)]
 struct Objects {
     objects: Vec<(String, SelectedMesh)>,
@@ -796,7 +799,9 @@ fn boolean_builder(e: &Event) -> Reply {
         .want(Want::Objects);
     }
     let ids: Vec<&String> = st.objects.iter().map(|o| &o.0).collect();
-    let cutters: Vec<&Selected> = objs.into_iter().filter(|s| !ids.contains(&&s.id)).collect();
+    let mut cutters: Vec<&Selected> = objs.into_iter().filter(|s| !ids.contains(&&s.id)).collect();
+    // The same cutters give the same result whatever order the selection lists them in.
+    cutters.sort_by(|a, b| a.id.cmp(&b.id));
     if cutters.is_empty() {
         let r = Reply::ask(format!("{label}: select the cutters, Enter"), save(&st))
             .want(Want::Objects);
@@ -812,20 +817,38 @@ fn boolean_builder(e: &Event) -> Reply {
             check(s.mesh.as_ref().unwrap()).map(|w| format!("{label}: warning {}: {w}", s.name))
         })
         .collect();
-    let tool = csg::fold(
-        &cutters
+    let compute = || -> Vec<(String, Mesh)> {
+        let tool = csg::fold(
+            &cutters
+                .iter()
+                .map(|s| to_mesh(s.mesh.as_ref().unwrap()))
+                .collect::<Vec<_>>(),
+            Op::Union,
+        )
+        .unwrap();
+        st.objects
             .iter()
-            .map(|s| to_mesh(s.mesh.as_ref().unwrap()))
+            .map(|(id, m)| (id.clone(), csg::boolean(&to_mesh(m), &tool, op)))
+            .collect()
+    };
+    // The result of the last objects × cutters × mode: the preview is redrawn on every cursor
+    // move, but a boolean of a ring against its cutters takes seconds.
+    let key = format!(
+        "{:?}|{:?}|{:?}",
+        ids,
+        cutters
+            .iter()
+            .map(|s| (&s.id, s.bbox, s.mesh.as_ref().map(|m| m.vertices.len())))
             .collect::<Vec<_>>(),
-        Op::Union,
-    )
-    .unwrap();
-    let results: Vec<(String, Mesh)> = st
-        .objects
-        .iter()
-        .map(|(id, m)| (id.clone(), csg::boolean(&to_mesh(m), &tool, op)))
-        .collect();
+        op
+    );
     if !matches!(e.input, Input::Enter) {
+        let mut cache = BOOLEAN_PREVIEW.lock().unwrap_or_else(|p| p.into_inner());
+        if cache.as_ref().is_none_or(|(k, _)| *k != key) {
+            let wire = compute().iter().flat_map(|r| r.1.wire()).collect();
+            *cache = Some((key, wire));
+        }
+        let preview = cache.as_ref().map(|c| c.1.clone()).unwrap_or_default();
         return Reply::ask(
             format!(
                 "{label}: {} objects × {} cutters. Mode in the builder, Enter",
@@ -835,8 +858,9 @@ fn boolean_builder(e: &Event) -> Reply {
             save(&st),
         )
         .want(Want::Objects)
-        .preview(results.iter().flat_map(|r| r.1.wire()).collect());
+        .preview(preview);
     }
+    let results = compute();
     let mut r = Reply::finish(Vec::new()).say(format!(
         "{label}: {} objects, {} cutters, volume {} mm³",
         results.len(),

@@ -265,7 +265,29 @@ pub enum Op {
 }
 
 /// `a ∪ b`, `a − b` or `a ∩ b`.
+///
+/// The BSP trees are as deep as the meshes have faces (thousands for a metal piece cut by a
+/// channel), and building, clipping and dropping them recurse that deep. The host calls the
+/// add-on on its UI thread, whose stack is 1 MiB on Windows: OM9 closed without a word when
+/// Boolean Builder cut a ring of 18 stones. The work runs on a thread with a large stack.
 pub fn boolean(a: &Mesh, b: &Mesh, op: Op) -> Mesh {
+    const STACK: usize = 512 << 20;
+    std::thread::scope(|scope| {
+        let worker = std::thread::Builder::new()
+            .name("om9-csg".into())
+            .stack_size(STACK)
+            .spawn_scoped(scope, || boolean_on_this_thread(a, b, op));
+        match worker {
+            Ok(handle) => handle
+                .join()
+                .unwrap_or_else(|panic| std::panic::resume_unwind(panic)),
+            // No thread (resources exhausted): try on the caller's stack.
+            Err(_) => boolean_on_this_thread(a, b, op),
+        }
+    })
+}
+
+fn boolean_on_this_thread(a: &Mesh, b: &Mesh, op: Op) -> Mesh {
     let mut na = Node::new(polygons(a));
     let mut nb = Node::new(polygons(b));
     match op {
@@ -336,5 +358,19 @@ mod tests {
         let ball = sphere(1.5, 32);
         let u = boolean(&plate, &ball, Op::Union);
         assert!(u.volume() > plate.volume());
+    }
+
+    #[test]
+    fn deep_trees_do_not_overflow_a_small_stack() {
+        // A torus cut by a fine tube: thousands of faces, BSP trees thousands deep. Called
+        // from a thread with the 1 MiB stack the Windows UI thread has.
+        let ring = crate::mesh::torus(10.0, 2.0, 48, 12);
+        let cutter = crate::mesh::torus(10.0, 1.0, 48, 12);
+        let small = std::thread::Builder::new()
+            .stack_size(1 << 20)
+            .spawn(move || boolean(&ring, &cutter, Op::Difference))
+            .unwrap();
+        let cut = small.join().expect("no stack overflow");
+        assert!(cut.triangles.len() > 500);
     }
 }

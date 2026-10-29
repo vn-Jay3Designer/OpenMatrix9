@@ -130,6 +130,30 @@ unsafe extern "C" fn cb_session_write(ctx: *mut c_void, data: *const u8, len: us
     }
 }
 
+/// Stack of the thread that runs an add-on step. Geometry add-ons recurse deeply (BSP booleans
+/// over thousands of faces); the UI thread that drives the session has only 1 MiB on Windows,
+/// and overflowing it ends OM9 at once, without a message.
+const ADDON_STACK: usize = 256 << 20;
+
+/// Run one add-on call on a thread with [`ADDON_STACK`] and wait for it; on the caller's thread
+/// when no thread can be started.
+fn on_large_stack<T: Send, R: Send>(arg: &mut T, call: impl Fn(&mut T) -> R + Sync) -> R {
+    let call = &call;
+    let worker = std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("om9-addon".into())
+            .stack_size(ADDON_STACK)
+            .spawn_scoped(scope, || call(arg))
+            .map(|h| h.join())
+    });
+    match worker {
+        Ok(Ok(r)) => r,
+        // The add-on catches its own panics; one escaping the FFI boundary is re-raised here.
+        Ok(Err(panic)) => std::panic::resume_unwind(panic),
+        Err(_) => call(arg),
+    }
+}
+
 impl Runtime for NativeRuntime {
     fn load(&mut self, req: &LoadRequest) -> Result<Vec<String>, String> {
         let entry = req
@@ -208,16 +232,19 @@ impl Runtime for NativeRuntime {
             return Err("sự kiện quá lớn".into());
         }
         let mut sink = SessionSink::default();
-        // SAFETY: `event` and `sink` live until the call returns; the add-on copies nothing back
-        // except through `cb_session_write`, which copies into `sink`.
-        let code = unsafe {
-            f(
-                event.as_ptr(),
-                event.len(),
-                cb_session_write,
-                &mut sink as *mut SessionSink as *mut c_void,
-            )
+        let call = |sink: &mut SessionSink| {
+            // SAFETY: `event` and `sink` live until the call returns; the add-on copies nothing
+            // back except through `cb_session_write`, which copies into `sink`.
+            unsafe {
+                f(
+                    event.as_ptr(),
+                    event.len(),
+                    cb_session_write,
+                    sink as *mut SessionSink as *mut c_void,
+                )
+            }
         };
+        let code = on_large_stack(&mut sink, call);
         if sink.overflow {
             return Err(format!("{id}: trả lời quá lớn"));
         }
