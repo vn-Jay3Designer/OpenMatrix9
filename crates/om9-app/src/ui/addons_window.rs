@@ -314,9 +314,16 @@ impl MatrixApp {
                     });
                 }
             }
-            egui::CollapsingHeader::new("Commands")
+            // Uninstall stays in reach: a package such as OM9 Matrix lists hundreds of commands.
+            if row.repo == RepoKind::User && ui.button("Uninstall").clicked() {
+                actions.push(Action::Uninstall(row.id.clone()));
+            }
+            egui::CollapsingHeader::new(format!("Commands ({})", row.commands.len()))
                 .id_salt(("addon-details", &row.id))
-                .default_open(self.addons_ui.pending_grant.as_deref() == Some(&row.id) || enabled)
+                .default_open(
+                    self.addons_ui.pending_grant.as_deref() == Some(&row.id)
+                        || (enabled && row.commands.len() <= 20),
+                )
                 .show(ui, |ui| {
                     for (code, label, keys) in &row.commands {
                         ui.horizontal(|ui| {
@@ -340,9 +347,6 @@ impl MatrixApp {
                          (Size=1.5 …) and in the BUILDERS panel below Projects. The values you \
                          accept become the defaults for next time.",
                     );
-                    if row.repo == RepoKind::User && ui.button("Uninstall").clicked() {
-                        actions.push(Action::Uninstall(row.id.clone()));
-                    }
                 });
             ui.separator();
         }

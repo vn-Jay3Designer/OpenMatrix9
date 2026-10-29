@@ -538,6 +538,8 @@ impl Host {
     /// Khởi động: quét kho rồi bật các add-on đã bật lần trước. Lỗi của một add-on không chặn add-on khác.
     pub fn startup(&mut self, st: &Startup) -> usize {
         self.persist = !(st.safe_mode || st.only.is_some());
+        // Libraries moved aside by an uninstall or update are free now.
+        let _ = fs::remove_dir_all(self.user_repo().join(TRASH));
         self.discover();
         if st.safe_mode {
             self.log
@@ -819,13 +821,26 @@ impl Host {
         if was_active {
             self.disable_inner(&m.id);
         }
-        let had_old = final_dir.exists();
+        let mut had_old = final_dir.exists();
+        let mut restart = false;
         if had_old && let Err(e) = fs::rename(&final_dir, &backup) {
-            let _ = fs::remove_dir_all(&stage);
-            if was_active {
-                let _ = self.enable_inner(&m.id, false);
+            // Windows keeps a library that was loaded mapped until OM9 exits, and then the
+            // folder cannot be renamed. Move the locked files aside (allowed for mapped files)
+            // and drop the old folder: no rollback copy, and the new library runs after a
+            // restart.
+            match remove_dir_evicting(&final_dir, &user.join(TRASH)) {
+                Ok(moved) => {
+                    had_old = false;
+                    restart = moved;
+                }
+                Err(_) => {
+                    let _ = fs::remove_dir_all(&stage);
+                    if was_active {
+                        let _ = self.enable_inner(&m.id, false);
+                    }
+                    return Err(one(format!("không thay được bản cũ (file đang mở?): {e}")));
+                }
             }
-            return Err(one(format!("không thay được bản cũ (file đang mở?): {e}")));
         }
         if let Err(e) = fs::rename(&stage, &final_dir) {
             if had_old {
@@ -841,6 +856,12 @@ impl Host {
         self.discover();
 
         let mut warnings = Vec::new();
+        if restart {
+            warnings.push(format!(
+                "{}: bản cũ còn nạp trong OM9; khởi động lại OM9 để dùng bản {}",
+                m.id, m.version
+            ));
+        }
         if let Some(i) = self.installed.get(&m.id)
             && i.repo == RepoKind::Dev
         {
@@ -907,8 +928,14 @@ impl Host {
             .map(|m| m.commands.iter().map(|c| c.id.clone()).collect())
             .unwrap_or_default();
         self.disable_inner(id);
-        fs::remove_dir_all(&inst.dir)
+        let trash = self.user_repo().join(TRASH);
+        let moved = remove_dir_evicting(&inst.dir, &trash)
             .map_err(|e| format!("không xoá được {}: {e}", inst.dir.display()))?;
+        if moved {
+            self.log.push(format!(
+                "{id}: thư viện còn nạp trong OM9; đã chuyển vào thùng rác, xoá hẳn khi khởi động lại"
+            ));
+        }
         self.prefs.addons.remove(id);
         self.prefs.keymap.retain(|k, _| !cmds.contains(k));
         self.last_error.remove(id);
@@ -1305,4 +1332,48 @@ impl Host {
         out.validate().map_err(|e| format!("{owner}: {e}"))?;
         Ok(out)
     }
+}
+
+/// Folder (in the user repository, hidden from discovery) for files that could not be deleted.
+const TRASH: &str = ".trash";
+
+/// Remove `dir`. Files that cannot be deleted - on Windows a library loaded by OM9 stays mapped
+/// until the program exits - are renamed into `trash` (Windows allows renaming a mapped file)
+/// and the folder is removed after them. `Ok(true)` when something had to be moved.
+fn remove_dir_evicting(dir: &Path, trash: &Path) -> std::io::Result<bool> {
+    if fs::remove_dir_all(dir).is_ok() || !dir.exists() {
+        return Ok(false);
+    }
+    fn files(dir: &Path, out: &mut Vec<PathBuf>) {
+        if let Ok(rd) = fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if e.file_type().is_ok_and(|t| t.is_dir()) {
+                    files(&p, out);
+                } else {
+                    out.push(p);
+                }
+            }
+        }
+    }
+    let mut all = Vec::new();
+    files(dir, &mut all);
+    let mut moved = false;
+    for (k, f) in all.iter().enumerate() {
+        if fs::remove_file(f).is_ok() {
+            continue;
+        }
+        fs::create_dir_all(trash)?;
+        let name = f
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_nanos());
+        fs::rename(f, trash.join(format!("{}-{stamp}-{k}-{name}", std::process::id())))?;
+        moved = true;
+    }
+    fs::remove_dir_all(dir)?;
+    Ok(moved)
 }
