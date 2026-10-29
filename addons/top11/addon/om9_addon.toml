@@ -106,7 +106,7 @@ commands = ["TopIconRingRail"]
 
 [[settings]]
 key = "t11_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0

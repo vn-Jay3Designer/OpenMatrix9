@@ -110,7 +110,7 @@ commands = ["TopIconRingRail"]
 
 [[settings]]
 key = "t11_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3097,7 +3097,7 @@ commands = ["BuilderEternity"]
 
 [[settings]]
 key = "et_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3197,7 +3197,7 @@ commands = ["BuilderSignet"]
 
 [[settings]]
 key = "sg_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3273,7 +3273,7 @@ commands = ["ClayooCreationSignetRing"]
 
 [[settings]]
 key = "sds_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3349,7 +3349,7 @@ commands = ["ClayooCreationRing"]
 
 [[settings]]
 key = "sdr_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3480,7 +3480,7 @@ commands = ["BuilderRaised"]
 
 [[settings]]
 key = "rb_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -3641,7 +3641,7 @@ commands = ["Builder_Rope"]
 
 [[settings]]
 key = "rope_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -4372,7 +4372,7 @@ commands = ["BuilderRingRail"]
 
 [[settings]]
 key = "rr_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -4393,7 +4393,7 @@ commands = ["BuilderProfilePlacer"]
 
 [[settings]]
 key = "pp_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -4500,7 +4500,7 @@ commands = ["BuilderOutsideRingRail"]
 
 [[settings]]
 key = "orr_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ nhẫn"
 default = 7.0
@@ -4570,7 +4570,7 @@ commands = ["BuilderResize"]
 
 [[settings]]
 key = "rs_ring_size"
-type = "length"
+type = "float"
 option = "RingSize"
 label = "Cỡ gốc"
 default = 7.0
