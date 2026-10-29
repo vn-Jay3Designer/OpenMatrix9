@@ -409,13 +409,56 @@ fn arrays_along_curves_and_surfaces() {
         (p[2] - (p[0] + 20.0) / 10.0).abs() < 1e-6,
         "on the plane: {p:?}"
     );
+    // Orient on Surface, Copy=Yes (default): every click places a copy until Enter.
+    let r = run(
+        ORIENT_SURFACE,
+        vec![obj.clone(), plane.clone()],
+        vec![Input::Selection, pt([0.0, 0.0, 0.0])],
+    );
+    assert!(!r.done, "still placing: {}", r.prompt);
+    assert!(!r.preview.is_empty(), "the placed copy is drawn");
+    let r = run(
+        ORIENT_SURFACE,
+        vec![obj.clone(), plane.clone()],
+        vec![
+            Input::Selection,
+            pt([0.0, 0.0, 0.0]),
+            pt([10.0, 0.0, 0.0]),
+            pt([-10.0, 5.0, 0.0]),
+            Input::Undo,
+            Input::Enter,
+        ],
+    );
+    assert!(r.done);
+    let op = r.transform.as_ref().unwrap();
+    assert!(op.keep_original);
+    assert_eq!(op.per_object.len(), 2, "two copies after one Undo");
+    let p = apply(&op.per_object[0].matrix, [0.0, 0.0, 0.0]);
+    assert!(close(p, [0.0, 0.0, 2.0]), "{p:?}");
+    let p = apply(&op.per_object[1].matrix, [0.0, 0.0, 0.0]);
+    assert!(close(p, [10.0, 0.0, 3.0]), "{p:?}");
+    // Copy=No: one click moves the original and ends; Flip puts it under the surface.
     let r = run(
         ORIENT_SURFACE,
         vec![obj, plane],
-        vec![Input::Selection, pt([0.0, 0.0, 0.0])],
+        vec![
+            Input::Selection,
+            Input::Option {
+                name: "Copy".into(),
+                value: Some("No".into()),
+            },
+            Input::Option {
+                name: "Flip".into(),
+                value: None,
+            },
+            pt([0.0, 0.0, 0.0]),
+        ],
     );
-    let p = apply(&first_matrix(&r), [0.0, 0.0, 0.0]);
-    assert!(close(p, [0.0, 0.0, 2.0]), "{p:?}");
+    assert!(r.done);
+    let op = r.transform.as_ref().unwrap();
+    assert!(!op.keep_original);
+    let top = apply(&first_matrix(&r), [0.0, 0.0, 1.0]);
+    assert!(top[2] < 2.0, "flipped below the surface: {top:?}");
 }
 
 #[test]

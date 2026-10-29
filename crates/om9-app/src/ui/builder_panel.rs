@@ -83,6 +83,9 @@ impl MatrixApp {
         if code != self.builder_ui.seen {
             if code.is_some() {
                 self.builder_ui.focus = None;
+                // Enter ends the builder wherever the command was started from (icon, menu):
+                // the command line takes the keyboard, as after typing the command.
+                self.focus_cmd = true;
             }
             self.builder_ui.seen = code.clone();
         }

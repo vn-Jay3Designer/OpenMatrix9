@@ -320,19 +320,20 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["OrientOnSrf"]
-summary = "Đặt vật đứng vuông góc lên mặt tại điểm bấm."
-steps = ["Chọn vật và mặt.", "Bấm điểm (nhìn từ trên CPlane)."]
-options = ["Copy: giữ bản gốc."]
+summary = "Đặt vật đứng vuông góc lên mặt tại điểm bấm; Copy=Yes rải liên tục nhiều bản cho tới Enter."
+steps = ["Chọn vật và mặt.", "Bấm điểm trên mặt (nhìn từ trên CPlane); mỗi lần bấm đặt thêm một bản.", "Enter khi xong (Undo bỏ bản vừa đặt)."]
+options = ["Copy: Yes = rải nhiều bản liên tục, No = dời vật gốc một lần.", "Flip: lật vật sang mặt kia.", "Undo: bỏ bản vừa đặt."]
 
 [[commands]]
 id = "TransformOrientPerpendiculartoCurve"
 label = "Orient Perpendicular to Curve"
 handler = "om9_addon_session"
 interactive = true
+mesh_data = true
 aliases = ["OrientPerpToCrv"]
-summary = "Đặt vật vuông góc với đường cong tại điểm gần nhất."
-steps = ["Chọn vật và đường cong.", "Bấm điểm gần đường cong."]
-options = ["Copy: giữ bản gốc."]
+summary = "Đặt vật vuông góc với đường cong tại điểm gần nhất; Copy=Yes rải liên tục nhiều bản cho tới Enter."
+steps = ["Chọn vật và đường cong.", "Bấm điểm gần đường cong; mỗi lần bấm đặt thêm một bản.", "Enter khi xong."]
+options = ["Copy: Yes = rải nhiều bản liên tục, No = dời vật gốc một lần.", "Flip: đảo chiều theo đường cong.", "Undo: bỏ bản vừa đặt."]
 
 [[commands]]
 id = "TransformSolidPtOn"

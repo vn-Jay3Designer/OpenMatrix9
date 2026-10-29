@@ -312,6 +312,16 @@ impl Controller {
     /// Recompute the preview when the values, the selection or the document changed.
     /// Cheap when nothing changed; the UI calls it every frame while a builder is open.
     pub fn refresh_builder_preview(&mut self) {
+        // An interactive builder shows what its session last answered. The session can answer
+        // after the builder opened (a command started on a preselected stone previews at
+        // once), so this is read every frame, not only when the key below changes.
+        if let (Some(b), Some(s)) = (self.addon_builder.as_mut(), self.addon_session.as_ref())
+            && b.interactive
+        {
+            b.preview.count = s.reply.preview.len();
+            b.preview.messages = s.reply.messages.clone();
+            b.preview.error = s.reply.error.clone();
+        }
         let Some(b) = self.addon_builder.as_ref() else {
             return;
         };

@@ -1,6 +1,6 @@
 # Orient on Surface
 
-Đặt vật đứng vuông góc lên mặt tại điểm bấm.
+Đặt vật đứng vuông góc lên mặt tại điểm bấm; Copy=Yes rải liên tục nhiều bản cho tới Enter.
 
 - **Mã lệnh:** `TransformOrientOnSurface`
 - **Vị trí:** menu Transform, ô số 16
@@ -11,8 +11,11 @@
 ## Cách dùng
 
 1. Chọn vật và mặt.
-2. Bấm điểm (nhìn từ trên CPlane).
+2. Bấm điểm trên mặt (nhìn từ trên CPlane); mỗi lần bấm đặt thêm một bản.
+3. Enter khi xong (Undo bỏ bản vừa đặt).
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Copy: giữ bản gốc.
+- Copy: Yes = rải nhiều bản liên tục, No = dời vật gốc một lần.
+- Flip: lật vật sang mặt kia.
+- Undo: bỏ bản vừa đặt.

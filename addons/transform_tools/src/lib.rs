@@ -13,9 +13,9 @@
 //! Every command follows the Matrix / Rhino flow (select objects, pick points, type values,
 //! preview, Enter); results are one transaction.
 use om9_addon_abi::session::{
-    Event, Geo, Input, Interactive, ObjectMatrix, Reply, Selected, TransformOp, Vec3, Want, add,
-    apply, compose, cross, dist, dot, fmt, mirror, norm, rotation, scale, scale_about, sub,
-    translation, unit,
+    Event, Geo, Input, Interactive, ObjectMatrix, OptionToken, Reply, Selected, TransformOp, Vec3,
+    Want, add, apply, compose, cross, dist, dot, fmt, mirror, norm, rotation, scale, scale_about,
+    sub, translation, unit,
 };
 use om9_addon_geom::cmd::{Collected, Flow, Show, deform_selection, deformed};
 use om9_addon_geom::gems::PlacedGem;
@@ -1491,99 +1491,233 @@ fn array_along_surface(e: &Event) -> Reply {
     })
 }
 
+/// Orient on Surface (Rhino / Matrix): the selected objects stand on the surface, perpendicular
+/// to it, at each clicked point. With `Copy=Yes` (the default) every click places another copy
+/// and the command keeps going until Enter, so objects can be strewn over the surface; with
+/// `Copy=No` the originals move once. `Flip` turns them to the other side of the surface.
 fn orient_on_surface(e: &Event) -> Reply {
-    let flow = Flow::new("Orient on Surface")
-        .toggle("Copy", true)
-        .point("Point on the surface (picked through the top of the CPlane)");
+    const LABEL: &str = "Orient on Surface";
     let n = e.plane.normal();
-    let plan = |p: Vec3| -> Result<[f64; 16], String> {
-        let (surface, objects) = split_surface_target(e)
-            .ok_or("Orient on Surface: select the objects and the surface")?;
-        if objects.is_empty() {
-            return Err("Orient on Surface: select the objects as well as the surface".into());
-        }
-        let target = Target::new(surface.mesh.as_ref().unwrap(), n).ok_or("surface")?;
-        let (hit, normal) = target
-            .drop(add(p, scale(n, 1e6)))
-            .ok_or("Orient on Surface: the point is not over the surface")?;
-        let b = bbox(&objects).unwrap();
-        let mid = e.plane.local(center(b));
-        let from = Frame::new(
-            e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]),
-            n,
-            e.plane.x,
-        );
-        Ok(frame_matrix(
-            &from,
-            &Frame::new(hit, normal, e.plane.x),
-            1.0,
-        ))
+    let Some((surface, objects)) = split_surface_target(e) else {
+        let r = Reply::ask(
+            format!("{LABEL}: select the objects and the surface to orient on, Enter"),
+            json!({}),
+        )
+        .want(Want::Objects);
+        return if matches!(e.input, Input::Enter) {
+            r.refuse(format!("{LABEL}: select the objects and the surface"))
+        } else {
+            r
+        };
     };
-    flow.step(e, &|_, h| show_matrix(h.and_then(|p| plan(p).ok())), &|c| {
-        let m = plan(c.p(0).unwrap())?;
-        let (_, objects) = split_surface_target(e).unwrap();
-        Ok(Reply::finish_transform(TransformOp {
-            matrices: Vec::new(),
-            keep_original: c.yes(&flow, "Copy"),
-            per_object: objects
-                .iter()
-                .map(|o| ObjectMatrix {
+    if objects.is_empty() {
+        let r = Reply::ask(
+            format!("{LABEL}: select the objects to orient as well as the surface, Enter"),
+            json!({}),
+        )
+        .want(Want::Objects);
+        return if matches!(e.input, Input::Enter) {
+            r.refuse(format!(
+                "{LABEL}: select the objects as well as the surface"
+            ))
+        } else {
+            r
+        };
+    }
+    let target = Target::new(surface.mesh.as_ref().unwrap(), n);
+    let b = bbox(&objects).unwrap();
+    let mid = e.plane.local(center(b));
+    // The objects' base: the middle of their bottom in the CPlane, standing along its normal.
+    let from = Frame::new(
+        e.plane.at(mid[0], mid[1], e.plane.local(b[0])[2]),
+        n,
+        e.plane.x,
+    );
+    let plan = |p: Vec3, flip: bool| -> Option<[f64; 16]> {
+        let (hit, normal) = target.as_ref()?.drop(add(p, scale(n, 1e6)))?;
+        let up = if flip { scale(normal, -1.0) } else { normal };
+        Some(frame_matrix(&from, &Frame::new(hit, up, e.plane.x), 1.0))
+    };
+    strew(
+        e,
+        LABEL,
+        &objects,
+        &plan,
+        "the point is not over the surface",
+    )
+}
+
+/// Place the objects at clicked points, Rhino style: `Copy=Yes` (default) keeps placing copies
+/// until Enter (`Undo` takes the last one back), `Copy=No` moves the originals once; `Flip`
+/// turns them over. `plan` gives the transform for a point (and the flip), `None` when the
+/// point does not reach the target.
+fn strew(
+    e: &Event,
+    label: &str,
+    objects: &[&Selected],
+    plan: &dyn Fn(Vec3, bool) -> Option<[f64; 16]>,
+    missed: &str,
+) -> Reply {
+    let st = &e.state;
+    let mut copy = st["copy"].as_bool().unwrap_or(true);
+    let mut flip = st["flip"].as_bool().unwrap_or(false);
+    let mut placed: Vec<Vec3> = serde_json::from_value(st["placed"].clone()).unwrap_or_default();
+    let finish = |ms: Vec<[f64; 16]>, copy: bool| -> Reply {
+        let count = ms.len();
+        let per_object = ms
+            .iter()
+            .flat_map(|m| {
+                objects.iter().map(move |o| ObjectMatrix {
                     id: o.id.clone(),
-                    matrix: m,
+                    matrix: *m,
                 })
-                .collect(),
+            })
+            .collect();
+        Reply::finish_transform(TransformOp {
+            matrices: Vec::new(),
+            keep_original: copy,
+            per_object,
         })
-        .say("Orient on Surface: placed"))
+        .say(if copy {
+            format!("{label}: {count} copies placed")
+        } else {
+            format!("{label}: placed")
+        })
+    };
+    let mut hover = None;
+    match &e.input {
+        Input::Option { name, value } if name == "Copy" => {
+            copy = value
+                .as_deref()
+                .map_or(!copy, |v| v.eq_ignore_ascii_case("yes"));
+        }
+        Input::Option { name, .. } if name == "Flip" => flip = !flip,
+        Input::Hover { point } => hover = Some(*point),
+        Input::Point { point } => match plan(*point, flip) {
+            None => {
+                return ask_orient(label, copy, flip, &placed, &[], objects)
+                    .refuse(format!("{label}: {missed}"));
+            }
+            Some(m) if !copy => return finish(vec![m], false),
+            Some(_) => placed.push(*point),
+        },
+        Input::Undo => {
+            placed.pop();
+        }
+        Input::Enter => {
+            let ms: Vec<_> = placed.iter().filter_map(|p| plan(*p, flip)).collect();
+            return if ms.is_empty() {
+                Reply::finish(Vec::new()).say(format!("{label}: nothing placed"))
+            } else {
+                finish(ms, true)
+            };
+        }
+        _ => {}
+    }
+    let mut shown: Vec<[f64; 16]> = placed.iter().filter_map(|p| plan(*p, flip)).collect();
+    shown.extend(hover.and_then(|p| plan(p, flip)));
+    ask_orient(label, copy, flip, &placed, &shown, objects)
+}
+
+/// The Orient on Surface prompt: options, state and the objects drawn where they would go.
+fn ask_orient(
+    label: &str,
+    copy: bool,
+    flip: bool,
+    placed: &[Vec3],
+    shown: &[[f64; 16]],
+    objects: &[&Selected],
+) -> Reply {
+    let prompt = if copy && !placed.is_empty() {
+        format!(
+            "{label}: {} placed. Point on the surface for the next copy, Enter when done",
+            placed.len()
+        )
+    } else {
+        format!("{label}: point to place the objects")
+    };
+    let mut options = vec![
+        OptionToken::toggle("Copy", copy),
+        OptionToken::toggle("Flip", flip),
+    ];
+    if !placed.is_empty() {
+        options.push(OptionToken::action("Undo"));
+    }
+    let mut preview = Vec::new();
+    for m in shown {
+        for o in objects {
+            preview.extend(moved_preview(o, m));
+        }
+    }
+    Reply::ask(
+        prompt,
+        json!({ "copy": copy, "flip": flip, "placed": placed }),
+    )
+    .with_options(options)
+    .preview(preview)
+}
+
+/// An object drawn under a row-major 4×4 matrix (its mesh, else its curve points).
+fn moved_preview(o: &Selected, m: &[f64; 16]) -> Option<Geo> {
+    let t = |p: &Vec3| -> Vec3 {
+        [
+            m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3],
+            m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7],
+            m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11],
+        ]
+    };
+    if let Some(mesh) = &o.mesh {
+        return Some(Geo::Mesh {
+            name: o.name.clone(),
+            vertices: mesh.vertices.iter().map(t).collect(),
+            triangles: mesh.triangles.clone(),
+            meta: None,
+            layer: None,
+        });
+    }
+    (o.points.len() >= 2).then(|| Geo::Polyline {
+        points: o.points.iter().map(t).collect(),
+        closed: o.closed,
     })
 }
 
 fn orient_perpendicular(e: &Event) -> Reply {
-    let flow = Flow::new("Orient Perpendicular to Curve")
-        .toggle("Copy", true)
-        .point("Point near the curve to orient to");
-    let plan = |p: Vec3| -> Result<(Vec<ObjectMatrix>, ()), String> {
-        let (path, id, objects) = split_curve_target(e)
-            .ok_or("Orient Perpendicular to Curve: select the objects and the curve")?;
-        let objects: Vec<&Selected> = objects.into_iter().filter(|s| s.id != id).collect();
-        let b = bbox(&objects)
-            .ok_or("Orient Perpendicular to Curve: select the objects as well as the curve")?;
-        let from = Frame::new(center(b), e.plane.normal(), e.plane.x);
+    const LABEL: &str = "Orient Perpendicular to Curve";
+    let Some((path, id, objects)) = split_curve_target(e) else {
+        let r = Reply::ask(
+            format!("{LABEL}: select the objects and the curve, Enter"),
+            json!({}),
+        )
+        .want(Want::Objects);
+        return if matches!(e.input, Input::Enter) {
+            r.refuse(format!("{LABEL}: select the objects and the curve"))
+        } else {
+            r
+        };
+    };
+    let objects: Vec<&Selected> = objects.into_iter().filter(|s| s.id != id).collect();
+    let Some(b) = bbox(&objects) else {
+        let r = Reply::ask(
+            format!("{LABEL}: select the objects as well as the curve, Enter"),
+            json!({}),
+        )
+        .want(Want::Objects);
+        return if matches!(e.input, Input::Enter) {
+            r.refuse(format!("{LABEL}: select the objects as well as the curve"))
+        } else {
+            r
+        };
+    };
+    let from = Frame::new(center(b), e.plane.normal(), e.plane.x);
+    let plan = |p: Vec3, flip: bool| -> Option<[f64; 16]> {
         let s = path.closest(p);
         // The objects' CPlane normal follows the curve direction there.
         let t = path.tangent(s);
+        let t = if flip { scale(t, -1.0) } else { t };
         let to = Frame::new(path.at(s), t, cross(t, e.plane.normal()));
-        let m = frame_matrix(&from, &to, 1.0);
-        Ok((
-            objects
-                .iter()
-                .map(|o| ObjectMatrix {
-                    id: o.id.clone(),
-                    matrix: m,
-                })
-                .collect(),
-            (),
-        ))
+        Some(frame_matrix(&from, &to, 1.0))
     };
-    flow.step(
-        e,
-        &|_, h| Show {
-            transforms: h
-                .and_then(|p| plan(p).ok())
-                .and_then(|(m, _)| m.first().map(|m| m.matrix))
-                .into_iter()
-                .collect(),
-            ..Default::default()
-        },
-        &|c| {
-            let (per_object, _) = plan(c.p(0).unwrap())?;
-            Ok(Reply::finish_transform(TransformOp {
-                matrices: Vec::new(),
-                keep_original: c.yes(&flow, "Copy"),
-                per_object,
-            })
-            .say("Orient Perpendicular to Curve: placed"))
-        },
-    )
+    strew(e, LABEL, &objects, &plan, "no curve point there")
 }
 
 // ---- cages -----------------------------------------------------------------------------------

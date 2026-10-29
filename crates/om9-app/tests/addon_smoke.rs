@@ -233,3 +233,36 @@ fn every_package_command_runs_in_om9_without_panics() {
     );
     fs::remove_dir_all(&tmp).unwrap();
 }
+
+/// A builder command started on a preselected stone (icon click with the stone selected):
+/// its panel must offer ✔ at once, because the session already previews the head.
+#[test]
+fn a_builder_started_on_a_selection_can_be_accepted() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-presel-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("presel"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    make(&mut c, "BuilderGemLoader", &[[6.0, 6.0, 0.0]], &[""]);
+    let stone: Vec<_> = c.document().entities.keys().copied().collect();
+    c.select_objects(&stone).unwrap();
+    c.run_addon_command("BuilderHead").unwrap();
+    // The UI refreshes every frame; nothing else changes between frames here.
+    c.refresh_addon_session();
+    c.refresh_builder_preview();
+    c.refresh_builder_preview();
+    let count = c.addon_builder().map(|b| b.preview.count).unwrap_or(0);
+    assert!(count > 0, "✔ must be enabled: {}", c.prompt_text());
+    c.accept_addon_builder().unwrap();
+    assert!(c.addon_builder().is_none() && c.addon_session().is_none());
+    assert_eq!(c.document().entities.len(), 2, "stone + head");
+    fs::remove_dir_all(&tmp).unwrap();
+}
