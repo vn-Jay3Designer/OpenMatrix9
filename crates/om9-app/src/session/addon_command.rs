@@ -43,6 +43,7 @@ impl Controller {
             self.addons = previous.addons.take();
             self.addon_names = std::mem::take(&mut previous.addon_names);
             self.addon_typed = std::mem::take(&mut previous.addon_typed);
+            self.tr = std::mem::take(&mut previous.tr);
         }
         self.addon_messages
             .append(&mut std::mem::take(&mut previous.addon_messages));
@@ -50,8 +51,20 @@ impl Controller {
     pub fn addon_host(&self) -> Option<&SharedHost> {
         self.addons.as_ref()
     }
+    /// The interface language of add-on commands: menus, command names, sub-options and
+    /// prompts. English keeps every text as written.
+    pub fn tr(&self) -> &om9_addons::i18n::Tr {
+        &self.tr
+    }
     /// Rebuild the command-name table after an add-on was installed, enabled or disabled.
     pub fn refresh_addon_names(&mut self, features: &[FeatureName<'_>]) {
+        let (tr, errors) = match self.addons.as_ref().map(|h| h.lock()) {
+            Some(Ok(host)) => host.translator(),
+            _ => (om9_addons::i18n::Tr::english(), Vec::new()),
+        };
+        self.tr = tr;
+        self.addon_messages
+            .extend(errors.into_iter().map(|e| format!("Add-ons: {e}")));
         self.addon_names = match &self.addons {
             Some(host) => match host.lock() {
                 Ok(host) => crate::addons::provided_names(&host, features),

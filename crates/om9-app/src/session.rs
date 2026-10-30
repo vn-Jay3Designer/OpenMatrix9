@@ -412,6 +412,9 @@ pub struct Controller {
     addon_builder: Option<addon_builder::AddonBuilder>,
     /// The running interactive add-on command (Polyline, Move, Gem Cutter …), if any.
     addon_session: Option<addon_session::AddonSession>,
+    /// Interface language of the add-on commands (Tiếng Việt / English), from the enabled
+    /// add-ons' `lang` tables and their `language` setting. English without add-ons.
+    tr: om9_addons::i18n::Tr,
 }
 impl Controller {
     pub fn capture_view_menu(
@@ -633,6 +636,7 @@ impl Controller {
             addon_typed: Default::default(),
             addon_builder: None,
             addon_session: None,
+            tr: om9_addons::i18n::Tr::english(),
         })
     }
     pub fn coordinator(&self) -> &TransactionCoordinator {

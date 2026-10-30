@@ -1157,6 +1157,46 @@ impl Host {
             .collect()
     }
 
+    /// Bảng dịch giao diện từ các add-on đang bật có asset `lang` (thư mục chứa `vi.toml`).
+    /// Ngôn ngữ lấy theo setting `language` của add-on đó (mặc định Tiếng Việt); một add-on
+    /// chọn English thì mọi chữ giữ nguyên. Lỗi của file dịch được trả về để hiện cho người dùng.
+    pub fn translator(&self) -> (crate::i18n::Tr, Vec<String>) {
+        use crate::i18n::{Lang, Tr};
+        let mut tr: Option<Tr> = None;
+        let mut errs = Vec::new();
+        for (id, dir) in self.assets("lang") {
+            let lang = self
+                .settings(&id)
+                .ok()
+                .and_then(|s| {
+                    s.into_iter()
+                        .find_map(|(spec, v)| match (spec.key.as_str(), v) {
+                            ("language", SettingValue::Str(code)) => Lang::parse(&code),
+                            _ => None,
+                        })
+                })
+                .unwrap_or_default();
+            if lang == Lang::En {
+                return (Tr::english(), errs);
+            }
+            let file = dir.join(format!("{}.toml", lang.code()));
+            let parsed = fs::read_to_string(&file)
+                .map_err(|e| vec![e.to_string()])
+                .and_then(|text| Tr::parse(&text, lang));
+            match parsed {
+                Ok(t) => match tr.as_mut() {
+                    Some(all) => all.merge(t),
+                    None => tr = Some(t),
+                },
+                Err(es) => errs.extend(
+                    es.into_iter()
+                        .map(|e| format!("{id} lang/{}.toml: {e}", lang.code())),
+                ),
+            }
+        }
+        (tr.unwrap_or_else(Tr::english), errs)
+    }
+
     pub fn is_enabled(&self, id: &str) -> bool {
         self.active.contains_key(id)
     }
@@ -1371,7 +1411,10 @@ fn remove_dir_evicting(dir: &Path, trash: &Path) -> std::io::Result<bool> {
         let stamp = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
-        fs::rename(f, trash.join(format!("{}-{stamp}-{k}-{name}", std::process::id())))?;
+        fs::rename(
+            f,
+            trash.join(format!("{}-{stamp}-{k}-{name}", std::process::id())),
+        )?;
         moved = true;
     }
     fs::remove_dir_all(dir)?;

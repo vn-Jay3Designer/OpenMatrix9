@@ -67,6 +67,12 @@ fn host(tmp: &Path) -> Arc<Mutex<Host>> {
         let e = e.unwrap().path();
         fs::copy(&e, stage.join("icons").join(e.file_name().unwrap())).unwrap();
     }
+    // The interface tables (lang/vi.toml) travel with the package.
+    fs::create_dir_all(stage.join("lang")).unwrap();
+    for e in fs::read_dir(addon.join("lang")).unwrap() {
+        let e = e.unwrap().path();
+        fs::copy(&e, stage.join("lang").join(e.file_name().unwrap())).unwrap();
+    }
     let (_, zip) = build_package(&stage, Some(&catalog)).unwrap_or_else(|e| panic!("{e:?}"));
     let path = tmp.join("matrix.zip");
     fs::write(&path, zip).unwrap();

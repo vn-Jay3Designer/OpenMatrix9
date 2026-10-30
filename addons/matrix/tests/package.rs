@@ -105,7 +105,22 @@ fn generate() -> Generated {
          platforms = [\"@PLATFORM@\"]\n\
          runtime = \"native\"\n\
          entry = \"@ENTRY@\"\n\
-         tags = [\"Top11\", \"Curve\", \"Surface\", \"Solid\", \"Transform\", \"SubD\", \"Builder\", \"Tools\", \"Gems\", \"Settings\", \"Cutters\"]\n"
+         tags = [\"Top11\", \"Curve\", \"Surface\", \"Solid\", \"Transform\", \"SubD\", \"Builder\", \"Tools\", \"Gems\", \"Settings\", \"Cutters\"]\n\
+         \n\
+         # Bảng dịch giao diện (lang/vi.toml). English giữ nguyên chữ của lệnh.\n\
+         [[assets]]\n\
+         kind = \"lang\"\n\
+         path = \"lang\"\n\
+         \n\
+         [[settings]]\n\
+         key = \"language\"\n\
+         type = \"enum\"\n\
+         label = \"Ngôn ngữ / Language\"\n\
+         description = \"Tên menu, lệnh, lệnh con và câu nhắc. Tên tiếng Anh luôn gõ được.\"\n\
+         choices = [\"vi\", \"en\"]\n\
+         choice_labels = [\"Tiếng Việt\", \"English\"]\n\
+         default = \"vi\"\n\
+         scope = \"addon\"\n"
     );
     let positions = menu_positions();
     let mut pages = BTreeMap::new();
@@ -300,4 +315,37 @@ fn package_files_match_the_menu_crates() {
     let mut sorted = ids.clone();
     sorted.sort_unstable();
     assert_eq!(sorted, all);
+}
+
+/// `lang/vi.toml` parses, names every command and menu of the package, and the language
+/// setting is an add-on setting (never a command option).
+#[test]
+fn vietnamese_table_covers_the_package() {
+    use om9_addons::i18n::{Lang, Tr};
+    let addon = Path::new(env!("CARGO_MANIFEST_DIR")).join("addon");
+    let text = fs::read_to_string(addon.join("lang/vi.toml")).unwrap();
+    let tr = Tr::parse(&text, Lang::Vi).unwrap_or_else(|e| panic!("lang/vi.toml: {e:?}"));
+    let parsed = toml::parse(&generate().manifest).unwrap();
+    let Some(Value::Array(cmds)) = parsed.get("commands") else {
+        panic!()
+    };
+    let missing: Vec<&str> = cmds
+        .iter()
+        .filter_map(|c| c.as_table().and_then(|t| s(t, "id")))
+        .filter(|code| tr.command(code, "\u{0}") == "\u{0}")
+        .collect();
+    assert!(missing.is_empty(), "no Vietnamese name: {missing:?}");
+    for (_, (menu, _)) in menu_positions() {
+        assert_ne!(tr.menu(&menu), menu, "menu {menu}");
+    }
+    let Some(Value::Array(settings)) = parsed.get("settings") else {
+        panic!()
+    };
+    let lang = settings
+        .iter()
+        .filter_map(Value::as_table)
+        .find(|t| s(t, "key") == Some("language"))
+        .expect("language setting");
+    assert_eq!(s(lang, "scope"), Some("addon"));
+    assert_eq!(s(lang, "default"), Some("vi"));
 }

@@ -102,12 +102,15 @@ pub struct SettingSpec {
     /// The commands this setting belongs to (their builder panel and command-line options).
     /// Empty: every command of the add-on.
     pub commands: Vec<String>,
+    /// `scope = "addon"`: a setting of the whole add-on (its language …), shown only in
+    /// Preferences › Add-ons, never in a command's panel or command line.
+    pub addon_wide: bool,
 }
 
 impl SettingSpec {
     /// Whether this setting is one of `command`'s parameters.
     pub fn applies_to(&self, command: &str) -> bool {
-        self.commands.is_empty() || self.commands.iter().any(|c| c == command)
+        !self.addon_wide && (self.commands.is_empty() || self.commands.iter().any(|c| c == command))
     }
 }
 
@@ -295,6 +298,19 @@ impl SettingSpec {
                 Vec::new()
             }
         };
+        let addon_wide = match t.get("scope").map(|v| v.as_str()) {
+            None | Some(Some("command")) => false,
+            Some(Some("addon")) => {
+                if !commands.is_empty() {
+                    errs.push(format!("{ctx}: scope = \"addon\" không đi cùng commands"));
+                }
+                true
+            }
+            _ => {
+                errs.push(format!("{ctx}: scope phải là \"command\" hoặc \"addon\""));
+                false
+            }
+        };
         if !choice_labels.is_empty()
             && !matches!(&kind, Kind::Enum { choices } if choices.len() == choice_labels.len())
         {
@@ -311,6 +327,7 @@ impl SettingSpec {
             option,
             choice_labels,
             commands,
+            addon_wide,
         };
         match t.get("default").and_then(SettingValue::from_toml) {
             None => errs.push(format!("{ctx}: thiếu default")),

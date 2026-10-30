@@ -83,6 +83,27 @@ fn install_and_run_interactive_steps() {
         .unwrap();
     assert!(r.enabled, "{:?}", r.warnings);
 
+    // The installed package translates the interface: Vietnamese by default, English on
+    // request. The language is an add-on setting, never a command option.
+    let (tr, errs) = host.translator();
+    assert!(errs.is_empty(), "{errs:?}");
+    assert_eq!(
+        tr.command("CurveLineSingleLine", "Single Line"),
+        "Đoạn thẳng"
+    );
+    assert_eq!(tr.text("Start of polyline"), "Điểm đầu đường gấp khúc");
+    assert_eq!(tr.token("BothSides", Some("No")), "Hai phía=Không");
+    let line = host.command_info("CurveLineSingleLine").unwrap();
+    assert!(line.settings.iter().all(|(s, _)| s.key != "language"));
+    host.set_setting("om9_matrix", "language", "en").unwrap();
+    let en = host.translator().0;
+    assert_eq!(
+        en.command("CurveLineSingleLine", "Single Line"),
+        "Single Line"
+    );
+    assert_eq!(en.text("Start of polyline"), "Start of polyline");
+    host.set_setting("om9_matrix", "language", "vi").unwrap();
+
     let mut state = Value::Null;
     let mut step = |cmd: &str, input: Value| -> Value {
         let ev = json!({"command": cmd, "input": input, "state": state});

@@ -342,7 +342,7 @@ impl MatrixApp {
         {
             use om9_addon_abi::session::OptionKind;
             let mut options = session.reply.options.clone();
-            let mut tokens = session.tokens();
+            let mut tokens = session.tokens(self.controller.tr());
             // A command with a builder panel also shows the panel values: `GirdleScale=105 …`.
             if let Some(b) = self
                 .controller

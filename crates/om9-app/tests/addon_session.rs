@@ -55,8 +55,14 @@ fn host(tmp: &Path) -> Arc<Mutex<Host>> {
     host_with(tmp, &[])
 }
 
-/// A host with the OM9 Matrix package installed and enabled (all menus in one add-on).
+/// A host with the OM9 Matrix package installed and enabled (all menus in one add-on), in
+/// English: these tests check the command texts as written.
 fn host_with(tmp: &Path, _menus: &[&str]) -> Arc<Mutex<Host>> {
+    host_lang(tmp, "en")
+}
+
+/// The same host in the given interface language (`vi` is the package default).
+fn host_lang(tmp: &Path, lang: &str) -> Arc<Mutex<Host>> {
     let catalog = om9_app::addons::catalog().unwrap();
     let mut h = Host::new(HostConfig::new(
         om9_app::addons::om9_version(),
@@ -76,6 +82,7 @@ fn host_with(tmp: &Path, _menus: &[&str]) -> Arc<Mutex<Host>> {
         )
         .unwrap();
     assert!(r.enabled, "{:?}", r.warnings);
+    h.set_setting("om9_matrix", "language", lang).unwrap();
     Arc::new(Mutex::new(h))
 }
 
@@ -93,6 +100,12 @@ fn stage_zip(tmp: &Path, catalog: &om9_addons::catalog::Catalog) -> PathBuf {
     for e in fs::read_dir(addon.join("icons")).unwrap() {
         let e = e.unwrap().path();
         fs::copy(&e, stage.join("icons").join(e.file_name().unwrap())).unwrap();
+    }
+    // The interface tables (lang/vi.toml) travel with the package.
+    fs::create_dir_all(stage.join("lang")).unwrap();
+    for e in fs::read_dir(addon.join("lang")).unwrap() {
+        let e = e.unwrap().path();
+        fs::copy(&e, stage.join("lang").join(e.file_name().unwrap())).unwrap();
     }
     let (_, zip) = build_package(&stage, Some(catalog)).unwrap_or_else(|e| panic!("{e:?}"));
     let path = tmp.join("matrix.zip");
@@ -145,7 +158,11 @@ fn curve_commands_run_interactively() {
         "{}",
         c.prompt_text()
     );
-    assert!(s.tokens().iter().any(|(_, t)| t == "PersistentClose=No"));
+    assert!(
+        s.tokens(c.tr())
+            .iter()
+            .any(|(_, t)| t == "PersistentClose=No")
+    );
     assert!(c.session_wants_point());
     c.session_point([0.0, 0.0, 0.0]).unwrap();
     c.session_point([10.0, 0.0, 0.0]).unwrap();
@@ -164,7 +181,7 @@ fn curve_commands_run_interactively() {
     assert!(
         c.addon_session()
             .unwrap()
-            .tokens()
+            .tokens(c.tr())
             .iter()
             .any(|(n, _)| n == "Close")
     );
@@ -781,4 +798,97 @@ fn deformations_rebuild_objects_in_place() {
     let at_end = world.iter().filter(|v| (v[0] - 10.0).abs() < 1e-6).map(|v| v[1].abs()).fold(0.0, f64::max);
     assert!((at_end - 0.5).abs() < 1e-6, "half width at x = 10: {at_end}");
     fs::remove_dir_all(&tmp).unwrap();
+}
+
+/// Vietnamese (the package default): menu names, command names, sub-options and prompts are
+/// shown in Vietnamese; English and Vietnamese option names both work when typed.
+#[test]
+fn vietnamese_interface_keeps_english_typing() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-session-vi-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("vi"), Limits::default()).unwrap();
+    assert_eq!(c.tr().menu("Curve"), "Curve", "English without add-ons");
+    let host = host_lang(&tmp, "vi");
+    c.attach_addons(host.clone(), &names);
+    assert_eq!(c.tr().menu("Curve"), "Đường cong");
+    assert_eq!(
+        c.tr().command("CurveLineSingleLine", "Single Line"),
+        "Đoạn thẳng"
+    );
+
+    c.run_addon_command("CurvePolylinePolyline").unwrap();
+    assert!(
+        c.prompt_text().starts_with("Điểm đầu đường gấp khúc"),
+        "{}",
+        c.prompt_text()
+    );
+    let tokens = c.addon_session().unwrap().tokens(c.tr());
+    assert!(
+        tokens
+            .iter()
+            .any(|(n, t)| n == "PersistentClose" && t == "Luôn khép kín=Không"),
+        "{tokens:?}"
+    );
+    // Typed in English, in Vietnamese with accents and without.
+    c.submit("PersistentClose=Yes").unwrap();
+    assert!(
+        c.addon_session()
+            .unwrap()
+            .tokens(c.tr())
+            .iter()
+            .any(|(_, t)| t == "Luôn khép kín=Có")
+    );
+    c.submit("luon khep kin=khong").unwrap();
+    assert!(
+        c.addon_session()
+            .unwrap()
+            .tokens(c.tr())
+            .iter()
+            .any(|(_, t)| t == "Luôn khép kín=Không")
+    );
+    c.submit("Luôn khép kín=Có").unwrap();
+    assert!(
+        c.addon_session()
+            .unwrap()
+            .tokens(c.tr())
+            .iter()
+            .any(|(_, t)| t == "Luôn khép kín=Có")
+    );
+    c.session_point([0.0, 0.0, 0.0]).unwrap();
+    c.session_point([10.0, 0.0, 0.0]).unwrap();
+    c.session_point([10.0, 10.0, 0.0]).unwrap();
+    assert!(
+        c.prompt_text()
+            .starts_with("Điểm tiếp theo của đường gấp khúc"),
+        "{}",
+        c.prompt_text()
+    );
+    c.submit("hoan tac").unwrap(); // Undo by its Vietnamese name
+    c.submit("").unwrap();
+    assert!(c.addon_session().is_none());
+    assert_eq!(c.document().entities.len(), 1);
+
+    // English on request: every text as written.
+    host.lock()
+        .unwrap()
+        .set_setting("om9_matrix", "language", "en")
+        .unwrap();
+    c.refresh_addon_names(&names);
+    assert_eq!(c.tr().menu("Curve"), "Curve");
+    c.run_addon_command("CurvePolylinePolyline").unwrap();
+    assert!(
+        c.prompt_text().starts_with("Start of polyline"),
+        "{}",
+        c.prompt_text()
+    );
+    c.cancel_addon_session();
 }

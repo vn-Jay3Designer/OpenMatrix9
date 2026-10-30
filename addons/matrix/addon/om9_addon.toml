@@ -15,6 +15,21 @@ runtime = "native"
 entry = "@ENTRY@"
 tags = ["Top11", "Curve", "Surface", "Solid", "Transform", "SubD", "Builder", "Tools", "Gems", "Settings", "Cutters"]
 
+# Bảng dịch giao diện (lang/vi.toml). English giữ nguyên chữ của lệnh.
+[[assets]]
+kind = "lang"
+path = "lang"
+
+[[settings]]
+key = "language"
+type = "enum"
+label = "Ngôn ngữ / Language"
+description = "Tên menu, lệnh, lệnh con và câu nhắc. Tên tiếng Anh luôn gõ được."
+choices = ["vi", "en"]
+choice_labels = ["Tiếng Việt", "English"]
+default = "vi"
+scope = "addon"
+
 # ---- Top11 (addons/top11) ----
 
 [[commands]]

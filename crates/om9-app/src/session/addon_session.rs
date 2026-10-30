@@ -54,18 +54,13 @@ pub struct AddonSession {
 }
 
 impl AddonSession {
-    /// `Close=No`, `Length`, `Undo` … as shown above the command line.
-    pub fn tokens(&self) -> Vec<(String, String)> {
+    /// `Close=No`, `Length`, `Undo` … as shown above the command line, in the interface
+    /// language (`Khép kín=Không` in Vietnamese). The first item stays the option's name.
+    pub fn tokens(&self, tr: &om9_addons::i18n::Tr) -> Vec<(String, String)> {
         self.reply
             .options
             .iter()
-            .map(|o| {
-                let label = match &o.value {
-                    Some(v) => format!("{}={v}", o.name),
-                    None => o.name.clone(),
-                };
-                (o.name.clone(), label)
-            })
+            .map(|o| (o.name.clone(), tr.token(&o.name, o.value.as_deref())))
             .collect()
     }
     pub fn wants(&self) -> Want {
@@ -938,7 +933,9 @@ impl Controller {
             }
             return Ok(());
         }
-        self.addon_messages.extend(reply.messages.iter().cloned());
+        let tr = self.tr.clone();
+        self.addon_messages
+            .extend(reply.messages.iter().map(|m| tr.text(m)));
         if reply.done {
             let (code, label, seen) = {
                 let s = self.addon_session.as_ref().expect("session");
@@ -976,7 +973,7 @@ impl Controller {
             session.reply = reply;
         }
         match error {
-            Some(e) => Err(Error::Io(e)),
+            Some(e) => Err(Error::Io(tr.text(&e))),
             None => Ok(()),
         }
     }
@@ -1068,15 +1065,16 @@ impl Controller {
             Some((n, v)) => (n.trim(), Some(v.trim().to_owned())),
             None => (t, None),
         };
-        let lower = name.to_lowercase();
+        // The English name always works; in Vietnamese the label works too, with or without
+        // accents and spaces (`BothSides`, `Hai phía`, `haiphia`).
+        let tr = &self.tr;
+        let folded = om9_addons::i18n::fold(name);
         let options = &session.reply.options;
-        let exact = options.iter().find(|o| o.name.to_lowercase() == lower);
+        let exact = options.iter().find(|o| tr.names(name, &o.name));
         let option = exact.or_else(|| {
-            let mut hits = options
-                .iter()
-                .filter(|o| o.name.to_lowercase().starts_with(&lower));
+            let mut hits = options.iter().filter(|o| tr.starts(name, &o.name));
             match (hits.next(), hits.next()) {
-                (Some(o), None) if !lower.is_empty() && value.is_some() || lower.len() >= 2 => {
+                (Some(o), None) if !folded.is_empty() && value.is_some() || folded.len() >= 2 => {
                     Some(o)
                 }
                 _ => None,
@@ -1084,6 +1082,7 @@ impl Controller {
         });
         if let Some(o) = option {
             let name = o.name.clone();
+            let value = value.map(|v| tr.english_value(&v));
             if name.eq_ignore_ascii_case("undo") && value.is_none() {
                 self.session_step(Input::Undo)?;
             } else {
@@ -1141,9 +1140,9 @@ impl Controller {
         let s = self.addon_session.as_ref()?;
         let p = s.reply.prompt.trim();
         Some(if p.is_empty() {
-            format!("{}: ", s.label)
+            format!("{}: ", self.tr.command(&s.code, &s.label))
         } else {
-            format!("{p}: ")
+            format!("{}: ", self.tr.text(p))
         })
     }
 

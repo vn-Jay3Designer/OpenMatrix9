@@ -657,10 +657,10 @@ impl MatrixApp {
         if let (Some(actual), Some(target)) = (actual, target) {
             let enabled = target.enabled;
             let help = if enabled {
-                feature
-                    .as_ref()
-                    .map_or(name, |f| f.name.as_str())
-                    .to_owned()
+                // The add-on's name of the command in the interface language, else the
+                // feature's English name.
+                let english = feature.as_ref().map_or(name, |f| f.name.as_str());
+                self.controller.tr().command(name, english)
             } else {
                 catalog_reason
                     .filter(|reason| !reason.is_empty())
@@ -790,7 +790,8 @@ impl MatrixApp {
                         let selected = top == Some(index);
                         let (rect, response) =
                             ui.allocate_exact_size(Vec2::new(top_width, 18.), Sense::click());
-                        let response = response.on_hover_text(format!("{label} menu"));
+                        let shown = self.controller.tr().menu(label);
+                        let response = response.on_hover_text(shown.clone());
                         let painter = ui.painter();
                         painter.rect_filled(rect, 4, Color32::from_rgb(19, 27, 36));
                         if selected {
@@ -805,7 +806,7 @@ impl MatrixApp {
                         painter.text(
                             rect.center(),
                             Align2::CENTER_CENTER,
-                            *label,
+                            &shown,
                             FontId::proportional(11.),
                             PANEL_INK,
                         );
@@ -837,15 +838,15 @@ impl MatrixApp {
                                 if card_width < 48. { 9.5 } else { 10.5 },
                             );
                             let text_color = category_text(accent);
+                            let shown = self.controller.tr().menu(category);
                             let galley = ui.painter().layout_no_wrap(
-                                (*category).to_owned(),
+                                shown.clone(),
                                 font.clone(),
                                 text_color,
                             );
                             let (rect, response) =
                                 ui.allocate_exact_size(Vec2::new(card_width, 18.), Sense::click());
-                            let response =
-                                response.on_hover_text(format!("{category} command category"));
+                            let response = response.on_hover_text(shown);
                             let painter = ui.painter();
                             // Keep the raised card separate from the brighter label.
                             painter.rect_filled(

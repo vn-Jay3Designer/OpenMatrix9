@@ -14,6 +14,7 @@ pub mod catalog;
 pub mod crc32;
 pub mod glob;
 pub mod host;
+pub mod i18n;
 pub mod inflate;
 pub mod keymap;
 pub mod manifest;

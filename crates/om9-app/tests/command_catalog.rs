@@ -85,6 +85,7 @@ fn host(tmp: &Path) -> Arc<Mutex<Host>> {
         fs::write(stage.join("entry.bin"), b"declared").unwrap();
         copy_tree(&repo().join(format!("addons/{name}/addon/icons")), &stage.join("icons"));
         copy_tree(&repo().join(format!("addons/{name}/addon/commands")), &stage.join("commands"));
+        copy_tree(&repo().join(format!("addons/{name}/addon/lang")), &stage.join("lang"));
         let (_, zip) = build_package(&stage, Some(&catalog)).unwrap_or_else(|e| panic!("{e:?}"));
         let path = tmp.join(format!("{name}.zip"));
         fs::write(&path, zip).unwrap();

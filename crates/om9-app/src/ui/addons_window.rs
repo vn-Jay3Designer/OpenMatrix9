@@ -29,7 +29,16 @@ enum Action {
     /// Start one of the add-on's commands (same path as its menu icon).
     Run(String),
     InstallFromDisk,
+    /// An add-on-wide setting changed (its language …).
+    Set {
+        id: String,
+        key: String,
+        value: String,
+    },
 }
+
+/// An add-on-wide choice shown on the add-on's row: (key, label, [(value, shown)], current).
+type WideChoice = (String, String, Vec<(String, String)>, String);
 
 struct RowView {
     id: String,
@@ -40,6 +49,7 @@ struct RowView {
     status: AddonStatus,
     commands: Vec<(String, String, Option<String>)>,
     permissions: Vec<(String, String)>,
+    wide: Vec<WideChoice>,
 }
 
 impl MatrixApp {
@@ -199,7 +209,34 @@ impl MatrixApp {
                     .bound_commands()
                     .into_iter()
                     .filter(|(_, owner, _)| owner == &r.id)
-                    .map(|(code, _, label)| (code, label))
+                    .map(|(code, _, label)| {
+                        let shown = self.controller.tr().command(&code, &label);
+                        (code, shown)
+                    })
+                    .collect();
+                let wide = h
+                    .settings(&r.id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|(spec, _)| spec.addon_wide)
+                    .filter_map(|(spec, value)| match (&spec.kind, value) {
+                        (
+                            om9_addons::settings::Kind::Enum { choices },
+                            om9_addons::settings::SettingValue::Str(current),
+                        ) => Some((
+                            spec.key.clone(),
+                            spec.label.clone(),
+                            choices
+                                .iter()
+                                .enumerate()
+                                .map(|(i, c)| {
+                                    (c.clone(), spec.choice_labels.get(i).unwrap_or(c).clone())
+                                })
+                                .collect(),
+                            current,
+                        )),
+                        _ => None,
+                    })
                     .collect();
                 RowView {
                     commands: r
@@ -214,6 +251,7 @@ impl MatrixApp {
                         })
                         .collect(),
                     permissions: r.permissions.clone().into_iter().collect(),
+                    wide,
                     id: r.id,
                     name: r.name,
                     version: r.version.unwrap_or_else(|| "?".into()),
@@ -298,6 +336,31 @@ impl MatrixApp {
             ui.colored_label(color, text);
             if let Some(t) = &row.tagline {
                 ui.label(t);
+            }
+            // Add-on-wide choices (Ngôn ngữ / Language …): one row each.
+            for (key, label, choices, current) in &row.wide {
+                ui.horizontal(|ui| {
+                    ui.label(label);
+                    let shown = choices
+                        .iter()
+                        .find(|(v, _)| v == current)
+                        .map_or(current.as_str(), |(_, s)| s.as_str());
+                    egui::ComboBox::from_id_salt(("addon-wide", &row.id, key))
+                        .selected_text(shown)
+                        .show_ui(ui, |ui| {
+                            for (value, text) in choices {
+                                if ui.selectable_label(value == current, text).clicked()
+                                    && value != current
+                                {
+                                    actions.push(Action::Set {
+                                        id: row.id.clone(),
+                                        key: key.clone(),
+                                        value: value.clone(),
+                                    });
+                                }
+                            }
+                        });
+                });
             }
             if !row.permissions.is_empty() && !enabled {
                 let list = row
@@ -396,6 +459,12 @@ impl MatrixApp {
                     let r = h.uninstall(&id);
                     self.addons_ui.notice = Some(match r {
                         Ok(()) => (true, format!("Uninstalled add-on {id}")),
+                        Err(e) => (false, format!("{id}: {e}")),
+                    });
+                }
+                Action::Set { id, key, value } => {
+                    self.addons_ui.notice = Some(match h.set_setting(&id, &key, &value) {
+                        Ok(_) => (true, format!("{id}: {key} = {value}")),
                         Err(e) => (false, format!("{id}: {e}")),
                     });
                 }

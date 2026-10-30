@@ -41,7 +41,7 @@ foreach ($a in $native) {
     $text = (Get-Content -Raw -LiteralPath (Join-Path $src 'om9_addon.toml')).Replace('@PLATFORM@', 'windows-x64').Replace('@ENTRY@', $a.dll)
     [IO.File]::WriteAllText((Join-Path $dst 'om9_addon.toml'), $text, (New-Object Text.UTF8Encoding $false))
     Copy-Item (Join-Path $release $a.dll) (Join-Path $dst $a.dll)
-    foreach ($extra in @('icons', 'commands')) {
+    foreach ($extra in @('icons', 'commands', 'lang')) {
         if (Test-Path (Join-Path $src $extra)) {
             Copy-Item -Recurse (Join-Path $src $extra) (Join-Path $dst $extra)
         }
