@@ -40,13 +40,13 @@ impl Interactive for Curves {
     ];
     fn step(e: &Event) -> Result<Reply, String> {
         Ok(match e.command.as_str() {
-            POLYLINE => polyline(e),
-            LINE => line(e),
-            INTERP => points_curve(e, PointsKind::Interpolate),
-            CONTROL => points_curve(e, PointsKind::Control),
-            RECTANGLE => rectangle(e),
-            CIRCLE => circle(e),
-            ELLIPSE => ellipse(e),
+            POLYLINE => polyline::step(e),
+            LINE => line::step(e),
+            INTERP => interp::step(e),
+            CONTROL => points_curve(e),
+            RECTANGLE => rect::step(e),
+            CIRCLE => circle::step(e),
+            ELLIPSE => ellipse::step(e),
             ARC => arc(e),
             ARC_SED => arc_sed(e),
             POLYGON => polygon(e),
@@ -63,250 +63,51 @@ om9_addon_abi::export_interactive!(Curves);
 
 // ---- helpers -------------------------------------------------------------------------------
 
-fn load<T: DeserializeOwned + Default>(v: &Value) -> T {
+pub mod circle;
+pub mod ellipse;
+pub mod interp;
+pub mod line;
+pub mod pick;
+pub mod polyline;
+pub mod rect;
+
+/// A sub-option that opens its own choice (`Knots=Uniform` → `Knots <Uniform> ( … )`).
+pub(crate) fn submenu(name: &str, value: &str) -> OptionToken {
+    OptionToken {
+        name: name.into(),
+        value: Some(value.into()),
+        kind: om9_addon_abi::session::OptionKind::Action,
+    }
+}
+
+pub(crate) fn load<T: DeserializeOwned + Default>(v: &Value) -> T {
     serde_json::from_value(v.clone()).unwrap_or_default()
 }
-fn save<T: Serialize>(t: &T) -> Value {
+pub(crate) fn save<T: Serialize>(t: &T) -> Value {
     serde_json::to_value(t).unwrap_or(Value::Null)
 }
-fn yes(v: &Option<String>, current: bool) -> bool {
+pub(crate) fn yes(v: &Option<String>, current: bool) -> bool {
     match v.as_deref().map(str::to_ascii_lowercase).as_deref() {
         Some("yes" | "y" | "true" | "1" | "on") => true,
         Some("no" | "n" | "false" | "0" | "off") => false,
         _ => !current,
     }
 }
-fn number_of(v: &Option<String>) -> Option<f64> {
+pub(crate) fn number_of(v: &Option<String>) -> Option<f64> {
     v.as_deref().and_then(parse_number)
 }
 /// The point projected on the active CPlane (through its origin moved to `base`'s height).
-fn on_plane(e: &Event, base: Vec3, p: Vec3) -> Vec3 {
+pub(crate) fn on_plane(e: &Event, base: Vec3, p: Vec3) -> Vec3 {
     let n = e.plane.normal();
     sub(p, scale(n, dot(sub(p, base), n)))
 }
 /// Unit direction in the CPlane from `a` to `b` (CPlane x when they coincide).
-fn dir_in_plane(e: &Event, a: Vec3, b: Vec3) -> Vec3 {
+pub(crate) fn dir_in_plane(e: &Event, a: Vec3, b: Vec3) -> Vec3 {
     let d = sub(on_plane(e, a, b), a);
     if norm(d) < g::EPS { e.plane.x } else { unit(d) }
 }
 
-// ---- Polyline ------------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct PolylineState {
-    points: Vec<Vec3>,
-    persistent_close: bool,
-    length: Option<f64>,
-}
-
-impl PolylineState {
-    /// Where a click or the cursor `p` puts the next point (Length constrains the distance).
-    fn next(&self, p: Vec3) -> Vec3 {
-        match (self.points.last(), self.length) {
-            (Some(last), Some(len)) if dist(*last, p) > g::EPS => {
-                add(*last, scale(unit(sub(p, *last)), len))
-            }
-            _ => p,
-        }
-    }
-    fn reply(&self, hover: Option<Vec3>) -> Reply {
-        let n = self.points.len();
-        let mut opts = vec![OptionToken::toggle(
-            "PersistentClose",
-            self.persistent_close,
-        )];
-        if n >= 1 {
-            opts.push(OptionToken::number("Length", self.length));
-        }
-        if n >= 3 {
-            opts.push(OptionToken::action("Close"));
-        }
-        if n >= 1 {
-            opts.push(OptionToken::action("Undo"));
-        }
-        let mut pts = self.points.clone();
-        if let Some(h) = hover.filter(|_| n > 0) {
-            pts.push(self.next(h));
-        }
-        let mut preview = Vec::new();
-        if pts.len() >= 2 {
-            preview.push(Geo::Polyline {
-                points: pts.clone(),
-                closed: self.persistent_close && pts.len() >= 3,
-            });
-        }
-        let prompt = if n == 0 {
-            "Start of polyline"
-        } else {
-            "Next point of polyline. Press Enter when done"
-        };
-        Reply::ask(prompt, save(self))
-            .with_options(opts)
-            .preview(preview)
-            .rubber(None)
-    }
-    fn finish(&self, closed: bool) -> Reply {
-        if self.points.len() < 2 {
-            return Reply::finish(vec![]).say("Polyline cancelled: needs two points");
-        }
-        let closed = closed && self.points.len() >= 3;
-        Reply::finish(vec![Geo::Polyline {
-            points: self.points.clone(),
-            closed,
-        }])
-        .say(format!(
-            "Polyline: {} points{}",
-            self.points.len(),
-            if closed { ", closed" } else { "" }
-        ))
-    }
-}
-
-pub fn polyline(e: &Event) -> Reply {
-    let mut st: PolylineState = load(&e.state);
-    match &e.input {
-        Input::Start | Input::Selection => st.reply(None),
-        Input::Hover { point } => st.reply(Some(*point)),
-        Input::Point { point } => {
-            let p = st.next(*point);
-            if st.points.len() >= 3 && dist(p, st.points[0]) <= AUTO_CLOSE {
-                return st.finish(true);
-            }
-            if st.points.last().is_none_or(|l| dist(*l, p) > g::EPS) {
-                st.points.push(p);
-            }
-            st.length = None;
-            st.reply(None)
-        }
-        Input::Option { name, value } => match name.as_str() {
-            "PersistentClose" => {
-                st.persistent_close = yes(value, st.persistent_close);
-                st.reply(None)
-            }
-            "Length" => match number_of(value) {
-                Some(v) if v > 0.0 => {
-                    st.length = Some(v);
-                    st.reply(None)
-                }
-                _ => st.reply(None).refuse("Length must be a positive number"),
-            },
-            "Close" => st.finish(true),
-            _ => st.reply(None).refuse(format!("Unknown option {name}")),
-        },
-        Input::Text { text } => match parse_number(text) {
-            Some(v) if v > 0.0 && !st.points.is_empty() => {
-                st.length = Some(v);
-                st.reply(None)
-            }
-            _ => st
-                .reply(None)
-                .refuse(format!("Not a point or length: {text}")),
-        },
-        Input::Undo => {
-            st.points.pop();
-            st.reply(None)
-        }
-        Input::Enter => st.finish(st.persistent_close),
-    }
-}
-
-// ---- Single Line ---------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct LineState {
-    start: Option<Vec3>,
-    both_sides: bool,
-    length: Option<f64>,
-}
-
-impl LineState {
-    fn segment(&self, p: Vec3) -> Option<(Vec3, Vec3)> {
-        let a = self.start?;
-        let d = sub(p, a);
-        if norm(d) < g::EPS {
-            return None;
-        }
-        let end = match self.length {
-            Some(l) => add(a, scale(unit(d), if self.both_sides { l / 2.0 } else { l })),
-            None => p,
-        };
-        let start = if self.both_sides {
-            sub(scale(a, 2.0), end)
-        } else {
-            a
-        };
-        Some((start, end))
-    }
-    fn reply(&self, hover: Option<Vec3>) -> Reply {
-        let prompt = if self.start.is_none() {
-            if self.both_sides {
-                "Middle of line"
-            } else {
-                "Start of line"
-            }
-        } else {
-            "End of line"
-        };
-        let preview = hover
-            .and_then(|h| self.segment(h))
-            .map(|(a, b)| vec![Geo::Line { start: a, end: b }])
-            .unwrap_or_default();
-        Reply::ask(prompt, save(self))
-            .with_options(vec![
-                OptionToken::toggle("BothSides", self.both_sides),
-                OptionToken::number("Length", self.length),
-            ])
-            .preview(preview)
-    }
-}
-
-pub fn line(e: &Event) -> Reply {
-    let mut st: LineState = load(&e.state);
-    match &e.input {
-        Input::Hover { point } => st.reply(Some(*point)),
-        Input::Point { point } => {
-            if st.start.is_none() {
-                st.start = Some(*point);
-                return st.reply(None);
-            }
-            match st.segment(*point) {
-                Some((a, b)) => Reply::finish(vec![Geo::Line { start: a, end: b }])
-                    .say(format!("Line: length {} mm", fmt(dist(a, b)))),
-                None => st.reply(None).refuse("End point equals the start"),
-            }
-        }
-        Input::Option { name, value } if name == "BothSides" => {
-            st.both_sides = yes(value, st.both_sides);
-            st.reply(None)
-        }
-        Input::Option { name, value } if name == "Length" => match number_of(value) {
-            Some(v) if v > 0.0 => {
-                st.length = Some(v);
-                st.reply(None)
-            }
-            _ => st.reply(None).refuse("Length must be a positive number"),
-        },
-        Input::Text { text } => match parse_number(text) {
-            Some(v) if v > 0.0 => {
-                st.length = Some(v);
-                st.reply(None)
-            }
-            _ => st
-                .reply(None)
-                .refuse(format!("Not a point or length: {text}")),
-        },
-        Input::Enter if st.start.is_none() => Reply::finish(vec![]),
-        _ => st.reply(None),
-    }
-}
-
-// ---- Interpolate / control-point curves ----------------------------------------------------
-
-#[derive(Clone, Copy, PartialEq)]
-enum PointsKind {
-    Interpolate,
-    Control,
-}
+// ---- Control-point curve (Interpolate Points is in interp.rs) ----------------------------
 
 #[derive(Serialize, Deserialize)]
 struct PointsState {
@@ -324,34 +125,26 @@ impl Default for PointsState {
     }
 }
 
-fn build_points(kind: PointsKind, pts: &[Vec3], degree: usize, closed: bool) -> Option<Geo> {
-    match kind {
-        PointsKind::Interpolate => g::interpolate(pts, degree, closed),
-        PointsKind::Control => {
-            let mut p = pts.to_vec();
-            if closed && p.len() > 2 {
-                p.push(p[0]);
-            }
-            g::control_curve(&p, degree)
-        }
+fn build_points(pts: &[Vec3], degree: usize, closed: bool) -> Option<Geo> {
+    let mut p = pts.to_vec();
+    if closed && p.len() > 2 {
+        p.push(p[0]);
     }
+    g::control_curve(&p, degree)
 }
 
-fn points_curve(e: &Event, kind: PointsKind) -> Reply {
+fn points_curve(e: &Event) -> Reply {
     let mut st: PointsState = load(&e.state);
-    let name = match kind {
-        PointsKind::Interpolate => "interpolated curve",
-        PointsKind::Control => "curve",
-    };
+    let name = "curve";
     let reply = |st: &PointsState, hover: Option<Vec3>| {
         let mut pts = st.points.clone();
         if let Some(h) = hover.filter(|_| !pts.is_empty()) {
             pts.push(h);
         }
-        let mut preview: Vec<Geo> = build_points(kind, &pts, st.degree, st.persistent_close)
+        let mut preview: Vec<Geo> = build_points(&pts, st.degree, st.persistent_close)
             .into_iter()
             .collect();
-        if kind == PointsKind::Control && pts.len() >= 2 {
+        if pts.len() >= 2 {
             preview.push(Geo::Polyline {
                 points: pts.clone(),
                 closed: false,
@@ -376,13 +169,11 @@ fn points_curve(e: &Event, kind: PointsKind) -> Reply {
             .with_options(opts)
             .preview(preview)
     };
-    let finish =
-        |st: &PointsState, closed: bool| match build_points(kind, &st.points, st.degree, closed) {
-            Some(c) => {
-                Reply::finish(vec![c]).say(format!("Curve through {} points", st.points.len()))
-            }
-            None => Reply::finish(vec![]).say("Curve cancelled: needs two points"),
-        };
+    let finish = |st: &PointsState, closed: bool| match build_points(&st.points, st.degree, closed)
+    {
+        Some(c) => Reply::finish(vec![c]).say(format!("Curve through {} points", st.points.len())),
+        None => Reply::finish(vec![]).say("Curve cancelled: needs two points"),
+    };
     match &e.input {
         Input::Hover { point } => reply(&st, Some(*point)),
         Input::Point { point } => {
@@ -412,449 +203,6 @@ fn points_curve(e: &Event, kind: PointsKind) -> Reply {
             reply(&st, None)
         }
         Input::Enter => finish(&st, st.persistent_close),
-        _ => reply(&st, None),
-    }
-}
-
-// ---- Rectangle -----------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct RectState {
-    /// "corner" (default), "center", "3point".
-    mode: String,
-    vertical: bool,
-    rounded: bool,
-    points: Vec<Vec3>,
-    length: Option<f64>,
-    /// Corner radius asked after the rectangle is set (Rounded=Yes).
-    rect: Option<[Vec3; 3]>,
-}
-
-impl RectState {
-    fn mode(&self) -> &str {
-        if self.mode.is_empty() {
-            "corner"
-        } else {
-            &self.mode
-        }
-    }
-    /// (corner, u, v) of the rectangle the clicked points and the cursor define.
-    fn frame(&self, e: &Event, p: Vec3) -> Option<[Vec3; 3]> {
-        let n = e.plane.normal();
-        match (self.mode(), self.points.as_slice()) {
-            ("corner", [a]) if self.vertical => {
-                let q = on_plane(e, *a, p);
-                let mut u = sub(q, *a);
-                if let Some(l) = self.length {
-                    u = scale(unit(u), l);
-                }
-                // Second edge goes up the CPlane normal; the click's height picks it later.
-                Some([*a, u, scale(n, 0.0)])
-            }
-            ("corner", [a, b]) if self.vertical => {
-                let h = dot(sub(p, *b), n);
-                Some([*a, sub(*b, *a), scale(n, h)])
-            }
-            ("corner", [a]) => {
-                let q = on_plane(e, *a, p);
-                let d = e.plane.local(q);
-                let o = e.plane.local(*a);
-                let (mut du, dv) = (d[0] - o[0], d[1] - o[1]);
-                if let Some(l) = self.length {
-                    du = l * du.signum().max(if du == 0.0 { 1.0 } else { -1.0 });
-                }
-                Some([*a, scale(e.plane.x, du), scale(e.plane.y, dv)])
-            }
-            ("center", [c]) => {
-                let q = on_plane(e, *c, p);
-                let d = sub(q, *c);
-                let (du, dv) = (dot(d, e.plane.x), dot(d, e.plane.y));
-                let u = scale(e.plane.x, 2.0 * du);
-                let v = scale(e.plane.y, 2.0 * dv);
-                Some([sub(sub(*c, scale(u, 0.5)), scale(v, 0.5)), u, v])
-            }
-            ("3point", [a]) => Some([*a, sub(on_plane(e, *a, p), *a), [0.0; 3]]),
-            ("3point", [a, b]) => {
-                let u = sub(*b, *a);
-                let side = unit(cross(n, u));
-                let w = dot(sub(p, *a), side);
-                Some([*a, u, scale(side, w)])
-            }
-            _ => None,
-        }
-    }
-    fn geo(r: [Vec3; 3], radius: Option<f64>) -> Option<Geo> {
-        let [o, u, v] = r;
-        if norm(u) < g::EPS || norm(v) < g::EPS {
-            return None;
-        }
-        match radius {
-            Some(rad) if rad > g::EPS => g::rounded_rectangle(o, u, v, rad),
-            _ => Some(Geo::Polyline {
-                points: vec![o, add(o, u), add(add(o, u), v), add(o, v)],
-                closed: true,
-            }),
-        }
-    }
-    fn needs(&self) -> usize {
-        match (self.mode(), self.vertical) {
-            ("3point", _) | ("corner", true) => 3,
-            _ => 2,
-        }
-    }
-    fn reply(&self, e: &Event, hover: Option<Vec3>) -> Reply {
-        if let Some(r) = self.rect {
-            let rad = hover.map(|h| {
-                let corner = r[0];
-                dist(on_plane(e, corner, h), corner).min(norm(r[1]).min(norm(r[2])) / 2.0)
-            });
-            return Reply::ask("Radius of the corners", save(self))
-                .want(Want::Number)
-                .preview(Self::geo(r, rad).into_iter().collect());
-        }
-        let preview = hover
-            .and_then(|h| self.frame(e, h))
-            .and_then(|r| {
-                Self::geo(r, None).or(Some(Geo::Line {
-                    start: r[0],
-                    end: add(r[0], r[1]),
-                }))
-            })
-            .into_iter()
-            .collect();
-        let prompt = match (self.mode(), self.points.len()) {
-            ("center", 0) => "Center of rectangle",
-            ("center", _) => "Corner of rectangle",
-            ("3point", 0) => "Start of edge",
-            ("3point", 1) => "End of edge",
-            ("3point", _) => "Width",
-            (_, 0) if self.vertical => "Start of edge",
-            (_, 1) if self.vertical => "End of edge",
-            (_, 2) => "Height",
-            (_, 0) => "First corner of rectangle",
-            _ => "Other corner or length",
-        };
-        let mut opts = Vec::new();
-        if self.points.is_empty() {
-            opts.extend([
-                OptionToken::action("Center"),
-                OptionToken::action("3Point"),
-                OptionToken::toggle("Vertical", self.vertical),
-            ]);
-        }
-        opts.push(OptionToken::toggle("Rounded", self.rounded));
-        Reply::ask(prompt, save(self))
-            .with_options(opts)
-            .preview(preview)
-    }
-    fn complete(&mut self, e: &Event, r: [Vec3; 3]) -> Reply {
-        if norm(r[1]) < g::EPS || norm(r[2]) < g::EPS {
-            return self.reply(e, None).refuse("The rectangle has no area");
-        }
-        if self.rounded {
-            self.rect = Some(r);
-            return self.reply(e, None);
-        }
-        finish_rect(r, None)
-    }
-}
-
-fn finish_rect(r: [Vec3; 3], radius: Option<f64>) -> Reply {
-    match RectState::geo(r, radius) {
-        Some(c) => Reply::finish(vec![c]).say(format!(
-            "Rectangle {} × {} mm",
-            fmt(norm(r[1])),
-            fmt(norm(r[2]))
-        )),
-        None => Reply::finish(vec![]).say("Rectangle cancelled"),
-    }
-}
-
-pub fn rectangle(e: &Event) -> Reply {
-    let mut st: RectState = load(&e.state);
-    match &e.input {
-        Input::Hover { point } => st.reply(e, Some(*point)),
-        Input::Point { point } => {
-            if let Some(r) = st.rect {
-                let rad = dist(on_plane(e, r[0], *point), r[0]);
-                return finish_rect(r, Some(rad));
-            }
-            if st.points.len() + 1 < st.needs() {
-                st.points.push(*point);
-                return st.reply(e, None);
-            }
-            match st.frame(e, *point) {
-                Some(r) => st.complete(e, r),
-                None => st.reply(e, None),
-            }
-        }
-        Input::Option { name, value } => {
-            match name.as_str() {
-                "Center" => st.mode = "center".into(),
-                "3Point" => st.mode = "3point".into(),
-                "Vertical" => st.vertical = yes(value, st.vertical),
-                "Rounded" => st.rounded = yes(value, st.rounded),
-                _ => {}
-            }
-            st.reply(e, None)
-        }
-        Input::Text { text } => {
-            let Some(v) = parse_number(text).filter(|v| *v > 0.0) else {
-                return st.reply(e, None).refuse(format!("Not a number: {text}"));
-            };
-            if let Some(r) = st.rect {
-                if 2.0 * v > norm(r[1]).min(norm(r[2])) + g::EPS {
-                    return st
-                        .reply(e, None)
-                        .refuse("Radius is larger than half the short side");
-                }
-                return finish_rect(r, Some(v));
-            }
-            match (st.mode(), st.points.as_slice()) {
-                ("corner", [_]) if st.length.is_none() && !st.vertical => {
-                    st.length = Some(v);
-                    st.reply(e, None)
-                }
-                ("corner", [a]) if !st.vertical => {
-                    let l = st.length.unwrap_or(v);
-                    let r = [*a, scale(e.plane.x, l), scale(e.plane.y, v)];
-                    st.complete(e, r)
-                }
-                _ => st.reply(e, None).refuse("Pick a point"),
-            }
-        }
-        Input::Enter => Reply::finish(vec![]),
-        _ => st.reply(e, None),
-    }
-}
-
-// ---- Circle --------------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct CircleState {
-    /// "center" (default), "2point", "3point".
-    mode: String,
-    diameter: bool,
-    vertical: bool,
-    points: Vec<Vec3>,
-}
-
-impl CircleState {
-    fn mode(&self) -> &str {
-        if self.mode.is_empty() {
-            "center"
-        } else {
-            &self.mode
-        }
-    }
-    fn circle(&self, e: &Event, p: Vec3) -> Option<Geo> {
-        let n = e.plane.normal();
-        let (center, radius, x, y) = match (self.mode(), self.points.as_slice()) {
-            ("center", [c]) if self.vertical => {
-                let d = dir_in_plane(e, *c, p);
-                (*c, dist(*c, p), d, n)
-            }
-            ("center", [c]) => {
-                let q = on_plane(e, *c, p);
-                (*c, dist(*c, q), e.plane.x, e.plane.y)
-            }
-            ("2point", [a]) => {
-                let q = on_plane(e, *a, p);
-                (
-                    scale(add(*a, q), 0.5),
-                    dist(*a, q) / 2.0,
-                    e.plane.x,
-                    e.plane.y,
-                )
-            }
-            ("3point", [a, b]) => {
-                let c = g::circumcenter(*a, *b, p)?;
-                let nn = unit(cross(sub(*b, *a), sub(p, *a)));
-                let x = unit(sub(*a, c));
-                (c, dist(c, *a), x, cross(nn, x))
-            }
-            _ => return None,
-        };
-        (radius > g::EPS).then_some(Geo::Circle {
-            center,
-            x,
-            y,
-            radius,
-        })
-    }
-    fn needs(&self) -> usize {
-        if self.mode() == "3point" { 3 } else { 2 }
-    }
-    fn reply(&self, e: &Event, hover: Option<Vec3>) -> Reply {
-        let prompt = match (self.mode(), self.points.len()) {
-            ("center", 0) => "Center of circle",
-            ("center", _) if self.diameter => "Diameter",
-            ("center", _) => "Radius",
-            ("2point", 0) => "Start of diameter",
-            ("2point", _) => "End of diameter",
-            ("3point", 0) => "First point on circle",
-            ("3point", 1) => "Second point on circle",
-            _ => "Third point on circle",
-        };
-        let mut opts = Vec::new();
-        if self.points.is_empty() {
-            opts.extend([
-                OptionToken::action("2Point"),
-                OptionToken::action("3Point"),
-                OptionToken::toggle("Vertical", self.vertical),
-            ]);
-        } else if self.mode() == "center" {
-            opts.push(OptionToken::choice(
-                "Mode",
-                if self.diameter { "Diameter" } else { "Radius" },
-                &["Radius", "Diameter"],
-            ));
-        }
-        let want = if self.mode() == "center" && !self.points.is_empty() {
-            Want::Number
-        } else {
-            Want::Point
-        };
-        Reply::ask(prompt, save(self))
-            .with_options(opts)
-            .want(want)
-            .preview(hover.and_then(|h| self.circle(e, h)).into_iter().collect())
-            .rubber(
-                self.points
-                    .first()
-                    .copied()
-                    .filter(|_| self.mode() == "center"),
-            )
-    }
-}
-
-fn done_circle(c: Geo) -> Reply {
-    let r = match &c {
-        Geo::Circle { radius, .. } => *radius,
-        _ => 0.0,
-    };
-    Reply::finish(vec![c]).say(format!(
-        "Circle: radius {} mm, diameter {} mm",
-        fmt(r),
-        fmt(2.0 * r)
-    ))
-}
-
-pub fn circle(e: &Event) -> Reply {
-    let mut st: CircleState = load(&e.state);
-    match &e.input {
-        Input::Hover { point } => st.reply(e, Some(*point)),
-        Input::Point { point } => {
-            if st.points.len() + 1 < st.needs() {
-                st.points.push(*point);
-                return st.reply(e, None);
-            }
-            match st.circle(e, *point) {
-                Some(c) => done_circle(c),
-                None => st
-                    .reply(e, None)
-                    .refuse("The points do not define a circle"),
-            }
-        }
-        Input::Option { name, value } => {
-            match name.as_str() {
-                "2Point" => st.mode = "2point".into(),
-                "3Point" => st.mode = "3point".into(),
-                "Vertical" => st.vertical = yes(value, st.vertical),
-                "Mode" | "Diameter" | "Radius" => {
-                    st.diameter = match value.as_deref() {
-                        Some(v) => v.eq_ignore_ascii_case("diameter"),
-                        None if name == "Diameter" => true,
-                        None if name == "Radius" => false,
-                        None => !st.diameter,
-                    }
-                }
-                _ => {}
-            }
-            st.reply(e, None)
-        }
-        Input::Text { text } => match (parse_number(text), st.points.as_slice()) {
-            (Some(v), [c]) if v > 0.0 && st.mode() == "center" => {
-                let r = if st.diameter { v / 2.0 } else { v };
-                let (x, y) = if st.vertical {
-                    (e.plane.x, e.plane.normal())
-                } else {
-                    (e.plane.x, e.plane.y)
-                };
-                done_circle(Geo::Circle {
-                    center: *c,
-                    x,
-                    y,
-                    radius: r,
-                })
-            }
-            _ => st.reply(e, None).refuse(format!("Not a radius: {text}")),
-        },
-        Input::Enter => Reply::finish(vec![]),
-        _ => st.reply(e, None),
-    }
-}
-
-// ---- Ellipse -------------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct EllipseState {
-    points: Vec<Vec3>,
-}
-
-fn ellipse_of(e: &Event, c: Vec3, a_end: Vec3, p: Vec3) -> Option<Geo> {
-    let a = sub(on_plane(e, c, a_end), c);
-    let side = unit(cross(e.plane.normal(), a));
-    let b = dot(sub(p, c), side).abs();
-    g::ellipse(c, a, scale(side, b))
-}
-
-pub fn ellipse(e: &Event) -> Reply {
-    let mut st: EllipseState = load(&e.state);
-    let reply = |st: &EllipseState, hover: Option<Vec3>| {
-        let prompt = match st.points.len() {
-            0 => "Ellipse center",
-            1 => "End of first axis",
-            _ => "End of second axis",
-        };
-        let preview: Vec<Geo> = match (st.points.as_slice(), hover) {
-            ([c], Some(h)) => vec![Geo::Line {
-                start: *c,
-                end: on_plane(e, *c, h),
-            }],
-            ([c, a], Some(h)) => ellipse_of(e, *c, *a, h).into_iter().collect(),
-            _ => vec![],
-        };
-        Reply::ask(prompt, save(st)).preview(preview)
-    };
-    match &e.input {
-        Input::Hover { point } => reply(&st, Some(*point)),
-        Input::Point { point } => {
-            if st.points.len() < 2 {
-                st.points.push(*point);
-                return reply(&st, None);
-            }
-            match ellipse_of(e, st.points[0], st.points[1], *point) {
-                Some(g) => Reply::finish(vec![g]).say("Ellipse"),
-                None => reply(&st, None).refuse("Both axes need a length"),
-            }
-        }
-        Input::Text { text } => match (parse_number(text), st.points.as_slice()) {
-            (Some(v), [c, a]) if v > 0.0 => {
-                let ax = sub(on_plane(e, *c, *a), *c);
-                let side = unit(cross(e.plane.normal(), ax));
-                match g::ellipse(*c, ax, scale(side, v)) {
-                    Some(g) => Reply::finish(vec![g]).say("Ellipse"),
-                    None => reply(&st, None).refuse("Both axes need a length"),
-                }
-            }
-            (Some(v), [c]) if v > 0.0 => {
-                st.points.push(add(*c, scale(e.plane.x, v)));
-                reply(&st, None)
-            }
-            _ => reply(&st, None).refuse(format!("Not a length: {text}")),
-        },
-        Input::Enter => Reply::finish(vec![]),
         _ => reply(&st, None),
     }
 }
@@ -1310,6 +658,9 @@ pub fn event(command: &str, input: Input, state: &Value) -> Event {
 }
 
 #[cfg(test)]
+mod variants_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1420,7 +771,8 @@ mod tests {
         let Geo::Line { start, end } = r.last().unwrap().create[0] else {
             panic!()
         };
-        assert_eq!((start, end), ([-5.0, 0.0, 0.0], [5.0, 0.0, 0.0]));
+        // BothSides draws the length on each side (Rhino 5: twice the length you indicate).
+        assert_eq!((start, end), ([-10.0, 0.0, 0.0], [10.0, 0.0, 0.0]));
     }
 
     #[test]
@@ -1537,7 +889,7 @@ mod tests {
         assert_eq!(radius(&r[2].create[0]), ([1.0, 1.0, 0.0], 5.0));
         let r = run(
             CIRCLE,
-            vec![pt(0.0, 0.0), opt("Mode", Some("Diameter")), text("17.35")],
+            vec![pt(0.0, 0.0), opt("Diameter", None), text("17.35")],
         );
         assert!(
             (radius(&r[3].create[0]).1 - 8.675).abs() < 1e-12,

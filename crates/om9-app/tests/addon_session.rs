@@ -198,11 +198,11 @@ fn curve_commands_run_interactively() {
     assert_eq!(n.poles[2], [10.0, 5.0, 0.0]);
     assert!(c.take_addon_messages().iter().any(|m| m.contains("closed")));
 
-    // Circle from its menu icon: Mode option, typed diameter.
+    // Circle from its menu icon: the Diameter sub-option (as in Matrix), typed diameter.
     c.dispatch("CurveCircleCenterRadius", InvocationOrigin::Menu)
         .unwrap();
     c.session_point([0.0, 0.0, 0.0]).unwrap();
-    c.submit("Mode=Diameter").unwrap();
+    c.submit("Diameter").unwrap();
     c.submit("17.35").unwrap();
     let circle = c
         .document()

@@ -142,18 +142,20 @@ label = "Polyline"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Polyline"]
-summary = "Vẽ đường gấp khúc qua các điểm bấm."
-steps = ["Bấm điểm đầu.", "Bấm các điểm tiếp theo (gõ x,y hoặc @dx,dy hoặc số = chiều dài).", "Enter hoặc chuột phải để kết thúc; bấm lại điểm đầu để đóng."]
-options = ["Close: đóng và kết thúc.", "PersistentClose: tự đóng khi Enter.", "Length: khoá chiều dài đoạn.", "Undo: bỏ điểm vừa bấm."]
+summary = "Vẽ đường gấp khúc gồm đoạn thẳng và cung tròn nối tiếp nhau."
+steps = ["Bấm điểm đầu.", "Bấm các điểm tiếp theo (gõ x,y hoặc @dx,dy; gõ số = chiều dài đoạn).", "Mode=Arc: đoạn tiếp theo là cung tiếp tuyến với đoạn trước; Direction chọn hướng đầu cung, Center chọn tâm cung.", "Enter hoặc chuột phải để kết thúc; bấm lại điểm đầu để đóng."]
+options = ["PersistentClose: luôn khép kín khi vẽ.", "Close: khép kín và kết thúc (từ điểm thứ 3).", "Mode=Line/Arc: vẽ đoạn thẳng hay cung tròn.", "Helpers: hiện đường gợi ý tiếp tuyến và trục X/Y.", "Length: khoá chiều dài đoạn tiếp theo.", "Undo: bỏ điểm vừa bấm."]
 
 [[commands]]
 id = "CurveLineSingleLine"
 label = "Single Line"
 handler = "om9_addon_session"
 interactive = true
-summary = "Vẽ một đoạn thẳng."
-steps = ["Bấm điểm đầu.", "Bấm điểm cuối (hoặc gõ chiều dài)."]
-options = ["BothSides: điểm đầu là trung điểm.", "Length: khoá chiều dài."]
+mesh_data = true
+aliases = ["Line"]
+summary = "Vẽ một đoạn thẳng, kèm 9 kiểu dựng như Matrix: hai phía, vuông góc mặt, theo góc, thẳng đứng, 4 điểm, phân giác, vuông góc / tiếp tuyến đường cong, nối dài."
+steps = ["Bấm điểm đầu (hoặc chọn một kiểu dựng trên dòng lệnh).", "Bấm điểm cuối, hoặc gõ chiều dài rồi bấm hướng."]
+options = ["BothSides: điểm đầu là trung điểm.", "Normal: chọn mặt / khối / lưới, bấm điểm trên mặt; đường theo pháp tuyến (IgnoreTrims).", "Angled: đường gốc 2 điểm, gõ góc xoay, bấm điểm cuối.", "Vertical: đường vuông góc mặt phẳng làm việc.", "FourPoint: 2 điểm cho hướng, 2 điểm cho đầu và cuối.", "Bisector: đỉnh góc, cạnh đầu, cạnh cuối, rồi điểm cuối.", "Perpendicular: vuông góc từ đường cong; Point: từ một điểm tới đường cong; 2Curves: vuông góc chung hai đường cong.", "Tangent: tiếp tuyến tại điểm trên đường cong; Point: từ một điểm tiếp xúc đường cong; 2Curves: tiếp tuyến chung hai đường cong.", "Extension: nối dài đầu gần nhất của đường cong đã chọn."]
 
 [[commands]]
 id = "CurveFreeFormInterpolatePoints"
@@ -162,8 +164,8 @@ handler = "om9_addon_session"
 interactive = true
 aliases = ["InterpCrv"]
 summary = "Vẽ đường cong trơn đi qua các điểm bấm."
-steps = ["Bấm các điểm.", "Enter để kết thúc."]
-options = ["Degree: bậc đường cong.", "Close / PersistentClose: đóng đường cong.", "Undo."]
+steps = ["Bấm các điểm (bấm lại điểm đầu để khép kín trơn).", "Enter để kết thúc."]
+options = ["Degree: bậc đường cong (1–11).", "Knots: kiểu nút Uniform (đều), Chord (theo khoảng cách), SqrtChord (căn khoảng cách).", "PersistentClose: luôn khép kín khi vẽ.", "StartTangent: bấm điểm đầu rồi hướng tiếp tuyến đầu.", "Close: khép kín trơn; Sharp: khép kín có góc gãy (từ điểm thứ 3).", "EndTangent: bấm điểm cuối rồi hướng tiếp tuyến cuối.", "Undo: bỏ điểm vừa bấm."]
 
 [[commands]]
 id = "CurveFreeFormControlPoints"
@@ -181,19 +183,20 @@ label = "Rectangle"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Rectangle"]
-summary = "Vẽ hình chữ nhật theo hai góc."
-steps = ["Bấm góc thứ nhất.", "Bấm góc đối diện (hoặc gõ dài, rộng)."]
-options = ["Center: từ tâm.", "3Point: theo 3 điểm.", "Vertical: đứng vuông góc CPlane.", "Rounded: bo góc (gõ bán kính)."]
+summary = "Vẽ hình chữ nhật: hai góc, từ tâm, 3 điểm hoặc đứng; có thể bo góc cung tròn hoặc conic."
+steps = ["Bấm góc thứ nhất.", "Bấm góc đối diện, hoặc gõ chiều dài rồi chiều rộng (Enter = hình vuông)."]
+options = ["3Point: hai đầu một cạnh rồi chiều rộng.", "Vertical: đứng vuông góc mặt phẳng làm việc.", "Center: từ tâm.", "Rounded: bo góc; gõ bán kính hoặc bấm điểm mà góc bo đi qua; Corner=Arc/Conic, Rho cho góc conic."]
 
 [[commands]]
 id = "CurveCircleCenterRadius"
 label = "Circle"
 handler = "om9_addon_session"
 interactive = true
+mesh_data = true
 aliases = ["Circle"]
-summary = "Vẽ đường tròn từ tâm và bán kính."
-steps = ["Bấm tâm.", "Bấm điểm trên đường tròn hoặc gõ bán kính/đường kính."]
-options = ["Mode: Radius hoặc Diameter.", "2Point, 3Point: tròn qua 2 / 3 điểm.", "Vertical: đứng vuông góc CPlane."]
+summary = "Vẽ đường tròn: tâm và bán kính, 2 điểm, 3 điểm, tiếp xúc đường cong, quanh đường cong hoặc khớp qua các điểm."
+steps = ["Bấm tâm (hoặc chọn kiểu dựng).", "Bấm điểm trên đường tròn, hoặc gõ bán kính / đường kính / chu vi / diện tích."]
+options = ["Deformable: đường tròn NURBS chỉnh được (Degree, PointCount).", "Vertical: đứng vuông góc mặt phẳng làm việc.", "2Point, 3Point: qua 2 / 3 điểm.", "Tangent: tiếp xúc 2 đường cong và bán kính, hoặc 3 đường cong; bấm gần tâm.", "AroundCurve: chọn đường cong, bấm tâm trên đó; đường tròn vuông góc đường cong.", "FitPoints: chọn điểm, đường cong hoặc lưới rồi Enter.", "Radius / Diameter / Circumference / Area: cách gõ kích thước.", "Orientation: bấm điểm cho hướng pháp tuyến của đường tròn."]
 
 [[commands]]
 id = "CurveEllipseFromCenter"
@@ -201,8 +204,9 @@ label = "Ellipse"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Ellipse"]
-summary = "Vẽ elip từ tâm và hai bán trục."
-steps = ["Bấm tâm.", "Bấm đầu trục thứ nhất.", "Bấm đầu trục thứ hai."]
+summary = "Vẽ elip: từ tâm, hộp bao, đường kính, tiêu điểm, đứng hoặc quanh đường cong."
+steps = ["Bấm tâm (hoặc chọn kiểu dựng).", "Bấm đầu trục thứ nhất.", "Bấm đầu trục thứ hai (hoặc gõ chiều dài)."]
+options = ["Deformable: elip NURBS chỉnh được (Degree, PointCount).", "Vertical: trục thứ hai đứng theo pháp tuyến mặt phẳng làm việc.", "Corner: hai góc hộp bao (hoặc một góc khi đã có tâm).", "Diameter: hai đầu trục thứ nhất rồi trục thứ hai.", "FromFoci: hai tiêu điểm rồi một điểm trên elip; MarkFoci đặt điểm tại tiêu điểm.", "AroundCurve: chọn đường cong, tâm trên đường cong."]
 
 [[commands]]
 id = "CurveArcCenterStartAngle"

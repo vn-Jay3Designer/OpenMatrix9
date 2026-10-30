@@ -13,6 +13,7 @@ pub mod cmd;
 pub mod csg;
 pub mod fit;
 pub mod gems;
+pub mod interp;
 pub mod mesh;
 pub mod nurbs;
 pub mod path;
@@ -246,6 +247,14 @@ pub enum Piece {
         start: Vec3,
         end: Vec3,
     },
+    /// Conic from `start` to `end` with middle pole `apex` and weight `weight`
+    /// (`rho / (1 − rho)`: 1 is a parabola, below 1 an ellipse arc, above 1 a hyperbola).
+    Conic {
+        start: Vec3,
+        apex: Vec3,
+        end: Vec3,
+        weight: f64,
+    },
 }
 
 /// An exact rational quadratic NURBS through the pieces, in order (each ends where the next
@@ -270,6 +279,17 @@ pub fn composite_quadratic(pieces: &[Piece]) -> Option<Geo> {
                 let bis = unit(add(u, v));
                 let mid = add(center, scale(bis, r / half.cos()));
                 (start, mid, half.cos(), end)
+            }
+            Piece::Conic {
+                start,
+                apex,
+                end,
+                weight,
+            } => {
+                if !(weight > 0.0 && weight.is_finite()) {
+                    return None;
+                }
+                (start, apex, weight, end)
             }
         };
         if i == 0 {
@@ -323,6 +343,17 @@ pub fn ellipse(center: Vec3, a: Vec3, b: Vec3) -> Option<Geo> {
 
 /// Rounded rectangle in the plane (corner `o`, edge vectors `u`, `v`, corner radius `r`).
 pub fn rounded_rectangle(o: Vec3, u: Vec3, v: Vec3, r: f64) -> Option<Geo> {
+    rounded_rectangle_with(o, u, v, r, None)
+}
+
+/// Rounded rectangle whose corners are circular arcs (`rho = None`) or conics of shape
+/// `rho` ∈ (0, 1) through the same tangent points (Rhino `Corner=Conic`; 0.5 is a parabola).
+pub fn rounded_rectangle_with(o: Vec3, u: Vec3, v: Vec3, r: f64, rho: Option<f64>) -> Option<Geo> {
+    if let Some(rho) = rho
+        && !(rho > 0.0 && rho < 1.0)
+    {
+        return None;
+    }
     let (lu, lv) = (norm(u), norm(v));
     if r <= EPS || 2.0 * r > lu.min(lv) + EPS {
         return None;
@@ -347,10 +378,19 @@ pub fn rounded_rectangle(o: Vec3, u: Vec3, v: Vec3, r: f64) -> Option<Geo> {
         }
         let corner = c[(i + 1) % 4];
         let center = add(sub(corner, scale(along, r)), scale(next_along, r));
-        pieces.push(Piece::Arc {
-            center,
-            start: end_line,
-            end: add(corner, scale(next_along, r)),
+        let end = add(corner, scale(next_along, r));
+        pieces.push(match rho {
+            None => Piece::Arc {
+                center,
+                start: end_line,
+                end,
+            },
+            Some(rho) => Piece::Conic {
+                start: end_line,
+                apex: corner,
+                end,
+                weight: rho / (1.0 - rho),
+            },
         });
     }
     composite_quadratic(&pieces)

@@ -1,6 +1,6 @@
 # Circle
 
-Vẽ đường tròn từ tâm và bán kính.
+Vẽ đường tròn: tâm và bán kính, 2 điểm, 3 điểm, tiếp xúc đường cong, quanh đường cong hoặc khớp qua các điểm.
 
 - **Mã lệnh:** `CurveCircleCenterRadius`
 - **Vị trí:** menu Curve, ô số 5
@@ -10,11 +10,16 @@ Vẽ đường tròn từ tâm và bán kính.
 
 ## Cách dùng
 
-1. Bấm tâm.
-2. Bấm điểm trên đường tròn hoặc gõ bán kính/đường kính.
+1. Bấm tâm (hoặc chọn kiểu dựng).
+2. Bấm điểm trên đường tròn, hoặc gõ bán kính / đường kính / chu vi / diện tích.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Mode: Radius hoặc Diameter.
-- 2Point, 3Point: tròn qua 2 / 3 điểm.
-- Vertical: đứng vuông góc CPlane.
+- Deformable: đường tròn NURBS chỉnh được (Degree, PointCount).
+- Vertical: đứng vuông góc mặt phẳng làm việc.
+- 2Point, 3Point: qua 2 / 3 điểm.
+- Tangent: tiếp xúc 2 đường cong và bán kính, hoặc 3 đường cong; bấm gần tâm.
+- AroundCurve: chọn đường cong, bấm tâm trên đó; đường tròn vuông góc đường cong.
+- FitPoints: chọn điểm, đường cong hoặc lưới rồi Enter.
+- Radius / Diameter / Circumference / Area: cách gõ kích thước.
+- Orientation: bấm điểm cho hướng pháp tuyến của đường tròn.

@@ -349,3 +349,48 @@ fn vietnamese_table_covers_the_package() {
     assert_eq!(s(lang, "scope"), Some("addon"));
     assert_eq!(s(lang, "default"), Some("vi"));
 }
+
+/// Every prompt and message of the Curve commands reworked to the Matrix 9 sub-options has a
+/// Vietnamese text (placeholders filled with sample values).
+#[test]
+fn curve_prompts_have_vietnamese() {
+    use om9_addons::i18n::{Lang, Tr};
+    let addon = Path::new(env!("CARGO_MANIFEST_DIR")).join("addon");
+    let tr = Tr::parse(&fs::read_to_string(addon.join("lang/vi.toml")).unwrap(), Lang::Vi).unwrap();
+    let single = ["Width", "Height", "Radius", "Diameter", "Circumference", "Area", "Ellipse"];
+    let mut missing = Vec::new();
+    for f in ["line", "polyline", "interp", "rect", "circle", "ellipse"] {
+        let src = fs::read_to_string(root().join(format!("addons/curves/src/{f}.rs"))).unwrap();
+        let code: String = src
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap()
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let mut rest = code.as_str();
+        while let Some(i) = rest.find('"') {
+            let after = &rest[i + 1..];
+            let mut end = 0;
+            let bytes = after.as_bytes();
+            while end < bytes.len() && bytes[end] != b'"' {
+                end += if bytes[end] == b'\\' { 2 } else { 1 };
+            }
+            let lit = &after[..end.min(after.len())];
+            rest = &after[(end + 1).min(after.len())..];
+            let starts_upper = lit.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+            if !(starts_upper && (lit.contains(' ') || single.contains(&lit))) {
+                continue;
+            }
+            let sample = lit
+                .replace("{text}", "x")
+                .replace("{name}", "Foo")
+                .replace("{}", "1");
+            if tr.text(&sample) == sample {
+                missing.push(format!("{f}: {lit}"));
+            }
+        }
+    }
+    assert!(missing.is_empty(), "no Vietnamese text: {missing:#?}");
+}
