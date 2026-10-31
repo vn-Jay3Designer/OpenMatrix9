@@ -1,6 +1,6 @@
 # Polygon
 
-Vẽ đa giác đều từ tâm và bán kính.
+Vẽ đa giác đều như Rhino Polygon: nội tiếp/ngoại tiếp, theo cạnh, hình sao, đứng, quanh đường cong.
 
 - **Mã lệnh:** `CurvePolygonCenterRadius`
 - **Vị trí:** menu Curve, ô số 28
@@ -10,10 +10,14 @@ Vẽ đa giác đều từ tâm và bán kính.
 
 ## Cách dùng
 
-1. Bấm tâm.
-2. Bấm đỉnh hoặc gõ bán kính.
+1. Center of inscribed polygon: bấm tâm.
+2. Corner of polygon (hoặc Midpoint of edge): bấm hoặc gõ bán kính.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- NumSides: số cạnh.
-- Circumscribed: ngoại tiếp.
+- NumSides=5.
+- Mode=Inscribed/Circumscribed.
+- Edge: vẽ theo một cạnh (Flip).
+- Star: hình sao, bán kính thứ hai (Automatic).
+- Vertical: đứng vuông góc CPlane.
+- AroundCurve: vuông góc với đường cong tại điểm bấm.

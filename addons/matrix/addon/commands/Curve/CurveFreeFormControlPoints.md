@@ -1,6 +1,6 @@
 # Control Point Curve
 
-Vẽ đường cong theo điểm điều khiển.
+Vẽ đường cong theo điểm điều khiển (Rhino Curve).
 
 - **Mã lệnh:** `CurveFreeFormControlPoints`
 - **Vị trí:** menu Curve, ô số 41
@@ -10,9 +10,11 @@ Vẽ đường cong theo điểm điều khiển.
 
 ## Cách dùng
 
-1. Bấm các điểm điều khiển.
-2. Enter để kết thúc.
+1. Start of curve.
+2. Next point (Enter để xong; Close để khép).
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Degree, Close, PersistentClose, Undo.
+- Degree=3.
+- PersistentClose=No.
+- Close: khép trơn; Sharp=Yes khép gãy.

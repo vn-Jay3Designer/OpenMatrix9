@@ -1,6 +1,6 @@
 # Spiral
 
-Vẽ đường xoắn ốc.
+Vẽ đường xoắn ốc như Rhino Spiral: trục, bán kính đầu và cuối; Flat, Vertical, AroundCurve.
 
 - **Mã lệnh:** `CurveSpiral`
 - **Vị trí:** menu Curve, ô số 29
@@ -10,10 +10,13 @@ Vẽ đường xoắn ốc.
 
 ## Cách dùng
 
-1. Bấm tâm và các bán kính.
-2. Gõ số vòng.
+1. Start of axis, End of axis (Flat: Center of spiral).
+2. First radius and start point.
+3. Second radius.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Turns: số vòng.
-- Flat: xoắn phẳng.
+- Diameter/Radius.
+- Mode=Turns/Pitch, Turns=10, Pitch=1.
+- ReverseTwist=No.
+- Flat, Vertical, AroundCurve.

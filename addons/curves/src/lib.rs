@@ -6,13 +6,12 @@
 //! its prompt and options, a preview and finally the curve to create. See the tests for the
 //! step-by-step use of each command.
 use om9_addon_abi::session::{
-    self as s, Event, Geo, Input, Interactive, OptionToken, Reply, Vec3, Want, add, cross, dist,
-    dot, fmt, norm, parse_number, scale, sub, unit,
+    self as s, Event, Geo, Input, Interactive, OptionToken, Reply, Vec3, dist, dot, fmt, norm,
+    parse_number, scale, sub, unit,
 };
 use om9_addon_geom as g;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use std::f64::consts::{PI, TAU};
 
 pub const POLYLINE: &str = "CurvePolylinePolyline";
 pub const LINE: &str = "CurveLineSingleLine";
@@ -47,11 +46,10 @@ impl Interactive for Curves {
             RECTANGLE => rect::step(e),
             CIRCLE => circle::step(e),
             ELLIPSE => ellipse::step(e),
-            ARC => arc(e),
-            ARC_SED => arc_sed(e),
-            POLYGON => polygon(e),
-            SPIRAL => spiral(e, false),
-            HELIX => spiral(e, true),
+            ARC | ARC_SED => arc::step(e),
+            POLYGON => polygon::step(e),
+            SPIRAL => spiral::step(e, false),
+            HELIX => spiral::step(e, true),
             POINT => point(e),
             other => return Err(format!("unknown command {other}")),
         })
@@ -63,13 +61,16 @@ om9_addon_abi::export_interactive!(Curves);
 
 // ---- helpers -------------------------------------------------------------------------------
 
+pub mod arc;
 pub mod circle;
 pub mod ellipse;
 pub mod interp;
 pub mod line;
 pub use om9_addon_geom::pick;
+pub mod polygon;
 pub mod polyline;
 pub mod rect;
+pub mod spiral;
 
 /// A sub-option that opens its own choice (`Knots=Uniform` → `Knots <Uniform> ( … )`).
 pub(crate) fn submenu(name: &str, value: &str) -> OptionToken {
@@ -114,6 +115,8 @@ struct PointsState {
     points: Vec<Vec3>,
     degree: usize,
     persistent_close: bool,
+    #[serde(default)]
+    sharp: bool,
 }
 impl Default for PointsState {
     fn default() -> Self {
@@ -121,11 +124,16 @@ impl Default for PointsState {
             points: Vec::new(),
             degree: 3,
             persistent_close: false,
+            sharp: false,
         }
     }
 }
 
-fn build_points(pts: &[Vec3], degree: usize, closed: bool) -> Option<Geo> {
+fn build_points(pts: &[Vec3], degree: usize, closed: bool, sharp: bool) -> Option<Geo> {
+    // Close smoothly (periodic) unless Sharp=Yes.
+    if closed && !sharp && pts.len() > 2 {
+        return g::interp::periodic_poles(pts, degree);
+    }
     let mut p = pts.to_vec();
     if closed && p.len() > 2 {
         p.push(p[0]);
@@ -141,7 +149,7 @@ fn points_curve(e: &Event) -> Reply {
         if let Some(h) = hover.filter(|_| !pts.is_empty()) {
             pts.push(h);
         }
-        let mut preview: Vec<Geo> = build_points(&pts, st.degree, st.persistent_close)
+        let mut preview: Vec<Geo> = build_points(&pts, st.degree, st.persistent_close, st.sharp)
             .into_iter()
             .collect();
         if pts.len() >= 2 {
@@ -156,6 +164,7 @@ fn points_curve(e: &Event) -> Reply {
         ];
         if st.points.len() >= 3 {
             opts.push(OptionToken::action("Close"));
+            opts.push(OptionToken::toggle("Sharp", st.sharp));
         }
         if !st.points.is_empty() {
             opts.push(OptionToken::action("Undo"));
@@ -169,7 +178,7 @@ fn points_curve(e: &Event) -> Reply {
             .with_options(opts)
             .preview(preview)
     };
-    let finish = |st: &PointsState, closed: bool| match build_points(&st.points, st.degree, closed)
+    let finish = |st: &PointsState, closed: bool| match build_points(&st.points, st.degree, closed, st.sharp)
     {
         Some(c) => Reply::finish(vec![c]).say(format!("Curve through {} points", st.points.len())),
         None => Reply::finish(vec![]).say("Curve cancelled: needs two points"),
@@ -196,6 +205,10 @@ fn points_curve(e: &Event) -> Reply {
                 reply(&st, None)
             }
             "Close" => finish(&st, true),
+            "Sharp" => {
+                st.sharp = yes(value, st.sharp);
+                reply(&st, None)
+            }
             _ => reply(&st, None),
         },
         Input::Undo => {
@@ -203,429 +216,6 @@ fn points_curve(e: &Event) -> Reply {
             reply(&st, None)
         }
         Input::Enter => finish(&st, st.persistent_close),
-        _ => reply(&st, None),
-    }
-}
-
-// ---- Arc (center, start, angle) -------------------------------------------------------------
-
-#[derive(Serialize, Deserialize, Default)]
-struct ArcState {
-    points: Vec<Vec3>,
-}
-
-fn arc_from(e: &Event, c: Vec3, s0: Vec3, angle: f64) -> Option<Geo> {
-    let x = sub(on_plane(e, c, s0), c);
-    let r = norm(x);
-    if r < g::EPS || angle.abs() < 1e-9 {
-        return None;
-    }
-    let x = unit(x);
-    let n = e.plane.normal();
-    let y = if angle > 0.0 {
-        cross(n, x)
-    } else {
-        cross(x, n)
-    };
-    Some(Geo::Arc {
-        center: c,
-        x,
-        y,
-        radius: r,
-        angle: angle.abs().min(TAU),
-    })
-}
-
-fn polar(e: &Event, c: Vec3, s0: Vec3, p: Vec3) -> f64 {
-    let x = unit(sub(on_plane(e, c, s0), c));
-    let y = cross(e.plane.normal(), x);
-    let d = sub(p, c);
-    let a = dot(d, y).atan2(dot(d, x));
-    if a <= 0.0 { a + TAU } else { a }
-}
-
-pub fn arc(e: &Event) -> Reply {
-    let mut st: ArcState = load(&e.state);
-    let reply = |st: &ArcState, hover: Option<Vec3>| {
-        let prompt = match st.points.len() {
-            0 => "Center of arc",
-            1 => "Start of arc",
-            _ => "End point or angle",
-        };
-        let preview: Vec<Geo> = match (st.points.as_slice(), hover) {
-            ([c], Some(h)) => vec![Geo::Circle {
-                center: *c,
-                x: e.plane.x,
-                y: e.plane.y,
-                radius: dist(*c, on_plane(e, *c, h)).max(1e-6),
-            }],
-            ([c, s0], Some(h)) => arc_from(e, *c, *s0, polar(e, *c, *s0, h))
-                .into_iter()
-                .collect(),
-            _ => vec![],
-        };
-        Reply::ask(prompt, save(st))
-            .preview(preview)
-            .rubber(st.points.first().copied())
-            .want(if st.points.len() == 2 {
-                Want::Number
-            } else {
-                Want::Point
-            })
-    };
-    let done = |g: Geo| {
-        let (r, a) = match &g {
-            Geo::Arc { radius, angle, .. } => (*radius, *angle),
-            _ => (0.0, 0.0),
-        };
-        Reply::finish(vec![g]).say(format!(
-            "Arc: radius {} mm, angle {}°, length {} mm",
-            fmt(r),
-            fmt(a.to_degrees()),
-            fmt(r * a)
-        ))
-    };
-    match &e.input {
-        Input::Hover { point } => reply(&st, Some(*point)),
-        Input::Point { point } => {
-            if st.points.len() < 2 {
-                st.points.push(*point);
-                return reply(&st, None);
-            }
-            match arc_from(
-                e,
-                st.points[0],
-                st.points[1],
-                polar(e, st.points[0], st.points[1], *point),
-            ) {
-                Some(g) => done(g),
-                None => reply(&st, None).refuse("The arc needs a radius and an angle"),
-            }
-        }
-        Input::Text { text } => match (parse_number(text), st.points.as_slice()) {
-            (Some(deg), [c, s0]) => match arc_from(e, *c, *s0, deg.to_radians()) {
-                Some(g) => done(g),
-                None => reply(&st, None).refuse("The angle must not be 0"),
-            },
-            (Some(r), [c]) if r > 0.0 => {
-                st.points.push(add(*c, scale(e.plane.x, r)));
-                reply(&st, None)
-            }
-            _ => reply(&st, None).refuse(format!("Not a number: {text}")),
-        },
-        Input::Enter => Reply::finish(vec![]),
-        _ => reply(&st, None),
-    }
-}
-
-/// Arc from start, end and the direction at the start.
-pub fn arc_sed(e: &Event) -> Reply {
-    let mut st: ArcState = load(&e.state);
-    let reply = |st: &ArcState, hover: Option<Vec3>| {
-        let prompt = match st.points.len() {
-            0 => "Start of arc",
-            1 => "End of arc",
-            _ => "Direction at start",
-        };
-        let preview: Vec<Geo> = match (st.points.as_slice(), hover) {
-            ([a], Some(h)) => vec![Geo::Line { start: *a, end: h }],
-            ([a, b], Some(h)) => g::arc_start_end_dir(*a, *b, sub(h, *a))
-                .into_iter()
-                .collect(),
-            _ => vec![],
-        };
-        Reply::ask(prompt, save(st))
-            .preview(preview)
-            .rubber(st.points.first().copied())
-    };
-    match &e.input {
-        Input::Hover { point } => reply(&st, Some(*point)),
-        Input::Point { point } => {
-            if st.points.len() < 2 {
-                st.points.push(*point);
-                return reply(&st, None);
-            }
-            match g::arc_start_end_dir(st.points[0], st.points[1], sub(*point, st.points[0])) {
-                Some(g) => Reply::finish(vec![g]).say("Arc"),
-                None => reply(&st, None).refuse("Pick a direction away from the start"),
-            }
-        }
-        Input::Enter => Reply::finish(vec![]),
-        _ => reply(&st, None),
-    }
-}
-
-// ---- Polygon -------------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize)]
-struct PolygonState {
-    center: Option<Vec3>,
-    sides: usize,
-    circumscribed: bool,
-}
-impl Default for PolygonState {
-    fn default() -> Self {
-        PolygonState {
-            center: None,
-            sides: 5,
-            circumscribed: false,
-        }
-    }
-}
-
-fn polygon_points(
-    e: &Event,
-    c: Vec3,
-    corner: Vec3,
-    sides: usize,
-    circumscribed: bool,
-) -> Option<Vec<Vec3>> {
-    let d = sub(on_plane(e, c, corner), c);
-    let r = norm(d);
-    if r < g::EPS || sides < 3 {
-        return None;
-    }
-    let x = unit(d);
-    let y = cross(e.plane.normal(), x);
-    // Circumscribed: the picked point is the middle of an edge.
-    let (rv, start) = if circumscribed {
-        (r / (PI / sides as f64).cos(), PI / sides as f64)
-    } else {
-        (r, 0.0)
-    };
-    Some(
-        (0..sides)
-            .map(|i| {
-                let a = start + TAU * i as f64 / sides as f64;
-                add(c, add(scale(x, rv * a.cos()), scale(y, rv * a.sin())))
-            })
-            .collect(),
-    )
-}
-
-pub fn polygon(e: &Event) -> Reply {
-    let mut st: PolygonState = load(&e.state);
-    let reply = |st: &PolygonState, hover: Option<Vec3>| {
-        let preview = match (st.center, hover) {
-            (Some(c), Some(h)) => polygon_points(e, c, h, st.sides, st.circumscribed)
-                .map(|p| {
-                    vec![Geo::Polyline {
-                        points: p,
-                        closed: true,
-                    }]
-                })
-                .unwrap_or_default(),
-            _ => vec![],
-        };
-        Reply::ask(
-            if st.center.is_none() {
-                "Center of polygon"
-            } else if st.circumscribed {
-                "Midpoint of edge"
-            } else {
-                "Corner of polygon"
-            },
-            save(st),
-        )
-        .with_options(vec![
-            OptionToken::number("NumSides", Some(st.sides as f64)),
-            OptionToken::toggle("Circumscribed", st.circumscribed),
-        ])
-        .preview(preview)
-        .rubber(st.center)
-    };
-    let finish = |st: &PolygonState, p: Vec3| match st
-        .center
-        .and_then(|c| polygon_points(e, c, p, st.sides, st.circumscribed))
-    {
-        Some(pts) => Reply::finish(vec![Geo::Polyline {
-            points: pts,
-            closed: true,
-        }])
-        .say(format!("Polygon: {} sides", st.sides)),
-        None => reply(st, None).refuse("The polygon needs a size"),
-    };
-    match &e.input {
-        Input::Hover { point } => reply(&st, Some(*point)),
-        Input::Point { point } => {
-            if st.center.is_none() {
-                st.center = Some(*point);
-                return reply(&st, None);
-            }
-            finish(&st, *point)
-        }
-        Input::Option { name, value } => {
-            match name.as_str() {
-                "NumSides" => match number_of(value) {
-                    Some(n) if n >= 3.0 && n <= 1000.0 && n.fract() == 0.0 => st.sides = n as usize,
-                    _ => return reply(&st, None).refuse("NumSides is a whole number ≥ 3"),
-                },
-                "Circumscribed" => st.circumscribed = yes(value, st.circumscribed),
-                _ => {}
-            }
-            reply(&st, None)
-        }
-        Input::Text { text } => match (parse_number(text), st.center) {
-            (Some(r), Some(c)) if r > 0.0 => finish(&st, add(c, scale(e.plane.x, r))),
-            _ => reply(&st, None).refuse(format!("Not a radius: {text}")),
-        },
-        Input::Enter => Reply::finish(vec![]),
-        _ => reply(&st, None),
-    }
-}
-
-// ---- Spiral / Helix ------------------------------------------------------------------------
-
-#[derive(Serialize, Deserialize)]
-struct SpiralState {
-    points: Vec<Vec3>,
-    flat: bool,
-    turns: f64,
-    r0: Option<f64>,
-}
-impl Default for SpiralState {
-    fn default() -> Self {
-        SpiralState {
-            points: Vec::new(),
-            flat: false,
-            turns: 10.0,
-            r0: None,
-        }
-    }
-}
-
-const PER_TURN: usize = 16;
-
-fn spiral_geo(e: &Event, st: &SpiralState, helix: bool, r_point: Vec3) -> Option<Geo> {
-    let a = *st.points.first()?;
-    let b = if st.flat { a } else { *st.points.get(1)? };
-    let axis = sub(b, a);
-    let n = if norm(axis) > g::EPS {
-        unit(axis)
-    } else {
-        e.plane.normal()
-    };
-    let d = sub(r_point, a);
-    let radial = sub(d, scale(n, dot(d, n)));
-    let r = norm(radial);
-    if r < g::EPS {
-        return None;
-    }
-    let (r0, r1) = if helix {
-        (r, r)
-    } else {
-        (st.r0.unwrap_or(r), r)
-    };
-    let start = if helix || st.r0.is_none() {
-        radial
-    } else {
-        e.plane.x
-    };
-    let pts = g::spiral_points(a, b, e.plane.normal(), start, r0, r1, st.turns, PER_TURN);
-    g::interpolate(&pts, 3, false)
-}
-
-pub fn spiral(e: &Event, helix: bool) -> Reply {
-    let mut st: SpiralState = load(&e.state);
-    // Points needed before the radius: axis start (+ end unless flat).
-    let axis_points = if st.flat && !helix { 1 } else { 2 };
-    let reply = |st: &SpiralState, hover: Option<Vec3>| {
-        let stage = st.points.len();
-        let prompt = if stage == 0 {
-            "Start of axis"
-        } else if stage < axis_points {
-            "End of axis"
-        } else if helix {
-            "Radius"
-        } else if st.r0.is_none() {
-            "First radius"
-        } else {
-            "Second radius"
-        };
-        let preview: Vec<Geo> = match hover {
-            Some(h) if stage >= axis_points => spiral_geo(e, st, helix, h).into_iter().collect(),
-            Some(h) if stage == 1 => vec![Geo::Line {
-                start: st.points[0],
-                end: h,
-            }],
-            _ => vec![],
-        };
-        let mut opts = vec![OptionToken::number("Turns", Some(st.turns))];
-        if !helix && stage <= 1 {
-            opts.push(OptionToken::toggle("Flat", st.flat));
-        }
-        Reply::ask(prompt, save(st))
-            .with_options(opts)
-            .preview(preview)
-            .want(if stage >= axis_points {
-                Want::Number
-            } else {
-                Want::Point
-            })
-    };
-    let radius_done = |st: &mut SpiralState, p: Vec3| -> Reply {
-        if !helix && st.r0.is_none() {
-            let a = st.points[0];
-            let b = if st.flat { a } else { st.points[1] };
-            let n = if dist(a, b) > g::EPS {
-                unit(sub(b, a))
-            } else {
-                e.plane.normal()
-            };
-            let d = sub(p, a);
-            st.r0 = Some(norm(sub(d, scale(n, dot(d, n)))));
-            return reply(st, None);
-        }
-        match spiral_geo(e, st, helix, p) {
-            Some(g) => Reply::finish(vec![g]).say(format!(
-                "{}: {} turns",
-                if helix { "Helix" } else { "Spiral" },
-                fmt(st.turns)
-            )),
-            None => reply(st, None).refuse("The radius must not be 0"),
-        }
-    };
-    match &e.input {
-        Input::Hover { point } => reply(&st, Some(*point)),
-        Input::Point { point } => {
-            if st.points.len() < axis_points {
-                st.points.push(*point);
-                return reply(&st, None);
-            }
-            radius_done(&mut st, *point)
-        }
-        Input::Option { name, value } => {
-            match name.as_str() {
-                "Turns" => match number_of(value) {
-                    Some(t) if t > 0.0 && t <= 1000.0 => st.turns = t,
-                    _ => return reply(&st, None).refuse("Turns must be positive"),
-                },
-                "Flat" => st.flat = yes(value, st.flat),
-                _ => {}
-            }
-            reply(&st, None)
-        }
-        Input::Text { text } => match parse_number(text) {
-            Some(r) if r > 0.0 && st.points.len() >= axis_points => {
-                let a = st.points[0];
-                let b = if st.flat { a } else { st.points[1] };
-                let n = if dist(a, b) > g::EPS {
-                    unit(sub(b, a))
-                } else {
-                    e.plane.normal()
-                };
-                let x = unit(sub(e.plane.x, scale(n, dot(e.plane.x, n))));
-                let x = if norm(x) < 0.5 { e.plane.y } else { x };
-                radius_done(&mut st, add(a, scale(x, r)))
-            }
-            _ => reply(&st, None).refuse(format!("Not a radius: {text}")),
-        },
-        Input::Enter if !helix && st.points.len() == 1 => {
-            // Enter at "End of axis": a flat spiral in the CPlane.
-            st.flat = true;
-            reply(&st, None)
-        }
-        Input::Enter => Reply::finish(vec![]),
         _ => reply(&st, None),
     }
 }
@@ -664,6 +254,7 @@ mod variants_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::f64::consts::PI;
 
     /// Run a command through a list of inputs; returns every reply.
     fn run(command: &str, inputs: Vec<Input>) -> Vec<Reply> {

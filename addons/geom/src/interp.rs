@@ -376,6 +376,23 @@ pub fn fit(samples: &[Vec3], count: usize, degree: usize, closed: bool) -> Optio
     Some(clamp_range(p, kv, poles, lo, hi))
 }
 
+/// A closed, smooth control-point curve: the poles of a periodic uniform B-spline (Rhino
+/// `Curve` › `Close` with `Sharp=No`), clamped at the first pole's span.
+pub fn periodic_poles(poles: &[Vec3], degree: usize) -> Option<Geo> {
+    let n = poles.len();
+    if n < 3 {
+        return None;
+    }
+    let p = degree.clamp(1, n - 1);
+    if p == 1 {
+        return Some(Geo::Polyline { points: poles.to_vec(), closed: true });
+    }
+    let kv: Vec<f64> = (-(p as i64)..=(n + p) as i64).map(|i| i as f64).collect();
+    let all: Vec<Vec3> = (0..n + p).map(|i| poles[i % n]).collect();
+    let (lo, hi) = (kv[p], kv[n + p]);
+    Some(clamp_range(p, kv, all, lo, hi))
+}
+
 /// Insert knot `u` once (Boehm). `k` is the last knot index with `knots[k] <= u`.
 fn insert(p: usize, knots: &mut Vec<f64>, poles: &mut Vec<Vec3>, u: f64) {
     let n = poles.len();

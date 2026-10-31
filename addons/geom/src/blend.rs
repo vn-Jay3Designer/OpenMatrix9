@@ -2,7 +2,7 @@
 //! Curve blends: Bézier blends with Position … G4 continuity at each end (Blend, BlendCrv,
 //! Match), exact biarcs (ArcBlend), and the arc-length derivatives they match.
 use crate::pick::CurveRef;
-use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub};
+use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub, unit};
 
 /// Continuity at a blend end, as Rhino names it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -297,6 +297,98 @@ pub fn plane_of(t0: Vec3, t1: Vec3) -> Option<Vec3> {
     let n = cross(t0, t1);
     let l = norm(n);
     (l > 1e-9).then(|| scale(n, 1.0 / l))
+}
+
+// ---- circles touching two curves (Fillet, Arc Tangent) --------------------------------------
+
+/// Unit normal of the plane the two curves lie in near the picks (the CPlane normal when
+/// they are parallel there).
+pub fn plane_normal(a: &CurveRef, sa: f64, b: &CurveRef, sb: f64, fallback: Vec3) -> Vec3 {
+    let n = cross(a.tangent(sa), b.tangent(sb));
+    if norm(n) > 1e-6 {
+        let n = unit(n);
+        if dot(n, fallback) < 0.0 {
+            scale(n, -1.0)
+        } else {
+            n
+        }
+    } else {
+        fallback
+    }
+}
+
+/// Two lines (point + direction): their intersection (closest point on the first).
+fn line_cross(p: Vec3, a: Vec3, q: Vec3, b: Vec3) -> Option<Vec3> {
+    let n = cross(a, b);
+    let nn = dot(n, n);
+    if nn < 1e-18 {
+        return None;
+    }
+    let t = dot(cross(sub(q, p), b), n) / nn;
+    Some(add(p, scale(a, t)))
+}
+
+/// The circle of radius `r` touching both curves on the sides of the picks: (tangent
+/// parameter on a, on b, center). `r = 0` gives the corner itself.
+pub fn tangent_circle(
+    a: &CurveRef,
+    pa: f64,
+    b: &CurveRef,
+    pb: f64,
+    n: Vec3,
+    r: f64,
+) -> Option<(f64, f64, Vec3)> {
+    let side = |c: &CurveRef, t: f64| cross(n, c.tangent(t));
+    let (qa, qb) = (a.at(pa), b.at(pb));
+    let sa_sign = if dot(side(a, pa), sub(qb, qa)) >= 0.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let sb_sign = if dot(side(b, pb), sub(qa, qb)) >= 0.0 {
+        1.0
+    } else {
+        -1.0
+    };
+    let (mut sa, mut sb) = (pa, pb);
+    let mut center: Option<Vec3> = None;
+    for _ in 0..200 {
+        let oa = add(a.at(sa), scale(side(a, sa), r * sa_sign));
+        let ob = add(b.at(sb), scale(side(b, sb), r * sb_sign));
+        let c = line_cross(oa, a.tangent(sa), ob, b.tangent(sb))?;
+        let moved = center.is_none_or(|old| dist(old, c) > 1e-11);
+        center = Some(c);
+        let (na, nb) = (a.closest(c).0, b.closest(c).0);
+        if !moved && (na - sa).abs() < 1e-12 && (nb - sb).abs() < 1e-12 {
+            break;
+        }
+        sa = na;
+        sb = nb;
+    }
+    let c = center?;
+    let scale_len = dist(a.at(sa), b.at(sb)).max(r).max(1.0);
+    let ok = |cv: &CurveRef, s: f64| (dist(cv.at(s), c) - r).abs() < 1e-6 * scale_len;
+    (ok(a, sa) && ok(b, sb)).then_some((sa, sb, c))
+}
+
+/// The arc from `p` to `q` around `c` (the short way).
+pub fn arc_between(c: Vec3, p: Vec3, q: Vec3) -> Option<Geo> {
+    let r = dist(p, c);
+    let x = unit(sub(p, c));
+    let w = sub(q, c);
+    let y = sub(w, scale(x, dot(w, x)));
+    if norm(y) < 1e-12 || r < 1e-12 {
+        return None;
+    }
+    let y = unit(y);
+    let angle = dot(unit(w), y).atan2(dot(unit(w), x));
+    (angle > 1e-9).then_some(Geo::Arc {
+        center: c,
+        x,
+        y,
+        radius: r,
+        angle,
+    })
 }
 
 #[cfg(test)]

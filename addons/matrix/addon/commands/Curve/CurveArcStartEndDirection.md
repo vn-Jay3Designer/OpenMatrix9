@@ -1,6 +1,6 @@
 # Arc Start End Direction
 
-Vẽ cung tròn từ điểm đầu, điểm cuối và hướng tiếp tuyến.
+Cung tròn qua điểm đầu, điểm cuối và hướng tại điểm đầu (Rhino Arc StartPoint, Direction).
 
 - **Mã lệnh:** `CurveArcStartEndDirection`
 - **Vị trí:** menu Curve, ô số 8
@@ -10,6 +10,6 @@ Vẽ cung tròn từ điểm đầu, điểm cuối và hướng tiếp tuyến.
 
 ## Cách dùng
 
-1. Bấm điểm đầu.
-2. Bấm điểm cuối.
-3. Bấm hướng tại điểm đầu.
+1. Start of arc.
+2. End of arc.
+3. Direction at start.

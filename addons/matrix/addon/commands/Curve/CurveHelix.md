@@ -1,6 +1,6 @@
 # Helix
 
-Vẽ đường lò xo (helix).
+Vẽ đường xoắn lò xo như Rhino Helix: trục và bán kính; Vertical, AroundCurve.
 
 - **Mã lệnh:** `CurveHelix`
 - **Vị trí:** menu Curve, ô số 30
@@ -10,9 +10,12 @@ Vẽ đường lò xo (helix).
 
 ## Cách dùng
 
-1. Bấm đầu và cuối trục.
-2. Bấm/gõ bán kính.
+1. Start of axis, End of axis.
+2. Radius and start point.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Turns: số vòng.
+- Diameter/Radius.
+- Mode=Turns/Pitch, Turns=10, Pitch=1.
+- ReverseTwist=No.
+- Vertical, AroundCurve.

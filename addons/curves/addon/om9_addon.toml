@@ -50,9 +50,9 @@ label = "Control Point Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Curve"]
-summary = "Vẽ đường cong theo điểm điều khiển."
-steps = ["Bấm các điểm điều khiển.", "Enter để kết thúc."]
-options = ["Degree, Close, PersistentClose, Undo."]
+summary = "Vẽ đường cong theo điểm điều khiển (Rhino Curve)."
+steps = ["Start of curve.", "Next point (Enter để xong; Close để khép)."]
+options = ["Degree=3.", "PersistentClose=No.", "Close: khép trơn; Sharp=Yes khép gãy."]
 
 [[commands]]
 id = "CurveRectangleCornertoCorner"
@@ -91,8 +91,9 @@ label = "Arc"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Arc"]
-summary = "Vẽ cung tròn từ tâm, điểm đầu và góc."
-steps = ["Bấm tâm.", "Bấm điểm đầu.", "Bấm điểm cuối hoặc gõ góc."]
+summary = "Vẽ cung tròn như Rhino Arc: tâm, điểm đầu, góc; có StartPoint, Tangent, Extension, Deformable."
+steps = ["Center of arc: bấm tâm (hoặc chọn StartPoint/Tangent/Extension).", "Start of arc: bấm điểm đầu hoặc gõ bán kính.", "End point or angle: bấm điểm cuối, gõ góc, hoặc Length=chiều dài cung."]
+options = ["Deformable: cung NURBS sửa được (Degree=3, PointCount=10).", "StartPoint: điểm đầu › điểm cuối › điểm trên cung; Direction, ThroughPoint, Radius đổi thứ tự.", "Tangent: cung tiếp xúc hai đường cong với bán kính.", "Extension: cung nối tiếp tuyến từ đầu một đường cong.", "Length: chiều dài cung; Direction=CounterClockwise/Clockwise."]
 
 [[commands]]
 id = "CurveArcStartEndDirection"
@@ -100,8 +101,8 @@ label = "Arc Start End Direction"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ArcDirection"]
-summary = "Vẽ cung tròn từ điểm đầu, điểm cuối và hướng tiếp tuyến."
-steps = ["Bấm điểm đầu.", "Bấm điểm cuối.", "Bấm hướng tại điểm đầu."]
+summary = "Cung tròn qua điểm đầu, điểm cuối và hướng tại điểm đầu (Rhino Arc StartPoint, Direction)."
+steps = ["Start of arc.", "End of arc.", "Direction at start."]
 
 [[commands]]
 id = "CurvePolygonCenterRadius"
@@ -109,9 +110,9 @@ label = "Polygon"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Polygon"]
-summary = "Vẽ đa giác đều từ tâm và bán kính."
-steps = ["Bấm tâm.", "Bấm đỉnh hoặc gõ bán kính."]
-options = ["NumSides: số cạnh.", "Circumscribed: ngoại tiếp."]
+summary = "Vẽ đa giác đều như Rhino Polygon: nội tiếp/ngoại tiếp, theo cạnh, hình sao, đứng, quanh đường cong."
+steps = ["Center of inscribed polygon: bấm tâm.", "Corner of polygon (hoặc Midpoint of edge): bấm hoặc gõ bán kính."]
+options = ["NumSides=5.", "Mode=Inscribed/Circumscribed.", "Edge: vẽ theo một cạnh (Flip).", "Star: hình sao, bán kính thứ hai (Automatic).", "Vertical: đứng vuông góc CPlane.", "AroundCurve: vuông góc với đường cong tại điểm bấm."]
 
 [[commands]]
 id = "CurveSpiral"
@@ -119,9 +120,9 @@ label = "Spiral"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Spiral"]
-summary = "Vẽ đường xoắn ốc."
-steps = ["Bấm tâm và các bán kính.", "Gõ số vòng."]
-options = ["Turns: số vòng.", "Flat: xoắn phẳng."]
+summary = "Vẽ đường xoắn ốc như Rhino Spiral: trục, bán kính đầu và cuối; Flat, Vertical, AroundCurve."
+steps = ["Start of axis, End of axis (Flat: Center of spiral).", "First radius and start point.", "Second radius."]
+options = ["Diameter/Radius.", "Mode=Turns/Pitch, Turns=10, Pitch=1.", "ReverseTwist=No.", "Flat, Vertical, AroundCurve."]
 
 [[commands]]
 id = "CurveHelix"
@@ -129,9 +130,9 @@ label = "Helix"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Helix"]
-summary = "Vẽ đường lò xo (helix)."
-steps = ["Bấm đầu và cuối trục.", "Bấm/gõ bán kính."]
-options = ["Turns: số vòng."]
+summary = "Vẽ đường xoắn lò xo như Rhino Helix: trục và bán kính; Vertical, AroundCurve."
+steps = ["Start of axis, End of axis.", "Radius and start point."]
+options = ["Diameter/Radius.", "Mode=Turns/Pitch, Turns=10, Pitch=1.", "ReverseTwist=No.", "Vertical, AroundCurve."]
 
 [[commands]]
 id = "CurvePointObjectSinglePoint"

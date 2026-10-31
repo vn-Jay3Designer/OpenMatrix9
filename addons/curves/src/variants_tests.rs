@@ -3,6 +3,8 @@
 //! step as OM9 sends them, with the geometry they create.
 use crate::*;
 use om9_addon_abi::session::{Selected, dist, norm};
+use om9_addon_abi::session::{add, cross};
+use std::f64::consts::{FRAC_PI_2, PI};
 
 fn ev(command: &str, input: Input, state: &Value, sel: &[Selected]) -> Event {
     let mut e = event(command, input, state);
@@ -553,4 +555,238 @@ fn ellipse_sub_options() {
         vec![opt("Deformable"), pt(0.0, 0.0), pt(4.0, 0.0), pt(0.0, 2.0)],
     ));
     assert!(matches!(g, Geo::Nurbs { degree: 3, .. }));
+}
+
+fn arc_of(g: &Geo) -> (Vec3, f64, f64) {
+    match g {
+        Geo::Arc { center, radius, angle, .. } => (*center, *radius, *angle),
+        other => panic!("not an arc: {other:?}"),
+    }
+}
+
+#[test]
+fn arc_center_start_angle_and_options() {
+    let r = run(ARC, vec![]);
+    assert_eq!(r[0].prompt, "Center of arc");
+    assert_eq!(names(&r[0]), ["Deformable=No", "StartPoint", "Tangent", "Extension"]);
+    // A typed radius after the center, then the angle; Clockwise turns the other way.
+    let r = run(ARC, vec![pt(0.0, 0.0), text("2"), set("Direction", "Clockwise"), text("90")]);
+    let g = &ok(&r).create[0];
+    let (c, rad, ang) = arc_of(g);
+    assert!(dist(c, [0.0; 3]) < 1e-12 && (rad - 2.0).abs() < 1e-12 && (ang - FRAC_PI_2).abs() < 1e-12);
+    assert!(dist(g::eval_geo(g, 1.0).unwrap(), [0.0, -2.0, 0.0]) < 1e-9, "clockwise ends below");
+    assert_eq!(names(&r[2]), ["Deformable=No", "Length", "Direction=CounterClockwise", "Undo"]);
+    // Length: an arc 3 mm long on radius 2.
+    let r = run(ARC, vec![pt(0.0, 0.0), pt(2.0, 0.0), set("Length", "3")]);
+    let (_, rad, ang) = arc_of(&ok(&r).create[0]);
+    assert!((rad * ang - 3.0).abs() < 1e-12);
+    // Deformable: a NURBS with PointCount poles.
+    let r = run(ARC, vec![opt("Deformable"), set("PointCount", "6"), pt(0.0, 0.0), pt(2.0, 0.0), text("180")]);
+    match &ok(&r).create[0] {
+        Geo::Nurbs { points, degree, .. } => assert!(points.len() == 6 && *degree == 3),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn arc_start_point_variants() {
+    // Start, end, point on arc.
+    let r = run(ARC, vec![opt("StartPoint"), pt(2.0, 0.0), pt(-2.0, 0.0), pt(0.0, 2.0)]);
+    let (c, rad, _) = arc_of(&ok(&r).create[0]);
+    assert!(dist(c, [0.0; 3]) < 1e-9 && (rad - 2.0).abs() < 1e-9);
+    assert_eq!(r[2].prompt, "End of arc");
+    assert_eq!(names(&r[2]), ["Direction", "ThroughPoint", "Undo"]);
+    assert_eq!(r[3].prompt, "Point on arc");
+    // Start, direction, end.
+    let r = run(ARC, vec![opt("StartPoint"), pt(0.0, 0.0), opt("Direction"), pt(0.0, 1.0), pt(2.0, 0.0)]);
+    let (c, rad, ang) = arc_of(&ok(&r).create[0]);
+    assert!(dist(c, [1.0, 0.0, 0.0]) < 1e-9 && (rad - 1.0).abs() < 1e-9 && (ang - PI).abs() < 1e-9, "{c:?} {rad} {ang}");
+    // Start, point, end.
+    let r = run(ARC, vec![opt("StartPoint"), pt(2.0, 0.0), opt("ThroughPoint"), pt(0.0, 2.0), pt(-2.0, 0.0)]);
+    assert!((arc_of(&ok(&r).create[0]).1 - 2.0).abs() < 1e-9);
+    // Start, end, radius, then the side.
+    let r = run(ARC, vec![opt("StartPoint"), pt(-1.0, 0.0), pt(1.0, 0.0), opt("Radius"), text("5"), pt(0.0, 1.0)]);
+    let g = &ok(&r).create[0];
+    let (_, rad, _) = arc_of(g);
+    assert!((rad - 5.0).abs() < 1e-9);
+    assert!(g::eval_geo(g, 0.5).unwrap()[1] > 0.0, "bulges toward the pick");
+    // Matrix "Arc Start End Direction": start, end, direction at start.
+    let r = run(ARC_SED, vec![pt(2.0, 0.0), pt(0.0, 2.0), pt(2.0, 1.0)]);
+    assert_eq!(r[0].prompt, "Start of arc");
+    assert_eq!(r[2].prompt, "Direction at start");
+    let (c, _, _) = arc_of(&ok(&r).create[0]);
+    assert!(dist(c, [0.0; 3]) < 1e-9, "{c:?}");
+}
+
+fn crv(id: &str, g: Geo) -> Selected {
+    Selected {
+        id: id.into(),
+        kind: "curve".into(),
+        points: g::nurbs::samples(&g, 200),
+        exact: Some(g),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn arc_tangent_and_extension() {
+    let a = crv("a", Geo::Line { start: [-10.0, 0.0, 0.0], end: [10.0, 0.0, 0.0] });
+    let b = crv("b", Geo::Line { start: [0.0, -10.0, 0.0], end: [0.0, 10.0, 0.0] });
+    // Tangent: pick both lines, radius 2: the quarter arc around (2, 2).
+    let mut st = Value::Null;
+    let mut step = |input: Input, sel: Vec<Selected>, pick: Option<Vec3>| {
+        let mut e = ev(ARC, input, &st, &sel);
+        e.pick = pick;
+        let r = Curves::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} ({})", r.error, r.prompt);
+        st = r.state.clone();
+        r
+    };
+    step(Input::Start, vec![], None);
+    let r = step(opt("Tangent"), vec![], None);
+    assert_eq!(r.prompt, "First tangent curve");
+    let r = step(Input::Selection, vec![a.clone()], Some([5.0, 0.0, 0.0]));
+    assert_eq!(r.prompt, "Second tangent curve");
+    let r = step(Input::Selection, vec![a.clone(), b.clone()], Some([0.0, 5.0, 0.0]));
+    assert_eq!(r.prompt, "Radius <1>");
+    let r = step(text("2"), vec![a.clone(), b.clone()], None);
+    let (c, rad, ang) = arc_of(&r.create[0]);
+    assert!(dist(c, [2.0, 2.0, 0.0]) < 1e-6 && (rad - 2.0).abs() < 1e-6 && (ang - FRAC_PI_2).abs() < 1e-6);
+    // Extension: an arc tangent to the end of the line.
+    let mut st2 = Value::Null;
+    let mut step2 = |input: Input, sel: Vec<Selected>, pick: Option<Vec3>| {
+        let mut e = ev(ARC, input, &st2, &sel);
+        e.pick = pick;
+        let r = Curves::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} ({})", r.error, r.prompt);
+        st2 = r.state.clone();
+        r
+    };
+    step2(Input::Start, vec![], None);
+    step2(opt("Extension"), vec![], None);
+    let r = step2(Input::Selection, vec![a.clone()], Some([9.0, 0.0, 0.0]));
+    assert_eq!(r.prompt, "End of arc");
+    let r = step2(pt(12.0, 2.0), vec![a.clone()], None);
+    let g = &r.create[0];
+    let (c, rad, _) = arc_of(g);
+    assert!((c[0] - 10.0).abs() < 1e-9 && (rad - 2.0).abs() < 1e-9, "tangent to the end: {c:?} {rad}");
+}
+
+fn poly_pts(g: &Geo) -> Vec<Vec3> {
+    match g {
+        Geo::Polyline { points, closed: true } => points.clone(),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn polygon_modes() {
+    let r = run(POLYGON, vec![]);
+    assert_eq!(r[0].prompt, "Center of inscribed polygon");
+    assert_eq!(names(&r[0]), ["NumSides=5", "Mode=Inscribed", "Edge", "Star", "Vertical", "AroundCurve"]);
+    // Circumscribed hexagon: the click is the middle of an edge.
+    let r = run(POLYGON, vec![set("NumSides", "6"), set("Mode", "Circumscribed"), pt(0.0, 0.0), text("2")]);
+    assert_eq!(r[3].prompt, "Midpoint of edge");
+    let p = poly_pts(&ok(&r).create[0]);
+    assert_eq!(p.len(), 6);
+    let mid = scale(add(p[0], p[1]), 0.5);
+    assert!((norm(mid) - 2.0).abs() < 1e-9);
+    // Edge: a square on the edge (0,0)–(2,0), to the left (above).
+    let r = run(POLYGON, vec![set("NumSides", "4"), opt("Edge"), pt(0.0, 0.0), pt(2.0, 0.0)]);
+    let p = poly_pts(&ok(&r).create[0]);
+    assert!(dist(p[2], [2.0, 2.0, 0.0]) < 1e-9 && dist(p[3], [0.0, 2.0, 0.0]) < 1e-9, "{p:?}");
+    let r = run(POLYGON, vec![set("NumSides", "4"), opt("Edge"), pt(0.0, 0.0), opt("Flip"), pt(2.0, 0.0)]);
+    assert!(poly_pts(&ok(&r).create[0])[2][1] < 0.0, "flipped below");
+    // Star: 5 points, outer 3, inner 1.
+    let r = run(POLYGON, vec![opt("Star"), pt(0.0, 0.0), pt(3.0, 0.0), text("1")]);
+    let p = poly_pts(&ok(&r).create[0]);
+    assert_eq!(p.len(), 10);
+    assert!((norm(p[0]) - 3.0).abs() < 1e-9 && (norm(p[1]) - 1.0).abs() < 1e-9);
+    // Automatic inner radius: the star's edges line up (pentagram).
+    let r = run(POLYGON, vec![opt("Star"), pt(0.0, 0.0), pt(3.0, 0.0), opt("Automatic")]);
+    let p = poly_pts(&ok(&r).create[0]);
+    let (a, b, c) = (p[0], p[1], p[4]);
+    assert!(norm(cross(sub(b, a), sub(c, a))) < 1e-9, "p0, p1 and p4 on one line");
+    // Vertical: stands on the CPlane.
+    let r = run(POLYGON, vec![opt("Vertical"), pt(0.0, 0.0), pt(2.0, 0.0)]);
+    let p = poly_pts(&ok(&r).create[0]);
+    assert!(p.iter().all(|q| q[1].abs() < 1e-9) && p.iter().any(|q| q[2] > 1.0), "in the xz plane: {p:?}");
+}
+
+#[test]
+fn helix_and_spiral_options() {
+    let r = run(HELIX, vec![]);
+    assert_eq!(r[0].prompt, "Start of axis");
+    assert_eq!(names(&r[0]), ["Vertical", "AroundCurve"]);
+    let r = run(HELIX, vec![pt(0.0, 0.0), pt(10.0, 0.0)]);
+    assert_eq!(r[2].prompt, "Radius and start point <1>");
+    assert_eq!(names(&r[2]), ["Diameter", "Mode=Turns", "Turns=10", "Pitch=1", "ReverseTwist=No", "Undo"]);
+    // Pitch 2 along a 10 mm axis: 5 turns of radius 1.
+    let r = run(HELIX, vec![pt(0.0, 0.0), pt(10.0, 0.0), set("Pitch", "2"), text("1")]);
+    let g = created(&r);
+    let samples = g::nurbs::samples(&g, 2000);
+    assert!(samples.iter().all(|p| ((p[1] * p[1] + p[2] * p[2]).sqrt() - 1.0).abs() < 2e-3), "radius 1 around x");
+    // Count the turns: sign changes of y going up.
+    let ups = samples.windows(2).filter(|w| w[0][1] < 0.0 && w[1][1] >= 0.0).count();
+    assert_eq!(ups, 5);
+    // ReverseTwist turns the other way.
+    let a = g::nurbs::samples(&created(&run(HELIX, vec![pt(0.0, 0.0), pt(10.0, 0.0), text("1")])), 400)[5];
+    let b = g::nurbs::samples(&created(&run(HELIX, vec![pt(0.0, 0.0), pt(10.0, 0.0), opt("ReverseTwist"), text("1")])), 400)[5];
+    assert!(a[1] * b[1] < 0.0, "{a:?} {b:?}");
+    // Vertical: the height from the second click's distance.
+    let g = created(&run(HELIX, vec![opt("Vertical"), pt(0.0, 0.0), pt(4.0, 0.0), text("1")]));
+    let top = g::eval_geo(&g, 1.0).unwrap();
+    assert!((top[2] - 4.0).abs() < 1e-9, "{top:?}");
+    // Flat spiral: radius 1 to 5.
+    let g = created(&run(SPIRAL, vec![opt("Flat"), pt(0.0, 0.0), text("1"), text("5")]));
+    let (p0, p1) = (g::eval_geo(&g, 0.0).unwrap(), g::eval_geo(&g, 1.0).unwrap());
+    assert!((norm(p0) - 1.0).abs() < 1e-9 && (norm(p1) - 5.0).abs() < 1e-9 && p1[2].abs() < 1e-12);
+    // Diameter: typed numbers are diameters.
+    let g = created(&run(SPIRAL, vec![opt("Flat"), pt(0.0, 0.0), opt("Diameter"), text("2"), text("10")]));
+    assert!((norm(g::eval_geo(&g, 1.0).unwrap()) - 5.0).abs() < 1e-9);
+}
+
+#[test]
+fn helix_around_a_curve() {
+    let rail = Selected {
+        id: "r".into(),
+        kind: "curve".into(),
+        points: vec![[0.0; 3], [10.0, 0.0, 0.0]],
+        exact: Some(Geo::Line { start: [0.0; 3], end: [10.0, 0.0, 0.0] }),
+        ..Default::default()
+    };
+    let mut st = Value::Null;
+    let mut go = |input: Input, sel: &[Selected], pick: Option<Vec3>| {
+        let mut e = ev(HELIX, input, &st, sel);
+        e.pick = pick;
+        let r = Curves::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} ({})", r.error, r.prompt);
+        st = r.state.clone();
+        r
+    };
+    go(Input::Start, &[], None);
+    let r = go(opt("AroundCurve"), &[], None);
+    assert_eq!(r.prompt, "Select curve");
+    let r = go(Input::Selection, std::slice::from_ref(&rail), Some([5.0, 0.0, 0.0]));
+    assert!(r.prompt.starts_with("Radius and start point"), "{}", r.prompt);
+    let r = go(text("2"), std::slice::from_ref(&rail), None);
+    assert!(r.done);
+    for p in g::nurbs::samples(&r.create[0], 400) {
+        assert!(((p[1] * p[1] + p[2] * p[2]).sqrt() - 2.0).abs() < 5e-3, "{p:?}");
+    }
+}
+
+#[test]
+fn control_point_curve_closes_smoothly_unless_sharp() {
+    let pts = [pt(0.0, 0.0), pt(4.0, 0.0), pt(4.0, 4.0), pt(0.0, 4.0)];
+    let mut inputs = pts.to_vec();
+    inputs.push(opt("Close"));
+    let g = created(&run(CONTROL, inputs));
+    assert!(dist(at(&g, 0.0), at(&g, 1.0)) < 1e-9, "closed");
+    assert!(dist(tangent(&g, 0.0), tangent(&g, 1.0)) < 1e-4, "smooth seam");
+    let mut inputs = pts.to_vec();
+    inputs.push(opt("Sharp"));
+    inputs.push(opt("Close"));
+    let g = created(&run(CONTROL, inputs));
+    assert!(dist(tangent(&g, 0.0), tangent(&g, 1.0)) > 1e-2, "kink at the seam");
 }
