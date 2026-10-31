@@ -272,17 +272,19 @@ label = "Rebuild Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Rebuild", "RebuildCrv"]
-summary = "Dựng lại đường cong với số điểm và bậc mới (đường cong được thay tại chỗ)."
-steps = ["Chọn đường cong, Enter.", "Gõ số điểm.", "Gõ bậc (1 = polyline)."]
+summary = "Dựng lại đường cong với số điểm điều khiển và bậc mới (Rhino Rebuild): nút đều, giữ hai đầu, báo độ lệch lớn nhất."
+steps = ["Select curves to rebuild, Enter.", "Chỉnh PointCount, Degree, DeleteInput, PreserveTangents; xem trước; Enter."]
+options = ["PointCount=10: số điểm điều khiển.", "Degree=3: bậc (1–11).", "DeleteInput=Yes: thay đường gốc; No: tạo đường mới.", "PreserveTangents=No: giữ hướng tiếp tuyến hai đầu."]
 
 [[commands]]
 id = "CurveCurveEditToolsRefitToTolerance"
 label = "Refit to Tolerance"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["Refit", "FitCrv"]
-summary = "Làm lại đường cong ít điểm nhất mà vẫn nằm trong dung sai."
-steps = ["Chọn đường cong, Enter.", "Gõ dung sai (mm)."]
+aliases = ["FitCrv", "Refit"]
+summary = "Làm lại đường cong với ít điểm điều khiển nhất mà vẫn nằm trong dung sai (Rhino FitCrv)."
+steps = ["Select curves to fit, Enter.", "Chỉnh DeleteInput, Degree, FittingTolerance; Enter."]
+options = ["DeleteInput=Yes.", "Degree=3.", "FittingTolerance=0.001."]
 
 [[commands]]
 id = "CurveBlendCurvesBlendCurves"
@@ -543,28 +545,29 @@ label = "Divide Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Divide"]
-summary = "Chia đường cong thành các đoạn bằng nhau (đặt điểm)."
-steps = ["Chọn đường cong, Enter.", "Mode=Count/Length.", "Gõ số đoạn hoặc độ dài đoạn."]
-options = ["Mode: theo số đoạn hoặc theo độ dài."]
+summary = "Chia đường cong thành các đoạn bằng nhau theo số đoạn hoặc theo chiều dài (Rhino Divide): đặt điểm hoặc tách đường."
+steps = ["Select curves to divide, Enter.", "Number of segments <10>: gõ số đoạn, hoặc bấm Length rồi gõ chiều dài mỗi đoạn."]
+options = ["Length: chia theo chiều dài (từ đầu đường cong).", "Split=No: tách đường cong thành các đoạn thay vì đặt điểm.", "MarkEnds=Yes: đặt điểm ở hai đầu."]
 
 [[commands]]
 id = "CurveCurveEditToolsCurveBoolean"
 label = "Curve Boolean"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["CrvBoolean"]
-summary = "Hợp / giao / trừ các đường cong kín phẳng."
-steps = ["Chọn các đường cong kín.", "Mode=Union/Intersection/Difference.", "Enter."]
-options = ["Mode: kiểu boolean.", "DeleteInput: xoá đường gốc."]
+aliases = ["CurveBoolean", "CrvBoolean"]
+summary = "Phép toán vùng giữa các đường cong phẳng (Rhino CurveBoolean): bấm vào các vùng cần giữ, ra đường cong kín đúng theo đường gốc."
+steps = ["Select curves to perform boolean operation, Enter.", "Click inside the regions to keep: bấm vào vùng (bấm lại để bỏ).", "Enter để tạo."]
+options = ["DeleteInput=None/All/Used.", "CombineRegions=Yes: gộp các vùng kề nhau.", "AllRegions: chọn mọi vùng."]
 
 [[commands]]
 id = "CurveTweenCurves"
 label = "Tween Curves"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["Tween"]
-summary = "Tạo các đường trung gian giữa hai đường cong."
-steps = ["Chọn hai đường cong, Enter.", "Gõ số đường."]
+aliases = ["TweenCurves", "Tween"]
+summary = "Tạo các đường cong trung gian giữa hai đường cong (Rhino TweenCurves)."
+steps = ["Select start curve.", "Select end curve.", "Chỉnh Number, MatchMethod, SampleNumber, Flip; xem trước; Enter."]
+options = ["Number=1: số đường trung gian.", "MatchMethod=None/Refit/SamplePoints.", "SampleNumber=10.", "Flip: đảo hướng đường cuối."]
 
 [[commands]]
 id = "CurveCurveFromObjectsDuplicateEdge"
@@ -592,8 +595,8 @@ label = "Cross Section Profiles"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["CSec"]
-summary = "Tạo các mặt cắt ngang qua nhiều đường ray (để dựng mặt)."
-steps = ["Chọn hai đường ray trở lên, Enter.", "Gõ số mặt cắt."]
+summary = "Tạo mặt cắt ngang qua các đường dọc theo thứ tự (Rhino CSec), mỗi đường cắt một mặt cắt."
+steps = ["Select longitudinal curves in order, Enter.", "Start of cross section line, End of cross section line (lặp lại).", "Enter để kết thúc."]
 
 [[commands]]
 id = "CurveFreeFormSketch"
@@ -650,8 +653,9 @@ label = "Curve to Lines"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Convert", "CrvToLines"]
-summary = "Đổi đường cong thành polyline theo dung sai góc."
-steps = ["Chọn đường cong, Enter.", "Gõ dung sai góc."]
+summary = "Đổi đường cong thành đoạn thẳng hoặc cung tròn trong dung sai (Matrix: _Convert Output=Lines DeleteInput=Yes)."
+steps = ["Select curves to convert, chỉnh tuỳ chọn, Enter."]
+options = ["Output=Lines/Arcs.", "DeleteInput=Yes.", "Angle=5: góc lệch lớn nhất giữa hai đoạn.", "Tolerance=0.01.", "MinimumLength=0, MaximumLength=0 (0 = không giới hạn)."]
 
 [[commands]]
 id = "CurveCurveFromObjectsSection"
@@ -660,8 +664,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Section"]
-summary = "Cắt mặt/khối bằng mặt phẳng vuông CPlane theo đường bấm."
-steps = ["Chọn mặt/khối, Enter.", "Gõ số mặt cắt và khoảng cách.", "Bấm đầu và cuối đường cắt."]
+summary = "Cắt mặt/khối/lưới bằng mặt phẳng đứng qua đường bấm (Rhino Section); đường cong cho điểm giao."
+steps = ["Select objects for section, Enter.", "Start of section, End of section (lặp lại).", "Enter để kết thúc."]
 
 [[commands]]
 id = "CurveCurveEditToolsMatch"

@@ -1,6 +1,6 @@
 # Cross Section Profiles
 
-Tạo các mặt cắt ngang qua nhiều đường ray (để dựng mặt).
+Tạo mặt cắt ngang qua các đường dọc theo thứ tự (Rhino CSec), mỗi đường cắt một mặt cắt.
 
 - **Mã lệnh:** `CurveCrossSectionProfiles`
 - **Vị trí:** menu Curve, ô số 44
@@ -10,5 +10,6 @@ Tạo các mặt cắt ngang qua nhiều đường ray (để dựng mặt).
 
 ## Cách dùng
 
-1. Chọn hai đường ray trở lên, Enter.
-2. Gõ số mặt cắt.
+1. Select longitudinal curves in order, Enter.
+2. Start of cross section line, End of cross section line (lặp lại).
+3. Enter để kết thúc.

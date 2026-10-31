@@ -1,6 +1,6 @@
 # Rebuild Curve
 
-Dựng lại đường cong với số điểm và bậc mới (đường cong được thay tại chỗ).
+Dựng lại đường cong với số điểm điều khiển và bậc mới (Rhino Rebuild): nút đều, giữ hai đầu, báo độ lệch lớn nhất.
 
 - **Mã lệnh:** `OthersCurveRebuild`
 - **Vị trí:** menu Curve, ô số 9
@@ -10,6 +10,12 @@ Dựng lại đường cong với số điểm và bậc mới (đường cong �
 
 ## Cách dùng
 
-1. Chọn đường cong, Enter.
-2. Gõ số điểm.
-3. Gõ bậc (1 = polyline).
+1. Select curves to rebuild, Enter.
+2. Chỉnh PointCount, Degree, DeleteInput, PreserveTangents; xem trước; Enter.
+
+## Tuỳ chọn (lệnh phụ)
+
+- PointCount=10: số điểm điều khiển.
+- Degree=3: bậc (1–11).
+- DeleteInput=Yes: thay đường gốc; No: tạo đường mới.
+- PreserveTangents=No: giữ hướng tiếp tuyến hai đầu.

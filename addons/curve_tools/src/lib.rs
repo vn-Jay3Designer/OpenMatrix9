@@ -12,7 +12,7 @@ use om9_addon_abi::session::{
 use om9_addon_geom::cmd::{Collected, Flow, Show, load, save};
 use om9_addon_geom::nurbs::{self, Srf};
 use om9_addon_geom::path::{Path, Target};
-use om9_addon_geom::{Piece, composite_quadratic, csg, interpolate, mesh, section, shapes};
+use om9_addon_geom::{Piece, composite_quadratic, interpolate, mesh, section, shapes};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -63,9 +63,12 @@ pub const SOFT_EDIT: &str = "CurveCurveEditToolsSoftEdit";
 pub const ARC_BLEND: &str = "CurveBlendCurvesArcBlend";
 
 mod blend;
+mod edit;
 mod extend;
 mod fillet;
 mod offset;
+mod regions;
+mod sections;
 
 pub struct CurveTools;
 
@@ -119,8 +122,8 @@ impl Interactive for CurveTools {
     ];
     fn step(e: &Event) -> Result<Reply, String> {
         Ok(match e.command.as_str() {
-            REBUILD => rebuild(e),
-            REFIT => refit(e),
+            REBUILD => edit::rebuild(e),
+            REFIT => edit::fit_curve(e),
             BLEND => blend::blend(e, false),
             BLEND_ADJ => blend::blend(e, true),
             ARC_BLEND => blend::arc_blend(e),
@@ -140,14 +143,14 @@ impl Interactive for CurveTools {
             MARK_START | MARK_END => mark(e),
             SEAM => seam(e),
             CONTINUE_INTERP | CONTINUE_CURVE => continue_curve(e),
-            DIVIDE => divide(e),
-            CURVE_BOOLEAN => curve_boolean(e),
-            TWEEN => tween(e),
+            DIVIDE => edit::divide(e),
+            CURVE_BOOLEAN => regions::curve_boolean(e),
+            TWEEN => edit::tween(e),
             DUP_EDGE | DUP_BORDER | SILHOUETTE | WIREFRAME => from_objects(e),
-            CROSS_SECTION => cross_sections(e),
+            CROSS_SECTION => sections::csec(e),
             SKETCH | SKETCH_SRF | SKETCH_MESH | POLY_ON_SRF | INTERP_ON_SRF => draw_on(e),
-            TO_LINES => to_lines(e),
-            SECTION => sections(e),
+            TO_LINES => edit::convert(e),
+            SECTION => sections::section_cmd(e),
             MATCH => blend::match_curve(e),
             SOFT_EDIT => soft_edit(e),
             other => return Err(format!("unknown command {other}")),
@@ -258,76 +261,6 @@ fn resample(points: &[Vec3], closed: bool, n: usize) -> Vec<Vec3> {
             .collect()
     }
 }
-
-// ---- rebuild / refit -------------------------------------------------------------------------
-
-fn rebuild(e: &Event) -> Reply {
-    let flow = Flow::new("Rebuild")
-        .number("Point count", 10.0)
-        .number("Degree", 3.0);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let (n, deg) = (
-            c.n(0).unwrap().round() as usize,
-            c.n(1).unwrap().round() as usize,
-        );
-        if n < 2 || deg < 1 {
-            return Err("at least 2 points and degree 1".into());
-        }
-        let items = curves(e)
-            .iter()
-            .filter_map(|s| {
-                let pts = resample(&dense(s, 400), s.closed, n);
-                let g = if deg == 1 {
-                    Some(polyline(pts, s.closed))
-                } else {
-                    interpolate(&pts, deg.min(n - 1), s.closed)
-                };
-                g.map(|g| (s.id.clone(), g))
-            })
-            .collect();
-        replace("Rebuild", items)
-    })
-}
-
-/// Max distance from the dense original to the candidate curve.
-fn deviation(original: &[Vec3], candidate: &Geo) -> f64 {
-    let c = nurbs::samples(candidate, 400);
-    let p = Path::new(&c, false);
-    original
-        .iter()
-        .map(|&q| p.as_ref().map_or(0.0, |p| dist(p.at(p.closest(q)), q)))
-        .fold(0.0, f64::max)
-}
-
-fn refit(e: &Event) -> Reply {
-    let flow = Flow::new("Refit to Tolerance").number("Tolerance", 0.01);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let tol = c.n(0).unwrap().max(1e-6);
-        let mut items = Vec::new();
-        for s in curves(e) {
-            let orig = dense(s, 600);
-            let mut n = 6;
-            let mut fit = None;
-            while n <= 512 {
-                let g = interpolate(&resample(&orig, s.closed, n), 3, s.closed);
-                if let Some(g) = g {
-                    let ok = deviation(&orig, &g) <= tol;
-                    fit = Some(g);
-                    if ok {
-                        break;
-                    }
-                }
-                n *= 2;
-            }
-            if let Some(g) = fit {
-                items.push((s.id.clone(), g));
-            }
-        }
-        replace("Refit to Tolerance", items)
-    })
-}
-
-// ---- blends ----------------------------------------------------------------------------------
 
 // ---- curves from views, projections ---------------------------------------------------------
 
@@ -1045,142 +978,6 @@ fn continue_curve(e: &Event) -> Reply {
     .rubber(Some(last))
 }
 
-fn divide(e: &Event) -> Reply {
-    let flow = Flow::new("Divide Curve")
-        .choice("Mode", &["Count", "Length"], "Count")
-        .number("Number of segments (or segment length)", 10.0);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let v = c.n(0).unwrap();
-        let mut out = Vec::new();
-        for s in curves(e) {
-            let Some(p) = Path::new(&dense(s, 600), s.closed) else {
-                continue;
-            };
-            let len = p.length();
-            let (count, step) = if c.opt(&flow, "Mode") == "Length" {
-                ((len / v.max(1e-6)).floor() as usize, v)
-            } else {
-                let n = v.round().max(1.0) as usize;
-                (n, len / n as f64)
-            };
-            let last = if s.closed {
-                count.saturating_sub(1)
-            } else {
-                count
-            };
-            for k in 0..=last {
-                out.push(Geo::Point {
-                    point: p.at(k as f64 * step),
-                });
-            }
-        }
-        if out.is_empty() {
-            return Err("select curves".into());
-        }
-        let n = out.len();
-        Ok(Reply::finish(out).say(format!("Divide Curve: {n} points")))
-    })
-}
-
-fn curve_boolean(e: &Event) -> Reply {
-    let flow = Flow::new("Curve Boolean")
-        .choice("Mode", &["Union", "Intersection", "Difference"], "Union")
-        .toggle("DeleteInput", true);
-    let make = |c: &Collected| -> Result<Vec<Geo>, String> {
-        let cs: Vec<&Selected> = curves(e).into_iter().filter(|s| s.closed).collect();
-        if cs.len() < 2 {
-            return Err("select two or more closed planar curves".into());
-        }
-        let n = e.plane.normal();
-        let h = 1.0;
-        let prism = |s: &Selected| {
-            let pts: Vec<Vec3> = dense(s, 256)
-                .iter()
-                .map(|&p| add(p, scale(n, -h)))
-                .collect();
-            shapes::prism(&pts, &[], scale(n, 2.0 * h))
-        };
-        let solids: Vec<mesh::Mesh> = cs.iter().filter_map(|s| prism(s)).collect();
-        let op = match c.opt(&flow, "Mode") {
-            "Intersection" => csg::Op::Intersection,
-            "Difference" => csg::Op::Difference,
-            _ => csg::Op::Union,
-        };
-        let result = csg::fold(&solids, op).ok_or("curves")?;
-        // The outline is the section of the result at the curves' plane.
-        let m = SelectedMesh {
-            vertices: result.vertices,
-            triangles: result.triangles,
-        };
-        let o = cs[0].points[0];
-        Ok(chains_to_geo(section::section(&m, o, n)))
-    };
-    flow.step(
-        e,
-        &|c, _| Show {
-            geo: make(c).unwrap_or_default(),
-            ..Default::default()
-        },
-        &|c| {
-            let geo = make(c)?;
-            let mut r = finish_curves("Curve Boolean", geo)?;
-            if c.yes(&flow, "DeleteInput") {
-                r.delete = curves(e)
-                    .iter()
-                    .filter(|s| s.closed)
-                    .map(|s| s.id.clone())
-                    .collect();
-            }
-            Ok(r)
-        },
-    )
-}
-
-fn tween(e: &Event) -> Reply {
-    let flow = Flow::new("Tween Curves").number("Number of curves between", 3.0);
-    let make = |count: usize| -> Result<Vec<Geo>, String> {
-        let cs = curves(e);
-        if cs.len() != 2 {
-            return Err("select two curves".into());
-        }
-        let closed = cs[0].closed && cs[1].closed;
-        let n = 64;
-        let a = resample(&dense(cs[0], 300), closed, n);
-        let mut b = resample(&dense(cs[1], 300), closed, n);
-        // Match directions: start near start.
-        if !closed && dist(a[0], b[0]) > dist(a[0], b[n - 1]) {
-            b.reverse();
-        }
-        let mut out = Vec::new();
-        for k in 1..=count {
-            let t = k as f64 / (count + 1) as f64;
-            let pts: Vec<Vec3> = a
-                .iter()
-                .zip(&b)
-                .map(|(&p, &q)| add(p, scale(sub(q, p), t)))
-                .collect();
-            out.extend(smooth(&pts, closed));
-        }
-        Ok(out)
-    };
-    flow.step(
-        e,
-        &|c, _| Show {
-            geo: c
-                .n(0)
-                .and_then(|n| make(n.round() as usize).ok())
-                .unwrap_or_default(),
-            ..Default::default()
-        },
-        &|c| {
-            finish_curves(
-                "Tween Curves",
-                make(c.n(0).unwrap().round().max(1.0) as usize)?,
-            )
-        },
-    )
-}
-
 /// Curves from meshes and surfaces: Duplicate Edge (sharp edges and borders), Duplicate
 /// Border, Silhouette (seen along the CPlane normal), Extract Wireframe.
 fn from_objects(e: &Event) -> Reply {
@@ -1231,54 +1028,6 @@ fn from_objects(e: &Event) -> Reply {
             finish_curves(label, out)
         },
     )
-}
-
-fn cross_sections(e: &Event) -> Reply {
-    let flow = Flow::new("Cross Section Profiles").number("Number of profiles", 5.0);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let cs = curves(e);
-        if cs.len() < 2 {
-            return Err("select two or more rail curves".into());
-        }
-        let count = c.n(0).unwrap().round().max(1.0) as usize;
-        let rail = Path::new(&dense(cs[0], 400), cs[0].closed).ok_or("rail")?;
-        let others: Vec<Vec<Vec3>> = cs.iter().map(|s| dense(s, 400)).collect();
-        let mut out = Vec::new();
-        for k in 0..count {
-            let s = rail.length() * (k as f64 + 0.5) / count as f64;
-            let o = rail.at(s);
-            let n = rail.tangent(s);
-            let mut hits: Vec<Vec3> = Vec::new();
-            for pts in &others {
-                for w in pts.windows(2) {
-                    let (da, db) = (dot(sub(w[0], o), n), dot(sub(w[1], o), n));
-                    if (da > 0.0) != (db > 0.0) {
-                        let t = da / (da - db);
-                        let p = add(w[0], scale(sub(w[1], w[0]), t));
-                        if hits.iter().all(|h| dist(*h, p) > 1e-6) {
-                            hits.push(p);
-                            break;
-                        }
-                    }
-                }
-            }
-            if hits.len() < 2 {
-                continue;
-            }
-            // Order around the centroid in the section plane.
-            let center = scale(
-                hits.iter().fold([0.0; 3], |a, &p| add(a, p)),
-                1.0 / hits.len() as f64,
-            );
-            let f = mesh::Frame::new(center, n, sub(hits[0], center));
-            hits.sort_by(|a, b| {
-                let (la, lb) = (f.local(*a), f.local(*b));
-                la[1].atan2(la[0]).total_cmp(&lb[1].atan2(lb[0]))
-            });
-            out.extend(smooth(&hits, hits.len() >= 3));
-        }
-        finish_curves("Cross Section Profiles", out)
-    })
 }
 
 /// Sketches and curves through clicked points, optionally on a surface.
@@ -1377,71 +1126,6 @@ fn draw_on(e: &Event) -> Reply {
     .want(Want::Point)
     .preview(preview)
     .rubber(st.points.last().copied())
-}
-
-fn to_lines(e: &Event) -> Reply {
-    let flow = Flow::new("Curve to Lines").number("Angle tolerance (degrees)", 5.0);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let tol = c.n(0).unwrap().max(0.1).to_radians();
-        let items = curves(e)
-            .iter()
-            .map(|s| {
-                let p = dense(s, 800);
-                let mut keep = vec![p[0]];
-                let mut dir = unit(sub(p[1], p[0]));
-                for i in 1..p.len() - 1 {
-                    let d = unit(sub(p[i + 1], p[i]));
-                    if dot(dir, d).clamp(-1.0, 1.0).acos() > tol {
-                        keep.push(p[i]);
-                        dir = unit(sub(p[i + 1], p[i]));
-                    }
-                }
-                keep.push(*p.last().unwrap());
-                (s.id.clone(), polyline(keep, s.closed))
-            })
-            .collect();
-        replace("Curve to Lines", items)
-    })
-}
-
-fn sections(e: &Event) -> Reply {
-    let flow = Flow::new("Section")
-        .number("Number of sections", 1.0)
-        .number("Spacing between sections", 1.0)
-        .point("Start of the section line")
-        .point("End of the section line");
-    let make = |c: &Collected, end: Option<Vec3>| -> Vec<Geo> {
-        let (Some(a), Some(b)) = (c.p(0), c.p(1).or(end)) else {
-            return Vec::new();
-        };
-        let along = sub(b, a);
-        if norm(along) < 1e-9 {
-            return Vec::new();
-        }
-        let sec_n = unit(cross(along, e.plane.normal()));
-        let count = c.n(0).unwrap_or(1.0).round().max(1.0) as usize;
-        let gap = c.n(1).unwrap_or(1.0);
-        let mut out = Vec::new();
-        for s in meshes(e) {
-            for k in 0..count {
-                let o = add(a, scale(sec_n, k as f64 * gap));
-                out.extend(chains_to_geo(section::section(
-                    s.mesh.as_ref().unwrap(),
-                    o,
-                    sec_n,
-                )));
-            }
-        }
-        out
-    };
-    flow.step(
-        e,
-        &|c, h| Show {
-            geo: make(c, h),
-            ..Default::default()
-        },
-        &|c| finish_curves("Section", make(c, None)),
-    )
 }
 
 fn soft_edit(e: &Event) -> Reply {

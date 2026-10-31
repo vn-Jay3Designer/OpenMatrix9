@@ -112,15 +112,92 @@ fn length(g: &Geo) -> f64 {
 #[test]
 fn rebuild_and_refit_keep_the_shape() {
     let c = circle("c", [0.0; 3], 5.0);
-    let r = run(REBUILD, vec![c.clone()], vec![num(12.0), num(3.0)]);
+    let start = CurveTools::step(&event(REBUILD, Input::Start, vec![])).unwrap();
+    assert_eq!(start.prompt, "Select curves to rebuild");
+    let r = run(REBUILD, vec![c.clone()], vec![Input::Option { name: "PointCount".into(), value: Some("12".into()) }, Input::Enter]);
     let g = &r.replace[0].geo;
+    assert!(matches!(g, Geo::Nurbs { degree: 3, points, .. } if points.len() == 12 + 3), "periodic 12 poles, clamped: {g:?}");
     for p in nurbs::samples(g, 100) {
-        assert!((norm(p) - 5.0).abs() < 0.05, "{p:?}");
+        assert!((norm(p) - 5.0).abs() < 0.01, "{p:?}");
     }
-    let r = run(REFIT, vec![c], vec![num(0.001)]);
+    assert!(r.messages.iter().any(|m| m.contains("maximum deviation")), "{:?}", r.messages);
+    // Open curve: the ends stay, the count is exact; DeleteInput=No adds a new curve.
+    let s = curve("s", om9_addon_geom::interpolate(&[[0.0; 3], [3.0, 2.0, 0.0], [6.0, -1.0, 0.0], [10.0, 1.0, 0.0]], 3, false).unwrap(), false);
+    let r = run(REBUILD, vec![s.clone()], vec![Input::Option { name: "PointCount".into(), value: Some("6".into()) }, Input::Option { name: "DeleteInput".into(), value: Some("No".into()) }, Input::Enter]);
+    assert!(r.replace.is_empty());
+    let Geo::Nurbs { points, .. } = &r.create[0] else { panic!() };
+    assert_eq!(points.len(), 6);
+    assert!(dist(points[0], [0.0; 3]) < 1e-12 && dist(points[5], [10.0, 1.0, 0.0]) < 1e-12);
+    let r = run(REFIT, vec![c], vec![Input::Enter]);
     for p in nurbs::samples(&r.replace[0].geo, 300) {
         assert!((norm(p) - 5.0).abs() < 0.002, "{}", norm(p));
     }
+}
+
+#[test]
+fn divide_by_count_length_and_split() {
+    let l = line("l", [0.0; 3], [10.0, 0.0, 0.0]);
+    let start = CurveTools::step(&event(DIVIDE, Input::Start, vec![l.clone()])).unwrap();
+    assert_eq!(start.prompt, "Number of segments <10>");
+    let r = run(DIVIDE, vec![l.clone()], vec![num(5.0)]);
+    assert_eq!(r.create.len(), 6);
+    let r = run(DIVIDE, vec![l.clone()], vec![Input::Option { name: "MarkEnds".into(), value: None }, num(5.0)]);
+    assert_eq!(r.create.len(), 4);
+    let r = run(DIVIDE, vec![l.clone()], vec![Input::Option { name: "Length".into(), value: None }, num(3.0)]);
+    let xs: Vec<f64> = r.create.iter().map(|g| match g { Geo::Point { point } => point[0], _ => f64::NAN }).collect();
+    assert_eq!(xs.len(), 5);
+    assert!((xs[3] - 9.0).abs() < 1e-6 && (xs[4] - 10.0).abs() < 1e-9, "{xs:?}");
+    let r = run(DIVIDE, vec![l.clone()], vec![Input::Option { name: "Split".into(), value: Some("Yes".into()) }, num(4.0)]);
+    assert_eq!(r.create.len(), 4);
+    assert_eq!(r.delete, ["l"]);
+    assert!(r.create.iter().all(|g| (length(g) - 2.5).abs() < 1e-6));
+    let c = circle("c", [0.0; 3], 2.0);
+    let r = run(DIVIDE, vec![c], vec![num(4.0)]);
+    assert_eq!(r.create.len(), 4, "closed: no repeated end");
+}
+
+#[test]
+fn convert_to_lines_and_arcs() {
+    let c = circle("c", [0.0; 3], 5.0);
+    let r = run(TO_LINES, vec![c.clone()], vec![Input::Enter]);
+    let g = &r.replace[0].geo;
+    let Geo::Polyline { points, closed: true } = g else { panic!("{g:?}") };
+    // Chord deviation 0.01 and 5° turns: at least 72 sides.
+    assert!(points.len() >= 72, "{}", points.len());
+    for w in points.windows(2) {
+        let mid = scale(add(w[0], w[1]), 0.5);
+        assert!(5.0 - norm(mid) <= 0.0101, "{}", 5.0 - norm(mid));
+    }
+    let s = curve("s", om9_addon_geom::interpolate(&[[0.0; 3], [3.0, 2.0, 0.0], [6.0, -1.0, 0.0], [10.0, 1.0, 0.0]], 3, false).unwrap(), false);
+    let r = run(TO_LINES, vec![s.clone()], vec![Input::Option { name: "Output".into(), value: Some("Arcs".into()) }, Input::Enter]);
+    let src = om9_addon_geom::pick::CurveRef::of(&s).unwrap();
+    for p in nurbs::samples(&r.replace[0].geo, 300) {
+        assert!(dist(src.closest(p).1, p) < 0.011);
+    }
+}
+
+#[test]
+fn tween_picks_two_curves() {
+    let a = circle("a", [0.0; 3], 2.0);
+    let b = circle("b", [0.0; 3], 4.0);
+    let picks = [(a.clone(), [2.0, 0.0, 0.0]), (b.clone(), [4.0, 0.0, 0.0])];
+    let r = picking(TWEEN, &[("Number", "3")], &picks);
+    assert_eq!(r.prompt, "Adjust the tween. Press Enter when done");
+    assert_eq!(r.preview.len(), 3);
+    let r = enter(TWEEN, r, &picks);
+    for (k, g) in r.create.iter().enumerate() {
+        let want = 2.0 + 0.5 * (k + 1) as f64;
+        for p in nurbs::samples(g, 50) {
+            assert!((norm(p) - want).abs() < 0.02, "{}", norm(p));
+        }
+    }
+    // Opposite directions are matched start to start.
+    let l1 = line("l1", [0.0; 3], [10.0, 0.0, 0.0]);
+    let l2 = line("l2", [10.0, 4.0, 0.0], [0.0, 4.0, 0.0]);
+    let picks = [(l1, [5.0, 0.0, 0.0]), (l2, [5.0, 4.0, 0.0])];
+    let r = enter(TWEEN, picking(TWEEN, &[], &picks), &picks);
+    let (p, q) = ends_of(&r.create[0]);
+    assert!(dist(p, [0.0, 2.0, 0.0]) < 1e-6 && dist(q, [10.0, 2.0, 0.0]) < 1e-6, "{p:?} {q:?}");
 }
 
 fn enter(command: &str, mut r: Reply, picks: &[(Selected, Vec3)]) -> Reply {
@@ -468,19 +545,33 @@ fn extend_by_length_to_boundaries_and_dynamically() {
 }
 
 #[test]
-fn divide_extend_tween_and_seam() {
-    let l = line("l", [0.0; 3], [10.0, 0.0, 0.0]);
-    let r = run(DIVIDE, vec![l.clone()], vec![num(5.0)]);
-    assert_eq!(r.create.len(), 6);
+fn seam_moves_to_the_pick() {
     let a = circle("a", [0.0; 3], 2.0);
-    let b = circle("b", [0.0; 3], 4.0);
-    let r = run(TWEEN, vec![a.clone(), b], vec![num(1.0)]);
-    for p in nurbs::samples(&r.create[0], 50) {
-        assert!((norm(p) - 3.0).abs() < 0.02, "{}", norm(p));
-    }
     let r = run(SEAM, vec![a], vec![pt([0.0, 3.0, 0.0])]);
     let p = nurbs::samples(&r.replace[0].geo, 10)[0];
     assert!(dist(p, [0.0, 2.0, 0.0]) < 0.05, "{p:?}");
+}
+
+#[test]
+fn csec_makes_profiles_through_the_rails() {
+    // Four rails around the x axis, a profile at x = 5.
+    let rails: Vec<Selected> = (0..4)
+        .map(|k| {
+            let a = k as f64 * std::f64::consts::FRAC_PI_2;
+            let (y, z) = (2.0 * a.cos(), 2.0 * a.sin());
+            line(&format!("r{k}"), [0.0, y, z], [10.0, y, z])
+        })
+        .collect();
+    let start = CurveTools::step(&event(CROSS_SECTION, Input::Start, vec![])).unwrap();
+    assert_eq!(start.prompt, "Select longitudinal curves in order. Press Enter when done");
+    let r = run(CROSS_SECTION, rails.clone(), vec![pt([5.0, -5.0, 0.0]), pt([5.0, 5.0, 0.0]), Input::Enter]);
+    assert_eq!(r.create.len(), 1);
+    let g = &r.create[0];
+    let (p, q) = ends_of(g);
+    assert!(dist(p, q) < 1e-9, "closed");
+    for p in nurbs::samples(g, 50) {
+        assert!((p[0] - 5.0).abs() < 1e-9, "in the plane x = 5: {p:?}");
+    }
 }
 
 #[test]
@@ -510,14 +601,9 @@ fn curves_from_solids() {
     let r = run(
         SECTION,
         vec![ball.clone()],
-        vec![
-            num(1.0),
-            num(1.0),
-            pt([-5.0, 0.0, 0.0]),
-            pt([5.0, 0.0, 0.0]),
-        ],
+        vec![pt([-5.0, 0.0, 0.0]), pt([5.0, 0.0, 0.0]), pt([-5.0, 1.0, 0.0]), pt([5.0, 1.0, 0.0]), Input::Enter],
     );
-    assert_eq!(r.create.len(), 1);
+    assert_eq!(r.create.len(), 2, "two sections, then Enter");
     let c = solid("c", cuboid([-1.0, -1.0, -1.0], [1.0, 1.0, 1.0]));
     let d = solid("d", cuboid([0.0; 3], [2.0, 2.0, 2.0]));
     let r = run(INTERSECTION, vec![c.clone(), d], vec![Input::Enter]);
@@ -557,24 +643,74 @@ fn curve_boolean_of_two_squares() {
     };
     let a = curve("a", sq([0.0; 3]), true);
     let b = curve("b", sq([1.0, 0.0, 0.0]), true);
-    let r = run(
-        CURVE_BOOLEAN,
-        vec![a.clone(), b.clone()],
-        vec![Input::Enter],
-    );
-    assert_eq!(r.create.len(), 1);
-    // Union outline: 3 × 2 rectangle → perimeter 10.
-    let p = match &r.create[0] {
-        Geo::Polyline {
-            points,
-            closed: true,
-        } => points.clone(),
-        g => panic!("{g:?}"),
+    let sel = vec![a.clone(), b.clone()];
+    let step = |r: &Reply, input: Input| {
+        let mut e = event(CURVE_BOOLEAN, input, sel.clone());
+        e.state = r.state.clone();
+        CurveTools::step(&e).unwrap()
     };
-    let mut l: f64 = p.windows(2).map(|w| dist(w[0], w[1])).sum();
-    l += dist(p[0], *p.last().unwrap());
-    assert!((l - 10.0).abs() < 1e-6, "{l}");
-    assert_eq!(r.delete.len(), 2);
+    let r = CurveTools::step(&event(CURVE_BOOLEAN, Input::Start, sel.clone())).unwrap();
+    assert_eq!(r.prompt, "Click inside the regions to keep. Press Enter when done");
+    assert_eq!(r.options.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["DeleteInput", "CombineRegions", "AllRegions"]);
+    let perimeter = |g: &Geo| length(g);
+    // The left part only: a 1 × 2 rectangle.
+    let r1 = step(&r, pt([-0.5, 0.0, 0.0]));
+    assert!(r1.error.is_none(), "{:?}", r1.error);
+    assert_eq!(r1.preview.len(), 1);
+    let done = step(&r1, Input::Enter);
+    assert!(done.done && done.delete.is_empty());
+    assert!((perimeter(&done.create[0]) - 6.0).abs() < 1e-6, "{}", perimeter(&done.create[0]));
+    let (p, q) = ends_of(&done.create[0]);
+    assert!(dist(p, q) < 1e-9, "closed");
+    // All three regions combined: the union outline, 3 × 2 → perimeter 10.
+    let all = step(&step(&r, Input::Option { name: "AllRegions".into(), value: None }), Input::Enter);
+    assert_eq!(all.create.len(), 1);
+    assert!((perimeter(&all.create[0]) - 10.0).abs() < 1e-6, "{}", perimeter(&all.create[0]));
+    // Not combined: three separate outlines; clicking twice drops a region again.
+    let sep = step(&r, Input::Option { name: "CombineRegions".into(), value: Some("No".into()) });
+    let sep = step(&sep, Input::Option { name: "AllRegions".into(), value: None });
+    assert_eq!(step(&sep, Input::Enter).create.len(), 3);
+    let twice = step(&step(&r1, pt([-0.6, 0.1, 0.0])), Input::Enter);
+    assert!(twice.error.is_some(), "the region was dropped again");
+    // DeleteInput=Used with the middle part: both squares are used.
+    let used = step(&r, Input::Option { name: "DeleteInput".into(), value: Some("Used".into()) });
+    let used = step(&step(&used, pt([0.5, 0.0, 0.0])), Input::Enter);
+    assert_eq!(used.delete.len(), 2);
+    assert!((perimeter(&used.create[0]) - 6.0).abs() < 1e-6);
+}
+
+#[test]
+fn curve_boolean_keeps_circles_exact_and_finds_rings() {
+    let a = circle("a", [0.0; 3], 3.0);
+    let b = circle("b", [0.0; 3], 1.0);
+    let line_x = line("l", [-5.0, 0.0, 0.0], [5.0, 0.0, 0.0]);
+    let sel = vec![a, b, line_x];
+    let start = CurveTools::step(&event(CURVE_BOOLEAN, Input::Start, sel.clone())).unwrap();
+    // The upper half of the ring between the circles.
+    let mut e = event(CURVE_BOOLEAN, pt([0.0, 2.0, 0.0]), sel.clone());
+    e.state = start.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    let mut e = event(CURVE_BOOLEAN, Input::Enter, sel.clone());
+    e.state = r.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    assert_eq!(r.create.len(), 1);
+    let g = &r.create[0];
+    let want = std::f64::consts::PI * (3.0 + 1.0) + 2.0 * 2.0;
+    assert!((length(g) - want).abs() < 5e-3, "{} vs {want}", length(g));
+    for p in nurbs::samples(g, 400) {
+        let d = norm(p);
+        assert!(p[1] > -1e-9 && ((d - 3.0).abs() < 1e-6 || (d - 1.0).abs() < 1e-6 || p[1].abs() < 1e-9), "{p:?}");
+    }
+    // Two circles alone: the ring has the small circle as a hole.
+    let sel = vec![circle("a", [0.0; 3], 3.0), circle("b", [0.0; 3], 1.0)];
+    let start = CurveTools::step(&event(CURVE_BOOLEAN, Input::Start, sel.clone())).unwrap();
+    let mut e = event(CURVE_BOOLEAN, pt([2.0, 0.0, 0.0]), sel.clone());
+    e.state = start.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    let mut e = event(CURVE_BOOLEAN, Input::Enter, sel.clone());
+    e.state = r.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    assert_eq!(r.create.len(), 2, "outer circle and the hole");
 }
 
 #[test]

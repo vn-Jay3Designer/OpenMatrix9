@@ -258,6 +258,124 @@ fn periodic(q: &[Vec3], degree: usize, knots: Knots) -> Option<Geo> {
     Some(clamp_range(p, kv, poles, lo, hi))
 }
 
+/// Least-squares approximation of `samples` by a B-spline with `count` poles of `degree` on
+/// uniform knots (Rhino Rebuild / FitCrv). Open curves keep their end points; closed curves
+/// come out smooth across the seam. Parameters follow chord length.
+pub fn fit(samples: &[Vec3], count: usize, degree: usize, closed: bool) -> Option<Geo> {
+    let q = dedup(samples);
+    let m = q.len();
+    if m < 2 || count < 2 {
+        return None;
+    }
+    let p = degree.clamp(1, count - 1);
+    // Chord-length parameters in [0, 1] (closed: around the loop, last back to the start).
+    let mut t = vec![0.0];
+    for w in q.windows(2) {
+        t.push(t.last()? + dist(w[0], w[1]));
+    }
+    if closed {
+        t.push(t.last()? + dist(q[m - 1], q[0]));
+    }
+    let total = *t.last()?;
+    if total < 1e-12 {
+        return None;
+    }
+    for v in t.iter_mut() {
+        *v /= total;
+    }
+    let normal = |rows: &[(Vec<(usize, f64)>, Vec3)], n: usize| -> Option<Vec<Vec3>> {
+        let mut a = vec![vec![0.0; n]; n];
+        let mut b = vec![[0.0; 3]; n];
+        for (row, rhs) in rows {
+            for &(i, vi) in row {
+                for &(j, vj) in row {
+                    a[i][j] += vi * vj;
+                }
+                b[i] = add(b[i], scale(*rhs, vi));
+            }
+        }
+        solve(a, b)
+    };
+    if !closed {
+        let n = count;
+        if n <= p {
+            return None;
+        }
+        let spans = (n - p) as f64;
+        let kv: Vec<f64> = crate::clamped_uniform(n, p)
+            .into_iter()
+            .map(|k| k / spans)
+            .collect();
+        if n == 2 {
+            return Some(Geo::Line {
+                start: q[0],
+                end: q[m - 1],
+            });
+        }
+        // Unknowns: poles 1..n-2; the ends are fixed.
+        let (q0, qm) = (q[0], q[m - 1]);
+        let mut rows = Vec::new();
+        for (k, &u) in t.iter().enumerate().take(m - 1).skip(1) {
+            let span = find_span(n, p, u, &kv);
+            let mut rhs = q[k];
+            let mut row = Vec::new();
+            for (j, v) in basis(span, u, p, &kv).into_iter().enumerate() {
+                let idx = span - p + j;
+                if idx == 0 {
+                    rhs = sub(rhs, scale(q0, v));
+                } else if idx == n - 1 {
+                    rhs = sub(rhs, scale(qm, v));
+                } else {
+                    row.push((idx - 1, v));
+                }
+            }
+            rows.push((row, rhs));
+        }
+        if rows.len() < n - 2 {
+            return None;
+        }
+        let inner = normal(&rows, n - 2)?;
+        let mut points = vec![q0];
+        points.extend(inner);
+        points.push(qm);
+        return Some(Geo::Nurbs {
+            degree: p,
+            points,
+            weights: Vec::new(),
+            knots: kv,
+        });
+    }
+    // Closed: a periodic uniform B-spline, then clamped at the seam.
+    let n = count;
+    if n <= p || m < n {
+        return None;
+    }
+    let kv: Vec<f64> = (-(p as i64)..=(n + p) as i64)
+        .map(|i| i as f64 / n as f64)
+        .collect();
+    let poles_n = n + p;
+    let (lo, hi) = (kv[p], kv[n + p]);
+    let mut rows = Vec::new();
+    for (k, &u) in t.iter().take(m).enumerate() {
+        let span = find_span(poles_n, p, u.min(hi), &kv);
+        let mut row: Vec<(usize, f64)> = Vec::new();
+        for (j, v) in basis(span, u.min(hi), p, &kv).into_iter().enumerate() {
+            let pole = span - p + j;
+            let idx = (pole as i64 - p as i64).rem_euclid(n as i64) as usize;
+            match row.iter_mut().find(|r| r.0 == idx) {
+                Some(r) => r.1 += v,
+                None => row.push((idx, v)),
+            }
+        }
+        rows.push((row, q[k]));
+    }
+    let x = normal(&rows, n)?;
+    let poles: Vec<Vec3> = (0..poles_n)
+        .map(|i| x[(i as i64 - p as i64).rem_euclid(n as i64) as usize])
+        .collect();
+    Some(clamp_range(p, kv, poles, lo, hi))
+}
+
 /// Insert knot `u` once (Boehm). `k` is the last knot index with `knots[k] <= u`.
 fn insert(p: usize, knots: &mut Vec<f64>, poles: &mut Vec<Vec3>, u: f64) {
     let n = poles.len();
@@ -459,5 +577,34 @@ mod tests {
         assert_eq!(Knots::parse("SqrtChrd"), Some(Knots::SqrtChord));
         assert_eq!(Knots::parse("chord"), Some(Knots::Chord));
         assert_eq!(Knots::Uniform.name(), "Uniform");
+    }
+
+    #[test]
+    fn least_squares_fits_follow_the_samples() {
+        let circle: Vec<Vec3> = (0..200)
+            .map(|i| {
+                let a = i as f64 / 200.0 * std::f64::consts::TAU;
+                [5.0 * a.cos(), 5.0 * a.sin(), 0.0]
+            })
+            .collect();
+        let g = fit(&circle, 12, 3, true).unwrap();
+        for i in 0..100 {
+            let p = at(&g, i as f64 / 100.0);
+            assert!((dist(p, [0.0; 3]) - 5.0).abs() < 2e-3, "{p:?}");
+        }
+        assert!(
+            dist(tangent(&g, 0.0), tangent(&g, 1.0)) < 1e-4,
+            "smooth seam"
+        );
+        let open: Vec<Vec3> = circle[..120].to_vec();
+        let g = fit(&open, 8, 3, false).unwrap();
+        let Geo::Nurbs { points, .. } = &g else {
+            panic!()
+        };
+        assert_eq!(points.len(), 8);
+        assert!(dist(at(&g, 0.0), open[0]) < 1e-12 && dist(at(&g, 1.0), open[119]) < 1e-12);
+        for q in &open {
+            assert!(on_curve(&g, *q) < 5e-3);
+        }
     }
 }

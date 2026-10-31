@@ -370,6 +370,9 @@ fn curve_prompts_have_vietnamese() {
         "curve_tools/src/blend",
         "curve_tools/src/offset",
         "curve_tools/src/extend",
+        "curve_tools/src/edit",
+        "curve_tools/src/regions",
+        "curve_tools/src/sections",
         "geom/src/cmd",
     ];
     for f in files {

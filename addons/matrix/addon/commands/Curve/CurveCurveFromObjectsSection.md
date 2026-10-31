@@ -1,6 +1,6 @@
 # Section
 
-Cắt mặt/khối bằng mặt phẳng vuông CPlane theo đường bấm.
+Cắt mặt/khối/lưới bằng mặt phẳng đứng qua đường bấm (Rhino Section); đường cong cho điểm giao.
 
 - **Mã lệnh:** `CurveCurveFromObjectsSection`
 - **Vị trí:** menu Curve, ô số 51
@@ -10,6 +10,6 @@ Cắt mặt/khối bằng mặt phẳng vuông CPlane theo đường bấm.
 
 ## Cách dùng
 
-1. Chọn mặt/khối, Enter.
-2. Gõ số mặt cắt và khoảng cách.
-3. Bấm đầu và cuối đường cắt.
+1. Select objects for section, Enter.
+2. Start of section, End of section (lặp lại).
+3. Enter để kết thúc.
