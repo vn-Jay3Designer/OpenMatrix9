@@ -376,6 +376,8 @@ fn curve_prompts_have_vietnamese() {
         "curve_tools/src/edit",
         "curve_tools/src/regions",
         "curve_tools/src/sections",
+        "curve_tools/src/objects",
+        "curve_tools/src/lib",
         "geom/src/cmd",
     ];
     for f in files {

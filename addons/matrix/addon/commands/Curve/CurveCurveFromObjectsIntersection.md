@@ -1,6 +1,6 @@
 # Intersection
 
-Tạo đường giao giữa các mặt/khối.
+Giao tuyến giữa các vật (Rhino Intersect).
 
 - **Mã lệnh:** `CurveCurveFromObjectsIntersection`
 - **Vị trí:** menu Curve, ô số 17
@@ -10,5 +10,4 @@ Tạo đường giao giữa các mặt/khối.
 
 ## Cách dùng
 
-1. Chọn hai mặt/khối trở lên.
-2. Enter.
+1. Select objects to intersect, Enter.

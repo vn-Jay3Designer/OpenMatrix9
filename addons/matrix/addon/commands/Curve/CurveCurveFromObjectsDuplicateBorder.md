@@ -1,6 +1,6 @@
 # Duplicate Border
 
-Sao chép đường viền hở của mặt.
+Sao chép đường biên của mặt/khối (Rhino DupBorder).
 
 - **Mã lệnh:** `CurveCurveFromObjectsDuplicateBorder`
 - **Vị trí:** menu Curve, ô số 40
@@ -10,5 +10,4 @@ Sao chép đường viền hở của mặt.
 
 ## Cách dùng
 
-1. Chọn mặt.
-2. Enter.
+1. Select surface or polysurface for border duplication, Enter.

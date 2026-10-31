@@ -1,6 +1,6 @@
 # Silhouette
 
-Tạo đường viền bóng của vật nhìn theo hướng CPlane.
+Đường bao của vật nhìn theo pháp tuyến CPlane (Rhino Silhouette).
 
 - **Mã lệnh:** `CurveCurveFromObjectsSilhouette`
 - **Vị trí:** menu Curve, ô số 53
@@ -10,5 +10,4 @@ Tạo đường viền bóng của vật nhìn theo hướng CPlane.
 
 ## Cách dùng
 
-1. Chọn vật.
-2. Enter.
+1. Select objects for silhouette creation, Enter.

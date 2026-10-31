@@ -1,6 +1,6 @@
 # Duplicate Edge
 
-Sao chép các cạnh sắc / mép của mặt, khối.
+Sao chép cạnh của mặt/khối/lưới thành đường cong (Rhino DupEdge).
 
 - **Mã lệnh:** `CurveCurveFromObjectsDuplicateEdge`
 - **Vị trí:** menu Curve, ô số 39
@@ -10,5 +10,4 @@ Sao chép các cạnh sắc / mép của mặt, khối.
 
 ## Cách dùng
 
-1. Chọn mặt/khối.
-2. Enter.
+1. Select edges to duplicate, Enter.

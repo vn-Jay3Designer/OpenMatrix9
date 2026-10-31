@@ -1,6 +1,6 @@
 # Apply UV Curves
 
-Đắp đường cong phẳng (trong khung UV) lên mặt NURBS.
+Áp đường cong phẳng lên mặt theo UV (Rhino ApplyCrv).
 
 - **Mã lệnh:** `CurveCurveFromObjectsApplyUVCurves`
 - **Vị trí:** menu Curve, ô số 25
@@ -10,5 +10,4 @@
 
 ## Cách dùng
 
-1. Chọn đường cong phẳng và mặt.
-2. Enter.
+1. Select curves to apply and the surface to apply them to, Enter.

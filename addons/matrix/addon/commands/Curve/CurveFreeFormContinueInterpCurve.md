@@ -1,6 +1,6 @@
 # Continue Interp Curve
 
-Vẽ tiếp đường cong nội suy từ cuối đường cũ.
+Vẽ tiếp đường cong qua điểm từ đầu được bấm (Rhino ContinueInterpCrv).
 
 - **Mã lệnh:** `CurveFreeFormContinueInterpCurve`
 - **Vị trí:** menu Curve, ô số 35
@@ -10,5 +10,5 @@ Vẽ tiếp đường cong nội suy từ cuối đường cũ.
 
 ## Cách dùng
 
-1. Chọn đường cong.
-2. Bấm các điểm mới, Enter.
+1. Select curve to continue near end.
+2. Next point (Enter để xong).

@@ -1,6 +1,6 @@
 # Soft Edit Curve
 
-Kéo một điểm trên đường cong, vùng lân cận đi theo mềm mại.
+Sửa mềm đường cong: kéo một điểm, các điểm điều khiển lân cận đi theo với độ suy giảm (Rhino SoftEditCrv).
 
 - **Mã lệnh:** `CurveCurveEditToolsSoftEdit`
 - **Vị trí:** menu Curve, ô số 55
@@ -10,7 +10,12 @@ Kéo một điểm trên đường cong, vùng lân cận đi theo mềm mại.
 
 ## Cách dùng
 
-1. Chọn đường cong, Enter.
-2. Gõ khoảng ảnh hưởng.
-3. Bấm điểm trên đường cong.
-4. Bấm điểm đích.
+1. Select curve to edit.
+2. Point on curve to edit.
+3. Point to move to.
+
+## Tuỳ chọn (lệnh phụ)
+
+- Distance=1: khoảng ảnh hưởng dọc đường cong.
+- Copy=No: tạo bản sao.
+- FixEnds=No: giữ hai đầu.

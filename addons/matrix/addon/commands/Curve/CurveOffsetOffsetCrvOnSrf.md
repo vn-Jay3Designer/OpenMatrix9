@@ -1,6 +1,6 @@
 # Offset Curve on Surface
 
-Offset đường cong nằm trên mặt, kết quả bám mặt.
+Offset đường cong đi trên mặt (Rhino OffsetCrvOnSrf).
 
 - **Mã lệnh:** `CurveOffsetOffsetCrvOnSrf`
 - **Vị trí:** menu Curve, ô số 19
@@ -10,6 +10,11 @@ Offset đường cong nằm trên mặt, kết quả bám mặt.
 
 ## Cách dùng
 
-1. Chọn đường cong và mặt, Enter.
-2. Gõ khoảng cách.
-3. Bấm phía.
+1. Select curve on surface to offset.
+2. Select base surface.
+3. Side to offset: bấm phía cần offset.
+
+## Tuỳ chọn (lệnh phụ)
+
+- Distance=1.
+- ThroughPoint: offset qua điểm bấm.

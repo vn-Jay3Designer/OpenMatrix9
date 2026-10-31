@@ -1,6 +1,6 @@
 # Curve from 2 Views
 
-Tạo đường cong 3D từ một đường nhìn từ trên (Top) và một đường nhìn từ trước (Front).
+Dựng đường cong 3D từ hai đường ở hai góc nhìn (Rhino Crv2View).
 
 - **Mã lệnh:** `CurveCurveFrom2Views`
 - **Vị trí:** menu Curve, ô số 13
@@ -10,5 +10,5 @@ Tạo đường cong 3D từ một đường nhìn từ trên (Top) và một đ
 
 ## Cách dùng
 
-1. Chọn đường Top và đường Front.
-2. Enter.
+1. Select first curve.
+2. Select second curve.

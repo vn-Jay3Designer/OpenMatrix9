@@ -1,6 +1,6 @@
 # Intersect Two Sets
 
-Đường giao giữa nhóm thứ nhất và nhóm thứ hai.
+Giao tuyến giữa hai nhóm vật (Rhino IntersectTwoSets).
 
 - **Mã lệnh:** `CurveCurveFromObjectsIntersectTwoSets`
 - **Vị trí:** menu Curve, ô số 58
@@ -10,5 +10,5 @@
 
 ## Cách dùng
 
-1. Chọn nhóm 1, Enter.
-2. Chọn nhóm 2, Enter.
+1. Select first set of objects, Enter.
+2. Select second set of objects, Enter.

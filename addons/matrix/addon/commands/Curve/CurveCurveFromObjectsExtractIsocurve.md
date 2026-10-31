@@ -1,6 +1,6 @@
 # Extract Isocurve
 
-Lấy đường đẳng tham số U/V của mặt tại điểm bấm (lưới: lấy mặt cắt).
+Lấy đường đẳng tham số của mặt tại các vị trí bấm (Rhino ExtractIsocurve).
 
 - **Mã lệnh:** `CurveCurveFromObjectsExtractIsocurve`
 - **Vị trí:** menu Curve, ô số 20
@@ -10,10 +10,12 @@ Lấy đường đẳng tham số U/V của mặt tại điểm bấm (lưới: 
 
 ## Cách dùng
 
-1. Chọn mặt, Enter.
-2. Direction=U/V/Both.
-3. Bấm điểm trên mặt.
+1. Select surface for isocurve extraction.
+2. Select isocurve location on surface (bấm nhiều lần).
+3. Enter để kết thúc.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Direction: U, V hoặc cả hai.
+- Direction=U/V/Both.
+- Toggle: đổi U/V.
+- ExtractAll: lấy mọi đường nút theo hướng đã chọn.

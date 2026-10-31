@@ -614,7 +614,7 @@ fn curves_from_solids() {
     let r = run(
         PROJECT,
         vec![circle("k", [0.0; 3], 2.0), top.clone()],
-        vec![Input::Enter],
+        vec![Input::Enter, Input::Enter],
     );
     for p in nurbs::samples(&r.create[0], 30) {
         assert!((p[2] - 3.0).abs() < 1e-6, "{p:?}");
@@ -622,7 +622,7 @@ fn curves_from_solids() {
     let r = run(
         PULLBACK,
         vec![circle("k", [0.0, 0.0, 5.0], 2.0), top],
-        vec![Input::Enter],
+        vec![Input::Enter, Input::Enter],
     );
     for p in nurbs::samples(&r.create[0], 30) {
         assert!((p[2] - 3.0).abs() < 1e-3, "{p:?}");
@@ -746,7 +746,7 @@ fn clicked_curves_and_two_views() {
         },
         false,
     );
-    let r = run(CRV2VIEW, vec![top, front], vec![Input::Enter]);
+    let r = run(CRV2VIEW, vec![top, front], vec![]);
     let p = nurbs::samples(&r.create[0], 10);
     assert!(dist(*p.last().unwrap(), [10.0, 0.0, 5.0]) < 1e-6, "{p:?}");
 }
@@ -754,16 +754,23 @@ fn clicked_curves_and_two_views() {
 #[test]
 fn soft_edit_moves_only_near_the_pick() {
     let l = line("l", [0.0; 3], [20.0, 0.0, 0.0]);
-    let r = run(
-        SOFT_EDIT,
-        vec![l],
-        vec![num(4.0), pt([10.0, 0.0, 0.0]), pt([10.0, 3.0, 0.0])],
-    );
+    let r = picking(SOFT_EDIT, &[("Distance", "4")], &[(l.clone(), [10.0, 0.0, 0.0])]);
+    assert_eq!(r.prompt, "Point on curve to edit");
+    assert_eq!(r.options.iter().map(|o| o.name.as_str()).filter(|n| *n != "Undo").collect::<Vec<_>>(), ["Distance", "Copy", "FixEnds"]);
+    let mut e = event(SOFT_EDIT, pt([10.0, 0.0, 0.0]), vec![l.clone()]);
+    e.state = r.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    let mut e = event(SOFT_EDIT, pt([10.0, 3.0, 0.0]), vec![l.clone()]);
+    e.state = r.state.clone();
+    let r = CurveTools::step(&e).unwrap();
+    assert!(r.done, "{:?} {}", r.error, r.prompt);
     let g = &r.replace[0].geo;
     let p = nurbs::samples(g, 400);
     let peak = p.iter().map(|q| q[1]).fold(f64::MIN, f64::max);
-    assert!((peak - 3.0).abs() < 0.05, "{peak}");
-    assert!(p[0][1].abs() < 1e-6 && p[399][1].abs() < 1e-6);
+    assert!((peak - 3.0).abs() < 0.02, "{peak}");
+    assert!(p[0][1].abs() < 1e-6 && p[399][1].abs() < 1e-6, "ends stay");
+    // Far from the pick nothing moves (Distance plus the reach of a cubic's control points).
+    assert!(p.iter().filter(|q| (q[0] - 10.0).abs() > 7.0).all(|q| q[1].abs() < 1e-6));
 }
 
 #[test]
@@ -773,4 +780,138 @@ fn every_command_answers_start() {
         assert!(!r.done, "{c}");
         assert!(!r.prompt.is_empty(), "{c}");
     }
+}
+
+/// A flat NURBS patch at height `z` over [-10, 10]², with its render mesh.
+fn patch(id: &str, z: f64) -> Selected {
+    let c = [[-10.0, -10.0, z], [-10.0, 10.0, z], [10.0, -10.0, z], [10.0, 10.0, z]];
+    Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        name: id.into(),
+        bbox: [[-10.0, -10.0, z], [10.0, 10.0, z]],
+        points: c.to_vec(),
+        exact: Some(Geo::Surface { degree: [1, 1], size: [2, 2], points: c.to_vec(), weights: vec![], knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]] }),
+        mesh: Some(SelectedMesh { vertices: c.to_vec(), triangles: vec![[0, 2, 3], [0, 3, 1]] }),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn project_loose_splits_and_deletes() {
+    let top = patch("p", 3.0);
+    // A circle half outside the patch: two pieces would come back if it left twice; here it
+    // leaves once on the right, so one open piece.
+    let c = circle("k", [8.0, 0.0, 0.0], 4.0);
+    let r = run(PROJECT, vec![c.clone(), top.clone()], vec![Input::Enter, Input::Enter]);
+    assert_eq!(r.create.len(), 1);
+    let (p, q) = ends_of(&r.create[0]);
+    assert!(dist(p, q) > 1.0, "open where it leaves the patch");
+    for s in nurbs::samples(&r.create[0], 50) {
+        assert!((s[2] - 3.0).abs() < 1e-9 && s[0] <= 10.0 + 1e-6);
+    }
+    // Loose: the control structure stays.
+    let inner = circle("k2", [0.0; 3], 2.0);
+    let r = run(PROJECT, vec![inner.clone(), top.clone()], vec![Input::Option { name: "Loose".into(), value: None }, Input::Option { name: "DeleteInput".into(), value: Some("Yes".into()) }, Input::Enter, Input::Enter]);
+    assert!(matches!(&r.create[0], Geo::Nurbs { weights, .. } if !weights.is_empty()), "rational poles kept: {:?}", r.create[0]);
+    assert_eq!(r.delete, ["k2"]);
+    for s in nurbs::samples(&r.create[0], 50) {
+        assert!((s[2] - 3.0).abs() < 1e-9 && (norm([s[0], s[1], 0.0]) - 2.0).abs() < 1e-9);
+    }
+}
+
+#[test]
+fn offsets_on_and_normal_to_a_surface() {
+    let srf = patch("p", 0.0);
+    let l = line("l", [-5.0, 0.0, 0.0], [5.0, 0.0, 0.0]);
+    let step = |cmd: &str, st: &Value, input: Input, sel: Vec<Selected>, pick: Option<Vec3>| {
+        let mut e = event(cmd, input, sel);
+        e.state = st.clone();
+        e.pick = pick;
+        let r = CurveTools::step(&e).unwrap();
+        assert!(r.error.is_none(), "{cmd}: {:?} ({})", r.error, r.prompt);
+        r
+    };
+    let r = step(OFFSET_ON_SRF, &Value::Null, Input::Start, vec![], None);
+    assert_eq!(r.prompt, "Select curve on surface to offset");
+    let r = step(OFFSET_ON_SRF, &r.state, Input::Selection, vec![l.clone()], Some([0.0; 3]));
+    assert_eq!(r.prompt, "Select base surface");
+    let r = step(OFFSET_ON_SRF, &r.state, Input::Selection, vec![l.clone(), srf.clone()], Some([7.0, 7.0, 0.0]));
+    assert_eq!(r.prompt, "Side to offset");
+    let r = step(OFFSET_ON_SRF, &r.state, Input::Option { name: "Distance".into(), value: Some("2".into()) }, vec![l.clone(), srf.clone()], None);
+    let r = step(OFFSET_ON_SRF, &r.state, pt([0.0, 5.0, 0.0]), vec![l.clone(), srf.clone()], None);
+    assert!(r.done);
+    for s in nurbs::samples(&r.create[0], 30) {
+        assert!((s[1] - 2.0).abs() < 1e-5 && s[2].abs() < 1e-9, "{s:?}");
+    }
+    let r = step(OFFSET_NORMAL, &Value::Null, Input::Start, vec![], None);
+    let r = step(OFFSET_NORMAL, &r.state, Input::Selection, vec![l.clone()], Some([0.0; 3]));
+    let r = step(OFFSET_NORMAL, &r.state, Input::Selection, vec![l.clone(), srf.clone()], Some([7.0, 7.0, 0.0]));
+    assert_eq!(r.prompt, "Offset distance <1>");
+    let r = step(OFFSET_NORMAL, &r.state, num(1.5), vec![l.clone(), srf.clone()], None);
+    for s in nurbs::samples(&r.create[0], 30) {
+        assert!((s[2].abs() - 1.5).abs() < 1e-6, "{s:?}");
+    }
+}
+
+#[test]
+fn extract_isocurves_by_clicking() {
+    let srf = patch("p", 0.0);
+    let sel = vec![srf.clone()];
+    let mut e = event(ISOCURVE, Input::Start, sel.clone());
+    let r = CurveTools::step(&e).unwrap();
+    assert_eq!(r.prompt, "Select isocurve location on surface. Press Enter when done");
+    assert_eq!(r.options.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["Direction", "Toggle", "ExtractAll"]);
+    let mut state = r.state.clone();
+    for input in [pt([2.0, 3.0, 0.0]), Input::Option { name: "Direction".into(), value: Some("Both".into()) }, pt([-4.0, 1.0, 0.0]), Input::Enter] {
+        e.state = state.clone();
+        e.input = input;
+        let r = CurveTools::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?}", r.error);
+        state = r.state.clone();
+        if r.done {
+            assert_eq!(r.create.len(), 3);
+            return;
+        }
+    }
+    panic!("did not finish");
+}
+
+fn point_obj(id: &str, p: Vec3) -> Selected {
+    Selected { id: id.into(), kind: "point".into(), bbox: [p, p], points: vec![p], exact: Some(Geo::Point { point: p }), ..Default::default() }
+}
+
+#[test]
+fn points_marks_continue_and_sketch_prompts() {
+    let pts: Vec<Selected> = [[0.0, 0.0, 0.0], [2.0, 2.0, 0.0], [4.0, 0.0, 0.0], [6.0, 2.0, 0.0]]
+        .iter()
+        .enumerate()
+        .map(|(i, p)| point_obj(&format!("p{i}"), *p))
+        .collect();
+    let r = run(THROUGH_POINTS, pts, vec![Input::Enter]);
+    let Geo::Nurbs { points, degree, .. } = &r.create[0] else { panic!("{:?}", r.create) };
+    assert_eq!((*degree, points.len()), (3, 4), "the points are the control points");
+    let l = line("l", [0.0; 3], [10.0, 0.0, 0.0]);
+    let r = run(MARK_END, vec![l.clone()], vec![Input::Enter]);
+    assert_eq!(r.create, vec![Geo::Point { point: [10.0, 0.0, 0.0] }]);
+    // Continue from the start when the start was picked.
+    let mut e = event(CONTINUE_CURVE, Input::Selection, vec![l.clone()]);
+    e.pick = Some([1.0, 0.0, 0.0]);
+    let r = CurveTools::step(&e).unwrap();
+    assert_eq!(r.prompt, "Next point. Press Enter when done");
+    assert_eq!(r.rubber_from, Some([0.0; 3]));
+    e.state = r.state.clone();
+    e.input = pt([-5.0, 3.0, 0.0]);
+    let r = CurveTools::step(&e).unwrap();
+    e.state = r.state.clone();
+    e.input = Input::Enter;
+    let r = CurveTools::step(&e).unwrap();
+    let (_, q) = ends_of(&r.replace[0].geo);
+    assert!(dist(q, [-5.0, 3.0, 0.0]) < 1e-9, "{q:?}");
+    let r = CurveTools::step(&event(SKETCH, Input::Start, vec![])).unwrap();
+    assert_eq!(r.prompt, "Start of sketch");
+    assert_eq!(r.options.iter().map(|o| o.name.as_str()).collect::<Vec<_>>(), ["OnSurface", "OnMesh"]);
+    let mut e = event(SKETCH, Input::Option { name: "OnSurface".into(), value: None }, vec![]);
+    e.state = r.state.clone();
+    assert_eq!(CurveTools::step(&e).unwrap().prompt, "Select surface to sketch on");
 }

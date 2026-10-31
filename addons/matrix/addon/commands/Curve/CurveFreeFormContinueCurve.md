@@ -1,6 +1,6 @@
 # Continue Control Point Curve
 
-Vẽ tiếp đường cong điểm điều khiển.
+Vẽ tiếp đường cong điểm điều khiển từ đầu được bấm (Rhino ContinueCurve).
 
 - **Mã lệnh:** `CurveFreeFormContinueCurve`
 - **Vị trí:** menu Curve, ô số 42
@@ -10,5 +10,5 @@ Vẽ tiếp đường cong điểm điều khiển.
 
 ## Cách dùng
 
-1. Chọn đường cong.
-2. Bấm các điểm điều khiển mới, Enter.
+1. Select curve to continue near end.
+2. Next point (Enter để xong).

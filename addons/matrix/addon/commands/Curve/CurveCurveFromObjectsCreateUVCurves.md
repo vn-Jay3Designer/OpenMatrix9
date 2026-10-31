@@ -1,6 +1,6 @@
 # Create UV Curves
 
-Trải phẳng mặt NURBS thành khung UV (và các đường cong nằm trên mặt).
+Trải đường biên và các đường cong trên mặt ra mặt phẳng UV (Rhino CreateUVCrv).
 
 - **Mã lệnh:** `CurveCurveFromObjectsCreateUVCurves`
 - **Vị trí:** menu Curve, ô số 24
@@ -10,5 +10,4 @@ Trải phẳng mặt NURBS thành khung UV (và các đường cong nằm trên 
 
 ## Cách dùng
 
-1. Chọn mặt (và đường cong trên mặt).
-2. Enter.
+1. Select surface to create UV curves (and curves on it), Enter.

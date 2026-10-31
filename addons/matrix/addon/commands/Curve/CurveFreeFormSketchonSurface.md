@@ -1,6 +1,6 @@
 # Sketch on Surface
 
-Vẽ phác trên mặt.
+Phác thảo trên mặt (Matrix: _Sketch _OnSurface=Yes).
 
 - **Mã lệnh:** `CurveFreeFormSketchonSurface`
 - **Vị trí:** menu Curve, ô số 46
@@ -10,5 +10,5 @@ Vẽ phác trên mặt.
 
 ## Cách dùng
 
-1. Chọn mặt.
-2. Bấm các điểm, Enter.
+1. Select surface to sketch on.
+2. Start of sketch, Next point of sketch, Enter.

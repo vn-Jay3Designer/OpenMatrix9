@@ -323,17 +323,17 @@ label = "Curve from 2 Views"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Crv2View"]
-summary = "Tạo đường cong 3D từ một đường nhìn từ trên (Top) và một đường nhìn từ trước (Front)."
-steps = ["Chọn đường Top và đường Front.", "Enter."]
+summary = "Dựng đường cong 3D từ hai đường ở hai góc nhìn (Rhino Crv2View)."
+steps = ["Select first curve.", "Select second curve."]
 
 [[commands]]
 id = "BuilderCrv2ViewHistory"
 label = "Curve from 2 Views Builder"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["Crv2ViewBuilder"]
-summary = "Như Curve from 2 Views, dạng builder."
-steps = ["Chọn hai đường cong.", "Enter."]
+aliases = ["Crv2ViewBuilder", "gvCrv2ViewHistory"]
+summary = "Như Crv2View (bản Builder của Matrix)."
+steps = ["Select first curve.", "Select second curve."]
 
 [[commands]]
 id = "CurveCurveFromObjectsPullback"
@@ -342,8 +342,9 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Pull", "PullCrv"]
-summary = "Kéo đường cong lên mặt theo điểm gần nhất."
-steps = ["Chọn đường cong và mặt/khối.", "Enter."]
+summary = "Kéo đường cong và điểm về mặt theo điểm gần nhất (Rhino Pull)."
+steps = ["Select curves and points to pull, Enter.", "Select surface, polysurface or mesh to pull onto, Enter."]
+options = ["Loose=No: Yes chỉ dời điểm điều khiển.", "DeleteInput=No."]
 
 [[commands]]
 id = "CurveCurveFromObjectsProject"
@@ -351,9 +352,10 @@ label = "Project"
 handler = "om9_addon_session"
 interactive = true
 mesh_data = true
-aliases = ["ProjectCrv"]
-summary = "Chiếu đường cong lên mặt theo hướng CPlane (từ trên xuống)."
-steps = ["Chọn đường cong và mặt/khối.", "Enter."]
+aliases = ["Project", "ProjectCrv"]
+summary = "Chiếu đường cong và điểm thẳng xuống mặt theo pháp tuyến CPlane (Rhino Project); tách đường khi ra ngoài mặt."
+steps = ["Select curves and points to project, Enter.", "Select surfaces, polysurfaces and meshes to project onto, Enter."]
+options = ["Loose=No: Yes chỉ dời điểm điều khiển.", "DeleteInput=No."]
 
 [[commands]]
 id = "CurveCurveFromObjectsIntersection"
@@ -362,8 +364,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Intersect"]
-summary = "Tạo đường giao giữa các mặt/khối."
-steps = ["Chọn hai mặt/khối trở lên.", "Enter."]
+summary = "Giao tuyến giữa các vật (Rhino Intersect)."
+steps = ["Select objects to intersect, Enter."]
 
 [[commands]]
 id = "CurveCurveFromObjectsIntersectTwoSets"
@@ -372,8 +374,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["IntersectTwoSets"]
-summary = "Đường giao giữa nhóm thứ nhất và nhóm thứ hai."
-steps = ["Chọn nhóm 1, Enter.", "Chọn nhóm 2, Enter."]
+summary = "Giao tuyến giữa hai nhóm vật (Rhino IntersectTwoSets)."
+steps = ["Select first set of objects, Enter.", "Select second set of objects, Enter."]
 
 [[commands]]
 id = "CurveOffsetCurve"
@@ -392,8 +394,9 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["OffsetCrvOnSrf"]
-summary = "Offset đường cong nằm trên mặt, kết quả bám mặt."
-steps = ["Chọn đường cong và mặt, Enter.", "Gõ khoảng cách.", "Bấm phía."]
+summary = "Offset đường cong đi trên mặt (Rhino OffsetCrvOnSrf)."
+steps = ["Select curve on surface to offset.", "Select base surface.", "Side to offset: bấm phía cần offset."]
+options = ["Distance=1.", "ThroughPoint: offset qua điểm bấm."]
 
 [[commands]]
 id = "CurveOffsetOffsetCrvNormalToSurface"
@@ -401,9 +404,9 @@ label = "Offset Curve Normal to Surface"
 handler = "om9_addon_session"
 interactive = true
 mesh_data = true
-aliases = ["OffsetNormalToSrf"]
-summary = "Dời đường cong trên mặt ra theo pháp tuyến của mặt."
-steps = ["Chọn đường cong và mặt, Enter.", "Gõ khoảng cách."]
+aliases = ["OffsetNormal", "OffsetNormalToSrf"]
+summary = "Dời đường cong trên mặt theo pháp tuyến của mặt (Rhino OffsetNormal)."
+steps = ["Select curve on surface.", "Select surface.", "Offset distance <1>: gõ khoảng hoặc bấm."]
 
 [[commands]]
 id = "CurveCurveFromObjectsExtractIsocurve"
@@ -412,9 +415,9 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["ExtractIsocurve"]
-summary = "Lấy đường đẳng tham số U/V của mặt tại điểm bấm (lưới: lấy mặt cắt)."
-steps = ["Chọn mặt, Enter.", "Direction=U/V/Both.", "Bấm điểm trên mặt."]
-options = ["Direction: U, V hoặc cả hai."]
+summary = "Lấy đường đẳng tham số của mặt tại các vị trí bấm (Rhino ExtractIsocurve)."
+steps = ["Select surface for isocurve extraction.", "Select isocurve location on surface (bấm nhiều lần).", "Enter để kết thúc."]
+options = ["Direction=U/V/Both.", "Toggle: đổi U/V.", "ExtractAll: lấy mọi đường nút theo hướng đã chọn."]
 
 [[commands]]
 id = "CurveGVExtractIsocurve"
@@ -462,8 +465,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["CreateUVCrv"]
-summary = "Trải phẳng mặt NURBS thành khung UV (và các đường cong nằm trên mặt)."
-steps = ["Chọn mặt (và đường cong trên mặt).", "Enter."]
+summary = "Trải đường biên và các đường cong trên mặt ra mặt phẳng UV (Rhino CreateUVCrv)."
+steps = ["Select surface to create UV curves (and curves on it), Enter."]
 
 [[commands]]
 id = "CurveCurveFromObjectsApplyUVCurves"
@@ -472,18 +475,18 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["ApplyCrv"]
-summary = "Đắp đường cong phẳng (trong khung UV) lên mặt NURBS."
-steps = ["Chọn đường cong phẳng và mặt.", "Enter."]
+summary = "Áp đường cong phẳng lên mặt theo UV (Rhino ApplyCrv)."
+steps = ["Select curves to apply and the surface to apply them to, Enter."]
 
 [[commands]]
 id = "CurveFreeFormThroughPoints"
 label = "Curve Through Points"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["CrvThroughPt"]
-summary = "Vẽ đường cong qua các điểm đã chọn."
-steps = ["Chọn các điểm.", "Type=Interpolate/Polyline.", "Enter."]
-options = ["Type: đường cong mượt hoặc polyline."]
+aliases = ["CurveThroughPt", "CrvThroughPt"]
+summary = "Dựng đường cong lấy các điểm đã chọn làm điểm điều khiển (Rhino CurveThroughPt)."
+steps = ["Select points for control points of curve, Enter."]
+options = ["Degree=3."]
 
 [[commands]]
 id = "CurveExtendCurveExtendCurve"
@@ -500,18 +503,18 @@ id = "CurvePointObjectMarkCurveStart"
 label = "Mark Curve Start"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["MarkStart"]
-summary = "Đặt điểm và mũi tên hướng ở đầu đường cong."
-steps = ["Chọn đường cong, Enter."]
+aliases = ["CrvStart", "MarkStart"]
+summary = "Đặt điểm tại đầu đường cong (Rhino CrvStart)."
+steps = ["Select curves for start point, Enter."]
 
 [[commands]]
 id = "CurvePointObjectMarkCurveEnd"
 label = "Mark Curve End"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["MarkEnd"]
-summary = "Đặt điểm và mũi tên hướng ở cuối đường cong."
-steps = ["Chọn đường cong, Enter."]
+aliases = ["CrvEnd", "MarkEnd"]
+summary = "Đặt điểm tại cuối đường cong (Rhino CrvEnd)."
+steps = ["Select curves for end point, Enter."]
 
 [[commands]]
 id = "CurveCurveEditToolsAdjustClosedCurveSeam"
@@ -519,8 +522,8 @@ label = "Adjust Closed Curve Seam"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["CrvSeam"]
-summary = "Dời điểm nối (seam) của đường cong kín."
-steps = ["Chọn đường cong kín, Enter.", "Bấm điểm nối mới."]
+summary = "Dời điểm nối (seam) của đường cong kín (Rhino CrvSeam)."
+steps = ["Select closed curves for seam adjustment, Enter.", "New seam point."]
 
 [[commands]]
 id = "CurveFreeFormContinueInterpCurve"
@@ -528,8 +531,8 @@ label = "Continue Interp Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ContinueInterpCrv"]
-summary = "Vẽ tiếp đường cong nội suy từ cuối đường cũ."
-steps = ["Chọn đường cong.", "Bấm các điểm mới, Enter."]
+summary = "Vẽ tiếp đường cong qua điểm từ đầu được bấm (Rhino ContinueInterpCrv)."
+steps = ["Select curve to continue near end.", "Next point (Enter để xong)."]
 
 [[commands]]
 id = "CurveFreeFormContinueCurve"
@@ -537,8 +540,8 @@ label = "Continue Control Point Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ContinueCurve"]
-summary = "Vẽ tiếp đường cong điểm điều khiển."
-steps = ["Chọn đường cong.", "Bấm các điểm điều khiển mới, Enter."]
+summary = "Vẽ tiếp đường cong điểm điều khiển từ đầu được bấm (Rhino ContinueCurve)."
+steps = ["Select curve to continue near end.", "Next point (Enter để xong)."]
 
 [[commands]]
 id = "OthersCurveDivideCurve"
@@ -577,8 +580,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["DupEdge"]
-summary = "Sao chép các cạnh sắc / mép của mặt, khối."
-steps = ["Chọn mặt/khối.", "Enter."]
+summary = "Sao chép cạnh của mặt/khối/lưới thành đường cong (Rhino DupEdge)."
+steps = ["Select edges to duplicate, Enter."]
 
 [[commands]]
 id = "CurveCurveFromObjectsDuplicateBorder"
@@ -587,8 +590,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["DupBorder"]
-summary = "Sao chép đường viền hở của mặt."
-steps = ["Chọn mặt.", "Enter."]
+summary = "Sao chép đường biên của mặt/khối (Rhino DupBorder)."
+steps = ["Select surface or polysurface for border duplication, Enter."]
 
 [[commands]]
 id = "CurveCrossSectionProfiles"
@@ -604,9 +607,11 @@ id = "CurveFreeFormSketch"
 label = "Sketch"
 handler = "om9_addon_session"
 interactive = true
+mesh_data = true
 aliases = ["Sketch"]
-summary = "Vẽ phác: bấm các điểm, Enter để tạo đường mượt."
-steps = ["Bấm điểm liên tục.", "Enter."]
+summary = "Phác thảo đường cong bằng các điểm bấm (Rhino Sketch); OnSurface/OnMesh để vẽ lên mặt hoặc lưới."
+steps = ["Start of sketch.", "Next point of sketch (Enter để xong)."]
+options = ["OnSurface=No.", "OnMesh=No."]
 
 [[commands]]
 id = "CurveFreeFormSketchonSurface"
@@ -615,8 +620,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["SketchOnSrf"]
-summary = "Vẽ phác trên mặt."
-steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+summary = "Phác thảo trên mặt (Matrix: _Sketch _OnSurface=Yes)."
+steps = ["Select surface to sketch on.", "Start of sketch, Next point of sketch, Enter."]
 
 [[commands]]
 id = "CurveFreeFormSketchonPolygonMesh"
@@ -625,8 +630,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["SketchOnMesh"]
-summary = "Vẽ phác trên lưới đa giác."
-steps = ["Chọn lưới.", "Bấm các điểm, Enter."]
+summary = "Phác thảo trên lưới (Matrix: _Sketch _OnMesh=Yes)."
+steps = ["Select mesh to sketch on.", "Start of sketch, Next point of sketch, Enter."]
 
 [[commands]]
 id = "BuilderPolylineOnSurface"
@@ -634,9 +639,9 @@ label = "Polyline on Surface"
 handler = "om9_addon_session"
 interactive = true
 mesh_data = true
-aliases = ["PolylineOnSrf"]
-summary = "Vẽ polyline bám theo mặt."
-steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+aliases = ["PolylineOnSrf", "gvPolylineOnSurface"]
+summary = "Đường gấp khúc nằm trên mặt."
+steps = ["Select surface for polyline.", "Start of polyline, Next point of polyline, Enter."]
 
 [[commands]]
 id = "CurveFreeFormInterpolateonSurface"
@@ -645,8 +650,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["InterpCrvOnSrf"]
-summary = "Vẽ đường cong nội suy nằm trên mặt."
-steps = ["Chọn mặt.", "Bấm các điểm, Enter."]
+summary = "Đường cong qua điểm nằm trên mặt (Rhino InterpCrvOnSrf)."
+steps = ["Select surface to draw curve on.", "Start of curve, Next point, Enter."]
 
 [[commands]]
 id = "CurveConvertCurveToLines"
@@ -685,8 +690,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Silhouette"]
-summary = "Tạo đường viền bóng của vật nhìn theo hướng CPlane."
-steps = ["Chọn vật.", "Enter."]
+summary = "Đường bao của vật nhìn theo pháp tuyến CPlane (Rhino Silhouette)."
+steps = ["Select objects for silhouette creation, Enter."]
 
 [[commands]]
 id = "CurveCurveFromObjectsExtractWireframe"
@@ -695,8 +700,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["ExtractWireframe"]
-summary = "Lấy khung dây (isocurve / cạnh) của mặt, khối."
-steps = ["Chọn vật.", "Enter."]
+summary = "Lấy khung dây của mặt/khối/lưới (Rhino ExtractWireframe)."
+steps = ["Select surfaces, polysurfaces or meshes for wireframe extraction, Enter."]
 
 [[commands]]
 id = "CurveCurveEditToolsSoftEdit"
@@ -704,8 +709,9 @@ label = "Soft Edit Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["SoftEditCrv"]
-summary = "Kéo một điểm trên đường cong, vùng lân cận đi theo mềm mại."
-steps = ["Chọn đường cong, Enter.", "Gõ khoảng ảnh hưởng.", "Bấm điểm trên đường cong.", "Bấm điểm đích."]
+summary = "Sửa mềm đường cong: kéo một điểm, các điểm điều khiển lân cận đi theo với độ suy giảm (Rhino SoftEditCrv)."
+steps = ["Select curve to edit.", "Point on curve to edit.", "Point to move to."]
+options = ["Distance=1: khoảng ảnh hưởng dọc đường cong.", "Copy=No: tạo bản sao.", "FixEnds=No: giữ hai đầu."]
 
 # ---- Surface (addons/surfaces) ----
 

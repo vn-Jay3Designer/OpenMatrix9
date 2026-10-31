@@ -1,6 +1,6 @@
 # Adjust Closed Curve Seam
 
-Dời điểm nối (seam) của đường cong kín.
+Dời điểm nối (seam) của đường cong kín (Rhino CrvSeam).
 
 - **Mã lệnh:** `CurveCurveEditToolsAdjustClosedCurveSeam`
 - **Vị trí:** menu Curve, ô số 34
@@ -10,5 +10,5 @@ Dời điểm nối (seam) của đường cong kín.
 
 ## Cách dùng
 
-1. Chọn đường cong kín, Enter.
-2. Bấm điểm nối mới.
+1. Select closed curves for seam adjustment, Enter.
+2. New seam point.

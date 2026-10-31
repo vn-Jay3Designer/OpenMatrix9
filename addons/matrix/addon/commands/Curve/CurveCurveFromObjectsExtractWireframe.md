@@ -1,6 +1,6 @@
 # Extract Wireframe
 
-Lấy khung dây (isocurve / cạnh) của mặt, khối.
+Lấy khung dây của mặt/khối/lưới (Rhino ExtractWireframe).
 
 - **Mã lệnh:** `CurveCurveFromObjectsExtractWireframe`
 - **Vị trí:** menu Curve, ô số 54
@@ -10,5 +10,4 @@ Lấy khung dây (isocurve / cạnh) của mặt, khối.
 
 ## Cách dùng
 
-1. Chọn vật.
-2. Enter.
+1. Select surfaces, polysurfaces or meshes for wireframe extraction, Enter.

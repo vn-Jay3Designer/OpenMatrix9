@@ -1,6 +1,6 @@
 # Sketch on Polygon Mesh
 
-Vẽ phác trên lưới đa giác.
+Phác thảo trên lưới (Matrix: _Sketch _OnMesh=Yes).
 
 - **Mã lệnh:** `CurveFreeFormSketchonPolygonMesh`
 - **Vị trí:** menu Curve, ô số 47
@@ -10,5 +10,5 @@ Vẽ phác trên lưới đa giác.
 
 ## Cách dùng
 
-1. Chọn lưới.
-2. Bấm các điểm, Enter.
+1. Select mesh to sketch on.
+2. Start of sketch, Next point of sketch, Enter.

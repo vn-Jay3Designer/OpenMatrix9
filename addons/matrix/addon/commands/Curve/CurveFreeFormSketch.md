@@ -1,6 +1,6 @@
 # Sketch
 
-Vẽ phác: bấm các điểm, Enter để tạo đường mượt.
+Phác thảo đường cong bằng các điểm bấm (Rhino Sketch); OnSurface/OnMesh để vẽ lên mặt hoặc lưới.
 
 - **Mã lệnh:** `CurveFreeFormSketch`
 - **Vị trí:** menu Curve, ô số 45
@@ -10,5 +10,10 @@ Vẽ phác: bấm các điểm, Enter để tạo đường mượt.
 
 ## Cách dùng
 
-1. Bấm điểm liên tục.
-2. Enter.
+1. Start of sketch.
+2. Next point of sketch (Enter để xong).
+
+## Tuỳ chọn (lệnh phụ)
+
+- OnSurface=No.
+- OnMesh=No.

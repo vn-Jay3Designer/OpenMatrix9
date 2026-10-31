@@ -66,6 +66,7 @@ mod blend;
 mod edit;
 mod extend;
 mod fillet;
+mod objects;
 mod offset;
 mod regions;
 mod sections;
@@ -128,12 +129,14 @@ impl Interactive for CurveTools {
             BLEND_ADJ => blend::blend(e, true),
             ARC_BLEND => blend::arc_blend(e),
             CRV2VIEW | CRV2VIEW_HISTORY => from_two_views(e),
-            PULLBACK | PROJECT => project(e),
+            PULLBACK | PROJECT => objects::project(e, e.command == PULLBACK),
             INTERSECTION => intersection(e),
             INTERSECT_TWO => intersect_two_sets(e),
             OFFSET => offset::offset(e),
-            OFFSET_ON_SRF | OFFSET_NORMAL => offset_surface(e),
-            ISOCURVE | ANGLE_ISO => isocurve(e),
+            OFFSET_ON_SRF => objects::offset_on_surface(e),
+            OFFSET_NORMAL => objects::offset_normal(e),
+            ISOCURVE => objects::isocurve(e),
+            ANGLE_ISO => isocurve(e),
             FILLET | CHAMFER => fillet::fillet(e, e.command == CHAMFER),
             FILLET_CORNERS => fillet::fillet_corners(e),
             UV_CREATE => uv_create(e),
@@ -152,7 +155,7 @@ impl Interactive for CurveTools {
             TO_LINES => edit::convert(e),
             SECTION => sections::section_cmd(e),
             MATCH => blend::match_curve(e),
-            SOFT_EDIT => soft_edit(e),
+            SOFT_EDIT => objects::soft_edit(e),
             other => return Err(format!("unknown command {other}")),
         })
     }
@@ -265,92 +268,45 @@ fn resample(points: &[Vec3], closed: bool, n: usize) -> Vec<Vec3> {
 // ---- curves from views, projections ---------------------------------------------------------
 
 fn from_two_views(e: &Event) -> Reply {
-    on_enter(
-        e,
-        "Curve from 2 Views: select the top-view curve and the front-view curve, Enter",
-        || {
-            let cs = curves(e);
-            if cs.len() != 2 {
-                return Err("select exactly two curves".into());
-            }
-            // The flatter curve (least spread along the normal) is the top view.
-            let spread = |s: &Selected| {
-                let z: Vec<f64> = s.points.iter().map(|&p| e.plane.local(p)[2]).collect();
-                z.iter().cloned().fold(f64::MIN, f64::max)
-                    - z.iter().cloned().fold(f64::MAX, f64::min)
-            };
-            let (top, front) = if spread(cs[0]) <= spread(cs[1]) {
-                (cs[0], cs[1])
-            } else {
-                (cs[1], cs[0])
-            };
-            let fr: Vec<Vec3> = dense(front, 400)
-                .iter()
-                .map(|&p| e.plane.local(p))
-                .collect();
-            let height_at = |x: f64| -> Option<f64> {
-                fr.windows(2).find_map(|w| {
-                    let (a, b) = (w[0], w[1]);
-                    ((a[0] - x) * (b[0] - x) <= 0.0 && (b[0] - a[0]).abs() > 1e-12)
-                        .then(|| a[2] + (b[2] - a[2]) * (x - a[0]) / (b[0] - a[0]))
-                })
-            };
-            let pts: Vec<Vec3> = dense(top, 200)
-                .iter()
-                .filter_map(|&p| {
-                    let l = e.plane.local(p);
-                    height_at(l[0]).map(|z| e.plane.at(l[0], l[1], z))
-                })
-                .collect();
-            if pts.len() < 2 {
-                return Err("the two curves must overlap along the CPlane x axis".into());
-            }
-            finish_curves(
-                "Curve from 2 Views",
-                smooth(&pts, top.closed && pts.len() > 3)
-                    .into_iter()
-                    .collect(),
-            )
-        },
-    )
+    let flow = Flow::new("Crv2View")
+        .curve("Select first curve")
+        .curve("Select second curve");
+    flow.step(e, &|_, _| Show::default(), &|c| {
+        let (a, _) = c.curve(0).ok_or("Select first curve")?;
+        let (b, _) = c.curve(1).ok_or("Select second curve")?;
+        let samples = |cv: &om9_addon_geom::pick::CurveRef, n: usize| -> Vec<Vec3> {
+            let m = if cv.closed { n } else { n + 1 };
+            (0..m).map(|i| cv.at(i as f64 / n as f64)).collect()
+        };
+        // The flatter curve (least spread along the CPlane normal) is the top view.
+        let spread = |cv: &om9_addon_geom::pick::CurveRef| {
+            let z: Vec<f64> = samples(cv, 64).iter().map(|&p| e.plane.local(p)[2]).collect();
+            z.iter().cloned().fold(f64::MIN, f64::max) - z.iter().cloned().fold(f64::MAX, f64::min)
+        };
+        let (top, front) = if spread(a) <= spread(b) { (a, b) } else { (b, a) };
+        let fr: Vec<Vec3> = samples(front, 400).iter().map(|&p| e.plane.local(p)).collect();
+        let height_at = |x: f64| -> Option<f64> {
+            fr.windows(2).find_map(|w| {
+                let (a, b) = (w[0], w[1]);
+                ((a[0] - x) * (b[0] - x) <= 0.0 && (b[0] - a[0]).abs() > 1e-12)
+                    .then(|| a[2] + (b[2] - a[2]) * (x - a[0]) / (b[0] - a[0]))
+            })
+        };
+        let pts: Vec<Vec3> = samples(top, 200)
+            .iter()
+            .filter_map(|&p| {
+                let l = e.plane.local(p);
+                height_at(l[0]).map(|z| e.plane.at(l[0], l[1], z))
+            })
+            .collect();
+        if pts.len() < 2 {
+            return Err("The two curves must overlap along the CPlane x axis".into());
+        }
+        finish_curves("Crv2View", smooth(&pts, top.closed && pts.len() > 3).into_iter().collect())
+    })
 }
 
-fn project(e: &Event) -> Reply {
-    let pull = e.command == PULLBACK;
-    let label = if pull { "Pullback" } else { "Project" };
-    on_enter(
-        e,
-        &format!("{label}: select curves and the surface, Enter"),
-        || {
-            let ms = meshes(e);
-            let m = ms
-                .first()
-                .ok_or("select the surface")?
-                .mesh
-                .as_ref()
-                .unwrap();
-            let n = e.plane.normal();
-            let target = Target::new(m, n);
-            let mut out = Vec::new();
-            for s in curves(e) {
-                let pts: Vec<Vec3> = dense(s, 200)
-                    .iter()
-                    .filter_map(|&p| {
-                        if pull {
-                            section::closest_on_mesh(m, p)
-                        } else {
-                            target.as_ref()?.drop(add(p, scale(n, 1e6))).map(|h| h.0)
-                        }
-                    })
-                    .collect();
-                if pts.len() >= 2 {
-                    out.extend(smooth(&pts, s.closed));
-                }
-            }
-            finish_curves(label, out)
-        },
-    )
-}
+// ---- intersections ---------------------------------------------------------------------------
 
 fn chains_to_geo(chains: Vec<(Vec<Vec3>, bool)>) -> Vec<Geo> {
     chains.into_iter().map(|(p, c)| polyline(p, c)).collect()
@@ -359,7 +315,7 @@ fn chains_to_geo(chains: Vec<(Vec<Vec3>, bool)>) -> Vec<Geo> {
 fn intersection(e: &Event) -> Reply {
     on_enter(
         e,
-        "Intersection: select two or more surfaces/solids (and planes), Enter",
+        "Select objects to intersect. Press Enter when done",
         || {
             let ms = meshes(e);
             if ms.len() < 2 {
@@ -394,12 +350,12 @@ fn intersect_two_sets(e: &Event) -> Reply {
                 .map(|s| (s.id.clone(), s.mesh.clone().unwrap()))
                 .collect();
             return Reply::ask(
-                "Intersect Two Sets: now select the second set, Enter",
+                "Select second set of objects. Press Enter when done",
                 save(&st),
             )
             .want(Want::Objects);
         }
-        return Reply::ask("Intersect Two Sets: select the first set, Enter", save(&st))
+        return Reply::ask("Select first set of objects. Press Enter when done", save(&st))
             .want(Want::Objects);
     }
     let second: Vec<&Selected> = ms
@@ -408,10 +364,7 @@ fn intersect_two_sets(e: &Event) -> Reply {
         .collect();
     if !matches!(e.input, Input::Enter) || second.is_empty() {
         return Reply::ask(
-            format!(
-                "Intersect Two Sets: {} objects in the second set, Enter",
-                second.len()
-            ),
+            "Select second set of objects. Press Enter when done".to_owned(),
             save(&st),
         )
         .want(Want::Objects);
@@ -426,7 +379,7 @@ fn intersect_two_sets(e: &Event) -> Reply {
         }
     }
     finish_curves("Intersect Two Sets", out)
-        .unwrap_or_else(|w| Reply::ask("Intersect Two Sets: select the second set, Enter", save(&st)).want(Want::Objects).refuse(w))
+        .unwrap_or_else(|w| Reply::ask("Select second set of objects. Press Enter when done", save(&st)).want(Want::Objects).refuse(w))
 }
 
 // ---- offsets ---------------------------------------------------------------------------------
@@ -498,59 +451,6 @@ pub fn offset_points(
         .zip(&z)
         .map(|(q, &h)| plane.at(q[0], q[1], h))
         .collect()
-}
-
-fn offset_surface(e: &Event) -> Reply {
-    let normal = e.command == OFFSET_NORMAL;
-    let label = if normal {
-        "Offset Curve Normal to Surface"
-    } else {
-        "Offset Curve on Surface"
-    };
-    let mut flow = Flow::new(label).number("Offset distance", 1.0);
-    if !normal {
-        flow = flow.point("Side to offset to");
-    }
-    let n = e.plane.normal();
-    let make = |c: &Collected| -> Result<Vec<Geo>, String> {
-        let ms = meshes(e);
-        let m = ms
-            .first()
-            .ok_or("select the curves and the surface")?
-            .mesh
-            .as_ref()
-            .unwrap();
-        let target = Target::new(m, n).ok_or("surface")?;
-        let d = c.n(0).ok_or("distance")?;
-        let mut out = Vec::new();
-        for s in curves(e) {
-            let pts = dense(s, 200);
-            let moved: Vec<Vec3> = if normal {
-                pts.iter()
-                    .map(|&p| {
-                        target
-                            .drop(add(p, scale(n, 1e6)))
-                            .map_or(p, |(h, nn)| add(h, scale(nn, d)))
-                    })
-                    .collect()
-            } else {
-                offset_points(&pts, s.closed, &e.plane, d, c.p(0))
-                    .iter()
-                    .map(|&p| target.drop(add(p, scale(n, 1e6))).map_or(p, |h| h.0))
-                    .collect()
-            };
-            out.extend(smooth(&moved, s.closed));
-        }
-        Ok(out)
-    };
-    flow.step(
-        e,
-        &|c, _| Show {
-            geo: make(c).unwrap_or_default(),
-            ..Default::default()
-        },
-        &|c| finish_curves(label, make(c)?),
-    )
 }
 
 // ---- isocurves -------------------------------------------------------------------------------
@@ -727,7 +627,7 @@ fn uv_size(s: &Srf) -> (f64, f64) {
 fn uv_create(e: &Event) -> Reply {
     on_enter(
         e,
-        "Create UV Curves: select a surface (and curves on it), Enter",
+        "Select surface to create UV curves (and curves on it). Press Enter when done",
         || {
             let srfs = surfaces(e);
             let (_, s) = srfs.first().ok_or("select a NURBS surface")?;
@@ -762,7 +662,7 @@ fn uv_create(e: &Event) -> Reply {
 fn uv_apply(e: &Event) -> Reply {
     on_enter(
         e,
-        "Apply UV Curves: select the flat curves and the target surface, Enter",
+        "Select curves to apply and the surface to apply them to. Press Enter when done",
         || {
             let srfs = surfaces(e);
             let (_, s) = srfs.first().ok_or("select a NURBS surface")?;
@@ -786,27 +686,30 @@ fn uv_apply(e: &Event) -> Reply {
 
 // ---- points and simple curve edits ---------------------------------------------------------
 
+/// CurveThroughPt: the selected point objects become the control points of a curve (in the
+/// order they lie along, nearest neighbour from the outermost).
 fn through_points(e: &Event) -> Reply {
-    let flow = Flow::new("Curve Through Points").choice(
-        "Type",
-        &["Interpolate", "Polyline"],
-        "Interpolate",
-    );
+    let flow = Flow::new("CurveThroughPt")
+        .select_prompt("Select points for control points of curve")
+        .num("Degree", 3.0);
     let make = |c: &Collected| -> Result<Geo, String> {
         let pts: Vec<Vec3> = e
             .selection
             .iter()
             .filter(|s| s.kind == "point")
-            .map(|s| scale(add(s.bbox[0], s.bbox[1]), 0.5))
+            .map(|s| match &s.exact {
+                Some(Geo::Point { point }) => *point,
+                _ => scale(add(s.bbox[0], s.bbox[1]), 0.5),
+            })
             .collect();
         if pts.len() < 2 {
-            return Err("select two or more points".into());
+            return Err("Select two or more points".into());
         }
-        // Order as a line: nearest neighbour from the outermost point.
-        let centroid = scale(
-            pts.iter().fold([0.0; 3], |a, &p| add(a, p)),
-            1.0 / pts.len() as f64,
-        );
+        let degree = c.num(&flow, "Degree").round();
+        if !(1.0..=11.0).contains(&degree) {
+            return Err("Degree is a whole number from 1 to 11".into());
+        }
+        let centroid = scale(pts.iter().fold([0.0; 3], |a, &p| add(a, p)), 1.0 / pts.len() as f64);
         let mut rest = pts.clone();
         let start = (0..rest.len())
             .max_by(|&a, &b| dist(rest[a], centroid).total_cmp(&dist(rest[b], centroid)))
@@ -819,27 +722,13 @@ fn through_points(e: &Event) -> Reply {
                 .unwrap();
             order.push(rest.remove(i));
         }
-        Ok(if c.opt(&flow, "Type") == "Polyline" {
-            polyline(order, false)
-        } else {
-            smooth(&order, false).ok_or("points")?
-        })
+        om9_addon_geom::control_curve(&order, degree as usize).ok_or_else(|| "No curve through these points".to_owned())
     };
-    if matches!(e.input, Input::Enter)
-        && let Ok(g) = make(&load(e))
-    {
-        return Reply::finish(vec![g]).say("Curve Through Points: done");
-    }
-    let mut r = flow.step(
+    flow.step(
         e,
-        &|c, _| Show {
-            geo: make(c).into_iter().collect(),
-            ..Default::default()
-        },
-        &|c| finish_curves("Curve Through Points", vec![make(c)?]),
-    );
-    r.prompt = "Curve Through Points: select point objects, Enter".into();
-    r
+        &|c, _| Show { geo: make(c).into_iter().collect(), ..Default::default() },
+        &|c| finish_curves("CurveThroughPt", vec![make(c)?]),
+    )
 }
 
 fn mark(e: &Event) -> Reply {
@@ -849,7 +738,8 @@ fn mark(e: &Event) -> Reply {
     } else {
         "Mark Curve Start"
     };
-    on_enter(e, &format!("{label}: select curves, Enter"), || {
+    let prompt = if end { "Select curves for end point. Press Enter when done" } else { "Select curves for start point. Press Enter when done" };
+    on_enter(e, prompt, || {
         let mut out = Vec::new();
         for s in curves(e) {
             let p = dense(s, 50);
@@ -858,23 +748,21 @@ fn mark(e: &Event) -> Reply {
             } else {
                 (p[0], p[1])
             };
+            let _ = b;
             out.push(Geo::Point { point: a });
-            // A short arrow showing the curve direction there.
-            let d = unit(if end { sub(a, b) } else { sub(b, a) });
-            out.push(Geo::Line {
-                start: a,
-                end: add(a, scale(d, 1.0)),
-            });
         }
         if out.is_empty() {
             return Err("select curves".into());
         }
-        Ok(Reply::finish(out).say(format!("{label}: marked")))
+        let n = out.len();
+        Ok(Reply::finish(out).say(format!("{label}: {n} points")))
     })
 }
 
 fn seam(e: &Event) -> Reply {
-    let flow = Flow::new("Adjust Closed Curve Seam").point("New seam point on the curve");
+    let flow = Flow::new("Adjust Closed Curve Seam")
+        .select_prompt("Select closed curves for seam adjustment")
+        .point("New seam point");
     flow.step(e, &|_, _| Show::default(), &|c| {
         let p = c.p(0).unwrap();
         let items = curves(e)
@@ -915,6 +803,11 @@ fn seam(e: &Event) -> Reply {
 #[derive(Default, Serialize, Deserialize)]
 struct Clicks {
     points: Vec<Vec3>,
+    /// Sketch: `OnSurface=Yes` / `OnMesh=Yes`.
+    #[serde(default)]
+    on_surface: bool,
+    #[serde(default)]
+    on_mesh: bool,
 }
 
 fn continue_curve(e: &Event) -> Reply {
@@ -927,7 +820,7 @@ fn continue_curve(e: &Event) -> Reply {
     let mut st: Clicks = load(e);
     let cs = curves(e);
     let Some(s) = cs.first() else {
-        return ask_objects(format!("{label}: select the curve to continue"));
+        return ask_objects("Select curve to continue near end".to_owned());
     };
     match &e.input {
         Input::Point { point } => st.points.push(*point),
@@ -935,8 +828,15 @@ fn continue_curve(e: &Event) -> Reply {
             st.points.pop();
         }
         Input::Enter if !st.points.is_empty() => {
+            // Continue from the end picked (the start: the curve runs backwards first).
+            let from_start = om9_addon_geom::pick::CurveRef::picked(e, &[])
+                .and_then(|c| c.1)
+                .is_some_and(|t| t < 0.5);
             let g = if interp {
                 let mut pts = resample(&dense(s, 300), false, 16);
+                if from_start {
+                    pts.reverse();
+                }
                 pts.extend(&st.points);
                 smooth(&pts, false)
             } else {
@@ -944,6 +844,9 @@ fn continue_curve(e: &Event) -> Reply {
                     Some(Geo::Nurbs { degree, points, .. }) => (*degree, points.clone()),
                     _ => (3, resample(&s.points, false, 8)),
                 };
+                if from_start {
+                    poles.reverse();
+                }
                 poles.extend(&st.points);
                 om9_addon_geom::control_curve(&poles, degree)
             };
@@ -962,20 +865,23 @@ fn continue_curve(e: &Event) -> Reply {
         }
         _ => {}
     }
+    let from_start = om9_addon_geom::pick::CurveRef::picked(e, &[])
+        .and_then(|c| c.1)
+        .is_some_and(|t| t < 0.5);
+    let ends = dense(s, 50);
     let last = st
         .points
         .last()
         .copied()
-        .unwrap_or_else(|| *dense(s, 50).last().unwrap());
-    Reply::ask(
-        format!(
-            "{label}: next point ({} added), Enter to finish",
-            st.points.len()
-        ),
-        save(&st),
-    )
-    .want(Want::Point)
-    .rubber(Some(last))
+        .unwrap_or_else(|| if from_start { ends[0] } else { *ends.last().unwrap() });
+    let mut opts = Vec::new();
+    if !st.points.is_empty() {
+        opts.push(om9_addon_abi::session::OptionToken::action("Undo"));
+    }
+    Reply::ask("Next point. Press Enter when done", save(&st))
+        .with_options(opts)
+        .want(Want::Point)
+        .rubber(Some(last))
 }
 
 /// Curves from meshes and surfaces: Duplicate Edge (sharp edges and borders), Duplicate
@@ -988,9 +894,15 @@ fn from_objects(e: &Event) -> Reply {
         SILHOUETTE => "Silhouette",
         _ => "Extract Wireframe",
     };
+    let prompt = match cmd {
+        DUP_EDGE => "Select edges to duplicate. Press Enter when done",
+        DUP_BORDER => "Select surface or polysurface for border duplication. Press Enter when done",
+        SILHOUETTE => "Select objects for silhouette creation. Press Enter when done",
+        _ => "Select surfaces, polysurfaces or meshes for wireframe extraction. Press Enter when done",
+    };
     on_enter(
         e,
-        &format!("{label}: select surfaces, solids or meshes, Enter"),
+        prompt,
         || {
             let mut out = Vec::new();
             for (_, s) in surfaces(e) {
@@ -1040,15 +952,36 @@ fn draw_on(e: &Event) -> Reply {
         POLY_ON_SRF => "Polyline on Surface",
         _ => "Interpolate on Surface",
     };
-    let on_surface = cmd != SKETCH;
     let mut st: Clicks = load(e);
+    if cmd == SKETCH
+        && let Input::Option { name, value } = &e.input
+    {
+        let flag = |cur: bool| match value.as_deref() {
+            Some(v) => v.eq_ignore_ascii_case("yes"),
+            None => !cur,
+        };
+        match name.as_str() {
+            "OnSurface" => st.on_surface = flag(st.on_surface),
+            "OnMesh" => st.on_mesh = flag(st.on_mesh),
+            _ => {}
+        }
+    }
+    let on_surface = cmd != SKETCH || st.on_surface || st.on_mesh;
+    let sketch = matches!(cmd, SKETCH | SKETCH_SRF | SKETCH_MESH);
     let n = e.plane.normal();
     let ms = meshes(e);
     let target = ms
         .first()
         .and_then(|s| Target::new(s.mesh.as_ref().unwrap(), n));
     if on_surface && target.is_none() {
-        return ask_objects(format!("{label}: select the surface or mesh first"));
+        let prompt = match cmd {
+            SKETCH_MESH => "Select mesh to sketch on",
+            POLY_ON_SRF => "Select surface for polyline",
+            INTERP_ON_SRF => "Select surface to draw curve on",
+            _ if st.on_mesh => "Select mesh to sketch on",
+            _ => "Select surface to sketch on",
+        };
+        return Reply::ask(prompt, save(&st)).want(Want::Objects);
     }
     let drop = |p: Vec3| -> Vec3 {
         target
@@ -1116,63 +1049,28 @@ fn draw_on(e: &Event) -> Reply {
     } else {
         Vec::new()
     };
-    Reply::ask(
-        format!(
-            "{label}: click points ({} so far), Enter to finish",
-            st.points.len()
-        ),
-        save(&st),
-    )
-    .want(Want::Point)
-    .preview(preview)
-    .rubber(st.points.last().copied())
-}
-
-fn soft_edit(e: &Event) -> Reply {
-    let flow = Flow::new("Soft Edit Curve")
-        .number("Falloff distance along the curve", 5.0)
-        .point("Point on the curve to move")
-        .point("Point to move it to");
-    let make = |c: &Collected, to: Option<Vec3>| -> Vec<(String, Geo)> {
-        let (Some(fall), Some(from), Some(to)) = (c.n(0), c.p(0), c.p(1).or(to)) else {
-            return Vec::new();
-        };
-        curves(e)
-            .iter()
-            .filter_map(|s| {
-                let pts = resample(&dense(s, 400), s.closed, 80);
-                let path = Path::new(&pts, s.closed)?;
-                let s0 = path.closest(from);
-                let d = sub(to, from);
-                let moved: Vec<Vec3> = pts
-                    .iter()
-                    .map(|&p| {
-                        let ds = (path.closest(p) - s0).abs();
-                        let ds = if s.closed {
-                            ds.min(path.length() - ds)
-                        } else {
-                            ds
-                        };
-                        let w = if ds >= fall {
-                            0.0
-                        } else {
-                            0.5 + 0.5 * (std::f64::consts::PI * ds / fall).cos()
-                        };
-                        add(p, scale(d, w))
-                    })
-                    .collect();
-                smooth(&moved, s.closed).map(|g| (s.id.clone(), g))
-            })
-            .collect()
+    let started = !st.points.is_empty();
+    let prompt = match (sketch, cmd == POLY_ON_SRF, started) {
+        (true, _, false) => "Start of sketch",
+        (true, _, true) => "Next point of sketch. Press Enter when done",
+        (false, true, false) => "Start of polyline",
+        (false, true, true) => "Next point of polyline. Press Enter when done",
+        (false, false, false) => "Start of curve",
+        (false, false, true) => "Next point. Press Enter when done",
     };
-    flow.step(
-        e,
-        &|c, h| Show {
-            geo: make(c, h).into_iter().map(|x| x.1).collect(),
-            ..Default::default()
-        },
-        &|c| replace("Soft Edit Curve", make(c, None)),
-    )
+    let mut opts = Vec::new();
+    if cmd == SKETCH && !started {
+        opts.push(om9_addon_abi::session::OptionToken::toggle("OnSurface", st.on_surface));
+        opts.push(om9_addon_abi::session::OptionToken::toggle("OnMesh", st.on_mesh));
+    }
+    if started {
+        opts.push(om9_addon_abi::session::OptionToken::action("Undo"));
+    }
+    Reply::ask(prompt, save(&st))
+        .with_options(opts)
+        .want(Want::Point)
+        .preview(preview)
+        .rubber(st.points.last().copied())
 }
 
 #[cfg(test)]
