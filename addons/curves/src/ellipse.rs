@@ -251,7 +251,16 @@ pub fn step(e: &Event) -> Reply {
     match &e.input {
         Input::Start | Input::Selection => {
             if st.mode == "around" && st.curve.is_none() {
-                st.curve = CurveRef::all(e).into_iter().next();
+                // The click on the curve is the center (as in Matrix).
+                match CurveRef::picked(e, &[]) {
+                    Some((c, Some(t))) if matches!(e.input, Input::Selection) => {
+                        st.normal = Some(c.tangent(t));
+                        st.points.push(c.at(t));
+                        st.curve = Some(c);
+                    }
+                    Some((c, _)) => st.curve = Some(c),
+                    None => {}
+                }
             }
             st.reply(e, None)
         }

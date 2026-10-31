@@ -50,15 +50,16 @@ fn targets<'a>(e: &'a Event, skip: &[String]) -> Vec<Onto<'a>> {
 }
 
 /// The point straight down `n` (the nearest hit over all targets, from above).
-fn drop_on(t: &[(Option<Target>, Option<&Srf>)], p: Vec3, n: Vec3) -> Option<Vec3> {
-    let mut best: Option<(f64, Vec3)> = None;
+fn drop_on(t: &[(Option<Target>, Option<&Srf>)], p: Vec3, n: Vec3) -> Vec<Vec3> {
+    // Every crossing of the line through p along n, on every target, from the top down
+    // (Rhino projects both ways: a curve over a ring lands on its top and its bottom).
+    let mut all: Vec<(f64, Vec3)> = Vec::new();
     for (mesh, srf) in t {
-        let hit = mesh
-            .as_ref()
-            .and_then(|m| m.drop(add(p, scale(n, 1e6))).map(|h| h.0));
-        let hit = match (hit, srf) {
+        let Some(m) = mesh.as_ref() else { continue };
+        for (h0, _) in m.hits(p) {
+            let mut h = h0;
             // Refine onto the exact surface: back to the line through p along n.
-            (Some(mut h), Some(s)) => {
+            if let Some(s) = srf {
                 for _ in 0..8 {
                     let (u, v) = s.closest_st(h);
                     let q = s.at_st(u, v);
@@ -70,18 +71,13 @@ fn drop_on(t: &[(Option<Target>, Option<&Srf>)], p: Vec3, n: Vec3) -> Option<Vec
                     let t = dot(sub(q, p), m) / den;
                     h = add(p, scale(n, t));
                 }
-                Some(h)
             }
-            (h, _) => h,
-        };
-        if let Some(h) = hit {
-            let height = dot(sub(p, h), n);
-            if best.is_none_or(|(b, _)| height < b) {
-                best = Some((height, h));
-            }
+            all.push((dot(sub(h, p), n), h));
         }
     }
-    best.map(|b| b.1)
+    all.sort_by(|a, b| b.0.total_cmp(&a.0));
+    all.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-6);
+    all.into_iter().map(|x| x.1).collect()
 }
 
 /// The closest point over all targets.
@@ -130,62 +126,71 @@ fn fit_points(pts: &[Vec3], closed: bool) -> Option<Geo> {
     }
 }
 
-/// Map a curve point by point (`None`: off the target), split where it leaves.
-fn mapped(c: &CurveRef, loose: bool, f: &dyn Fn(Vec3) -> Option<Vec3>) -> Vec<Geo> {
+/// Puts moved control points back into a curve.
+type Rebuild = Box<dyn Fn(Vec<Vec3>) -> Geo>;
+
+/// Map a curve point by point, each sample landing on one or more layers (top first): one
+/// result per layer, split where the curve leaves it.
+fn mapped(c: &CurveRef, loose: bool, f: &dyn Fn(Vec3) -> Vec<Vec3>) -> Vec<Geo> {
     if loose {
-        // Control points only.
+        // Control points only, layer by layer while every pole has one.
         let g = match c.geo() {
             g @ Geo::Nurbs { .. } => g,
-            other => om9_addon_geom::join::join(std::slice::from_ref(&other), 1e-9).unwrap_or(other),
+            other => {
+                om9_addon_geom::join::join(std::slice::from_ref(&other), 1e-9).unwrap_or(other)
+            }
         };
-        return match g {
+        let (poles, rebuild): (Vec<Vec3>, Rebuild) = match g {
             Geo::Nurbs {
                 degree,
                 points,
                 weights,
                 knots,
-            } => {
-                let moved: Option<Vec<Vec3>> = points.iter().map(|p| f(*p)).collect();
-                moved
-                    .map(|points| Geo::Nurbs {
-                        degree,
-                        points,
-                        weights,
-                        knots,
-                    })
-                    .into_iter()
-                    .collect()
-            }
-            Geo::Polyline { points, closed } => {
-                let moved: Option<Vec<Vec3>> = points.iter().map(|p| f(*p)).collect();
-                moved
-                    .map(|points| Geo::Polyline { points, closed })
-                    .into_iter()
-                    .collect()
-            }
-            _ => Vec::new(),
+            } => (
+                points,
+                Box::new(move |points| Geo::Nurbs {
+                    degree,
+                    points,
+                    weights: weights.clone(),
+                    knots: knots.clone(),
+                }),
+            ),
+            Geo::Polyline { points, closed } => (
+                points,
+                Box::new(move |points| Geo::Polyline { points, closed }),
+            ),
+            _ => return Vec::new(),
         };
+        let hits: Vec<Vec<Vec3>> = poles.iter().map(|p| f(*p)).collect();
+        let layers = hits.iter().map(Vec::len).min().unwrap_or(0);
+        return (0..layers)
+            .map(|k| rebuild(hits.iter().map(|h| h[k]).collect()))
+            .collect();
     }
     let n = 400;
     let m = if c.closed { n } else { n + 1 };
-    let hits: Vec<Option<Vec3>> = (0..m).map(|i| f(c.at(i as f64 / n as f64))).collect();
-    let all = hits.iter().all(Option::is_some);
-    if all && c.closed {
-        let pts: Vec<Vec3> = hits.into_iter().flatten().collect();
-        return fit_points(&pts, true).into_iter().collect();
-    }
+    let hits: Vec<Vec<Vec3>> = (0..m).map(|i| f(c.at(i as f64 / n as f64))).collect();
+    let layers = hits.iter().map(Vec::len).max().unwrap_or(0);
     let mut out = Vec::new();
-    let mut run = Vec::new();
-    for h in hits {
-        match h {
-            Some(p) => run.push(p),
-            None => {
-                out.extend(fit_points(&run, false));
-                run.clear();
+    for k in 0..layers {
+        let layer: Vec<Option<Vec3>> = hits.iter().map(|h| h.get(k).copied()).collect();
+        if c.closed && layer.iter().all(Option::is_some) {
+            let pts: Vec<Vec3> = layer.into_iter().flatten().collect();
+            out.extend(fit_points(&pts, true));
+            continue;
+        }
+        let mut run = Vec::new();
+        for h in layer {
+            match h {
+                Some(p) => run.push(p),
+                None => {
+                    out.extend(fit_points(&run, false));
+                    run.clear();
+                }
             }
         }
+        out.extend(fit_points(&run, false));
     }
-    out.extend(fit_points(&run, false));
     out
 }
 
@@ -261,9 +266,9 @@ pub(crate) fn project(e: &Event, pull: bool) -> Reply {
             )
         })
         .collect();
-    let f = |p: Vec3| {
+    let f = |p: Vec3| -> Vec<Vec3> {
         if pull {
-            pull_on(&onto, p)
+            pull_on(&onto, p).into_iter().collect()
         } else {
             drop_on(&meshes, p, n)
         }
@@ -278,7 +283,7 @@ pub(crate) fn project(e: &Event, pull: bool) -> Reply {
                 _ => None,
             });
             let p = p.unwrap_or_else(|| scale(add(s.bbox[0], s.bbox[1]), 0.5));
-            made.extend(f(p).map(|q| Geo::Point { point: q }));
+            made.extend(f(p).into_iter().map(|q| Geo::Point { point: q }));
         } else if let Some(c) = CurveRef::of(s) {
             made.extend(mapped(&c, st.loose, &f));
         }

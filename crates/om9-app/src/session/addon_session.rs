@@ -935,6 +935,10 @@ impl Controller {
             if let Some(session) = self.addon_session.as_mut() {
                 session.hover_lines = lines;
                 session.rubber_from = rubber.or(session.rubber_from);
+                // A command that follows the pointer (Sketch) keeps what the move added.
+                if reply.track && reply.error.is_none() && !reply.done {
+                    session.reply.state = reply.state.clone();
+                }
             }
             return Ok(());
         }

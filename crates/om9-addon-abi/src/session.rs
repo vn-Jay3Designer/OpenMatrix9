@@ -371,6 +371,10 @@ pub struct Reply {
     /// Preview drawn over the viewports (never a document object).
     #[serde(default)]
     pub preview: Vec<Geo>,
+    /// The command follows the pointer (Sketch): the host keeps the `state` of replies to
+    /// hover events too, not only to clicks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub track: bool,
     /// Draw a rubber-band line from this point to the cursor.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rubber_from: Option<Vec3>,
@@ -460,6 +464,11 @@ impl Reply {
             want: Want::Nothing,
             ..Default::default()
         }
+    }
+    /// Keep the state of hover replies (see [`Reply::track`]).
+    pub fn tracking(mut self) -> Reply {
+        self.track = true;
+        self
     }
     pub fn say(mut self, message: impl Into<String>) -> Reply {
         self.messages.push(message.into());

@@ -40,6 +40,9 @@ pub struct State {
     pub points: Vec<Vec3>,
     pub angle: Option<f64>,
     pub curves: Vec<CurveRef>,
+    /// Where each curve was clicked (its parameter), when it was picked by a click.
+    #[serde(default)]
+    pub picks: Vec<Option<f64>>,
     pub surface: Option<SurfRef>,
     /// Direction the end follows (unit), once known.
     pub axis: Option<Vec3>,
@@ -300,6 +303,9 @@ pub fn step(e: &Event) -> Reply {
     match &e.input {
         Input::Start | Input::Selection => {
             take_selection(&mut st, e);
+            if let Some(r) = st.settle_picks(e) {
+                return r;
+            }
             st.reply(e, None)
         }
         Input::Hover { point } => st.reply(e, Some(*point)),
@@ -491,11 +497,63 @@ fn take_selection(st: &mut State, e: &Event) {
     if st.mode == "normal" && st.surface.is_none() {
         st.surface = e.selection.iter().find_map(SurfRef::of);
     }
-    if st.curves_needed() > 0 {
-        for c in CurveRef::all(e) {
-            if st.curves_needed() > 0 && st.curves.iter().all(|k| k.id != c.id) {
-                st.curves.push(c);
+    while st.curves_needed() > 0 {
+        let taken: Vec<String> = st.curves.iter().map(|k| k.id.clone()).collect();
+        let taken: Vec<&str> = taken.iter().map(String::as_str).collect();
+        let Some((c, t)) = CurveRef::picked(e, &taken) else { break };
+        let t = if matches!(e.input, Input::Start) { None } else { t };
+        st.picks.resize(st.curves.len(), None);
+        st.curves.push(c);
+        st.picks.push(t);
+    }
+}
+
+impl State {
+    /// What a click on the curve itself settles at once (as in Matrix, where the pick on the
+    /// curve is the point): the start of a Perpendicular/Tangent line, or the whole line for
+    /// 2Curves.
+    fn settle_picks(&mut self, e: &Event) -> Option<Reply> {
+        let n_plane = e.plane.normal();
+        let pick = |k: usize| self.picks.get(k).copied().flatten();
+        match self.mode.as_str() {
+            "perp" | "tan" if self.start.is_none() && self.curves.len() == 1 => {
+                let t = pick(0)?;
+                let c = &self.curves[0];
+                let tan = c.tangent(t);
+                self.start = Some(c.at(t));
+                self.axis = Some(if self.mode == "tan" {
+                    tan
+                } else {
+                    let side = cross(n_plane, tan);
+                    if norm(side) > 1e-9 { unit(side) } else { unit(cross(tan, e.plane.x)) }
+                });
+                None
             }
+            "tan_2" if self.curves.len() == 2 => {
+                let (ta, tb) = (pick(0)?, pick(1)?);
+                let (a, b) = (&self.curves[0], &self.curves[1]);
+                Some(match common_tangent(a, b, ta, tb, n_plane) {
+                    Some((x, y)) if dist(x, y) > g::EPS => self.done(x, y),
+                    _ => {
+                        self.curves.pop();
+                        self.picks.pop();
+                        self.reply(e, None).refuse("No line touches both curves near those points")
+                    }
+                })
+            }
+            "perp_2" if self.curves.len() == 2 => {
+                pick(0)?;
+                pick(1)?;
+                let (a, b) = closest_pair(&self.curves[0], &self.curves[1]);
+                Some(if dist(a, b) < g::EPS {
+                    self.curves.pop();
+                    self.picks.pop();
+                    self.reply(e, None).refuse("The curves touch: no perpendicular line")
+                } else {
+                    self.done(a, b)
+                })
+            }
+            _ => None,
         }
     }
 }

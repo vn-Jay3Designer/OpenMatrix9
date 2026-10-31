@@ -790,3 +790,44 @@ fn control_point_curve_closes_smoothly_unless_sharp() {
     let g = created(&run(CONTROL, inputs));
     assert!(dist(tangent(&g, 0.0), tangent(&g, 1.0)) > 1e-2, "kink at the seam");
 }
+
+#[test]
+fn line_curves_are_picked_where_clicked() {
+    let a = circle_sel("a", 0.0, 0.0, 1.0);
+    let b = circle_sel("b", 10.0, 0.0, 1.0);
+    let mut st = Value::Null;
+    let mut go = |input: Input, sel: &[Selected], pick: Option<Vec3>| {
+        let mut e = ev(LINE, input, &st, sel);
+        e.pick = pick;
+        let r = Curves::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} ({})", r.error, r.prompt);
+        st = r.state.clone();
+        r
+    };
+    // Tangent › 2Curves: two clicks near the tops give the upper common tangent at once.
+    go(Input::Start, &[], None);
+    go(opt("Tangent"), &[], None);
+    go(opt("2Curves"), &[], None);
+    go(Input::Selection, std::slice::from_ref(&a), Some([0.1, 1.0, 0.0]));
+    let r = go(Input::Selection, &[a.clone(), b.clone()], Some([9.9, 1.0, 0.0]));
+    assert!(r.done, "{}", r.prompt);
+    let Geo::Line { start, end } = r.create[0] else { panic!() };
+    assert!((start[1] - 1.0).abs() < 1e-4 && (end[1] - 1.0).abs() < 1e-4, "{start:?} {end:?}");
+    // Perpendicular: the click on the curve is the start; only the end is asked.
+    let mut st2 = Value::Null;
+    let mut go2 = |input: Input, sel: &[Selected], pick: Option<Vec3>| {
+        let mut e = ev(LINE, input, &st2, sel);
+        e.pick = pick;
+        let r = Curves::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} ({})", r.error, r.prompt);
+        st2 = r.state.clone();
+        r
+    };
+    go2(Input::Start, &[], None);
+    go2(opt("Perpendicular"), &[], None);
+    let r = go2(Input::Selection, std::slice::from_ref(&a), Some([1.0, 0.0, 0.0]));
+    assert_eq!(r.prompt, "End of line");
+    let r = go2(pt(5.0, 0.0), std::slice::from_ref(&a), None);
+    let Geo::Line { start, end } = r.create[0] else { panic!() };
+    assert!(dist(start, [1.0, 0.0, 0.0]) < 1e-6 && dist(end, [5.0, 0.0, 0.0]) < 1e-6, "{start:?} {end:?}");
+}

@@ -989,7 +989,25 @@ fn draw_on(e: &Event) -> Reply {
             .and_then(|t| t.drop(add(p, scale(n, 1e6))))
             .map_or(p, |h| h.0)
     };
+    // Sketch follows the pointer: the first click starts the stroke, moving draws it, the
+    // next click (or Enter) ends it.
+    let mut end_stroke = false;
     match &e.input {
+        Input::Hover { point } if sketch && !st.points.is_empty() => {
+            let p = drop(*point);
+            if st.points.last().is_some_and(|q| dist(*q, p) >= 0.1) {
+                st.points.push(p);
+            }
+        }
+        Input::Point { point } if sketch && !st.points.is_empty() => {
+            st.points.push(drop(*point));
+            end_stroke = true;
+        }
+        _ => {}
+    }
+    let input = if end_stroke { Input::Enter } else { e.input.clone() };
+    match &input {
+        Input::Hover { .. } => {}
         Input::Point { point } => st.points.push(drop(*point)),
         Input::Undo => {
             st.points.pop();
@@ -1010,7 +1028,7 @@ fn draw_on(e: &Event) -> Reply {
                     Some(polyline(dense_pts, false))
                 }
                 SKETCH | SKETCH_SRF | SKETCH_MESH => {
-                    // Smooth the stroke a little, then fit.
+                    // Smooth the stroke a little, then fit with about one pole per 4 points.
                     let mut s = pts.clone();
                     for _ in 0..2 {
                         let prev = s.clone();
@@ -1021,7 +1039,12 @@ fn draw_on(e: &Event) -> Reply {
                             );
                         }
                     }
-                    let fitted = smooth(&s, false);
+                    let poles = (s.len() / 4).clamp(4, 64).min(s.len());
+                    let fitted = if s.len() > 8 {
+                        om9_addon_geom::interp::fit(&s, poles, 3, false).or_else(|| smooth(&s, false))
+                    } else {
+                        smooth(&s, false)
+                    };
                     if on_surface {
                         fitted.map(|g| {
                             let p: Vec<Vec3> =
@@ -1052,7 +1075,7 @@ fn draw_on(e: &Event) -> Reply {
     let started = !st.points.is_empty();
     let prompt = match (sketch, cmd == POLY_ON_SRF, started) {
         (true, _, false) => "Start of sketch",
-        (true, _, true) => "Next point of sketch. Press Enter when done",
+        (true, _, true) => "Move to draw, click to end the sketch",
         (false, true, false) => "Start of polyline",
         (false, true, true) => "Next point of polyline. Press Enter when done",
         (false, false, false) => "Start of curve",
@@ -1066,11 +1089,15 @@ fn draw_on(e: &Event) -> Reply {
     if started {
         opts.push(om9_addon_abi::session::OptionToken::action("Undo"));
     }
-    Reply::ask(prompt, save(&st))
+    let r = Reply::ask(prompt, save(&st))
         .with_options(opts)
         .want(Want::Point)
-        .preview(preview)
-        .rubber(st.points.last().copied())
+        .preview(preview);
+    if sketch {
+        r.tracking()
+    } else {
+        r.rubber(st.points.last().copied())
+    }
 }
 
 #[cfg(test)]

@@ -488,7 +488,16 @@ pub fn step(e: &Event) -> Reply {
                 }
             }
             if st.mode == "around" && st.curves.is_empty() {
-                st.curves.extend(CurveRef::all(e).into_iter().take(1));
+                // The click on the curve is the center (as in Matrix).
+                match CurveRef::picked(e, &[]) {
+                    Some((c, Some(t))) if matches!(e.input, Input::Selection) => {
+                        st.normal = Some(c.tangent(t));
+                        st.points.push(c.at(t));
+                        st.curves.push(c);
+                    }
+                    Some((c, _)) => st.curves.push(c),
+                    None => {}
+                }
             }
             st.reply(e, None)
         }

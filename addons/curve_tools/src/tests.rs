@@ -720,10 +720,9 @@ fn clicked_curves_and_two_views() {
         vec![],
         vec![
             pt([0.0; 3]),
-            pt([1.0, 1.0, 0.0]),
-            pt([2.0, 0.0, 0.0]),
+            Input::Hover { point: [1.0, 1.0, 0.0] },
+            Input::Hover { point: [2.0, 0.0, 0.0] },
             pt([3.0, 1.0, 0.0]),
-            Input::Enter,
         ],
     );
     assert_eq!(r.create.len(), 1);
@@ -914,4 +913,37 @@ fn points_marks_continue_and_sketch_prompts() {
     let mut e = event(SKETCH, Input::Option { name: "OnSurface".into(), value: None }, vec![]);
     e.state = r.state.clone();
     assert_eq!(CurveTools::step(&e).unwrap().prompt, "Select surface to sketch on");
+}
+
+#[test]
+fn project_lands_on_every_layer() {
+    let ball = solid("s", sphere(3.0, 48));
+    let r = run(PROJECT, vec![circle("k", [0.0, 0.0, 10.0], 1.0), ball], vec![Input::Enter, Input::Enter]);
+    assert_eq!(r.create.len(), 2, "top and bottom of the ball");
+    let z: Vec<f64> = r.create.iter().map(|g| nurbs::samples(g, 10)[0][2]).collect();
+    let want = 8f64.sqrt();
+    assert!((z[0] - want).abs() < 0.05 && (z[1] + want).abs() < 0.05, "{z:?}");
+}
+
+#[test]
+fn sketch_follows_the_pointer() {
+    let mut e = event(SKETCH, Input::Start, vec![]);
+    let mut r = CurveTools::step(&e).unwrap();
+    let path = |x: f64| [x, (x * 0.5).sin(), 0.0];
+    let mut steps = vec![pt(path(0.0))];
+    steps.extend((1..200).map(|i| Input::Hover { point: path(i as f64 * 0.05) }));
+    steps.push(pt(path(10.0)));
+    for input in steps {
+        e.state = r.state.clone();
+        e.input = input;
+        r = CurveTools::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?}", r.error);
+        if !r.done {
+            assert!(r.track, "the host keeps hover states");
+        }
+    }
+    assert!(r.done, "{}", r.prompt);
+    for p in nurbs::samples(&r.create[0], 100) {
+        assert!((p[1] - (p[0] * 0.5).sin()).abs() < 0.02, "{p:?}");
+    }
 }

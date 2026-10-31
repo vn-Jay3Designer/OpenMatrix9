@@ -42,20 +42,27 @@ impl Path {
         } else {
             s.clamp(0.0, self.length())
         };
-        let i = match self
-            .lengths
-            .binary_search_by(|l| l.total_cmp(&s))
-        {
+        let i = match self.lengths.binary_search_by(|l| l.total_cmp(&s)) {
             Ok(i) => i.min(self.points.len() - 2),
             Err(i) => i.saturating_sub(1).min(self.points.len() - 2),
         };
         let l = self.lengths[i + 1] - self.lengths[i];
-        (i, if l > 0.0 { (s - self.lengths[i]) / l } else { 0.0 })
+        (
+            i,
+            if l > 0.0 {
+                (s - self.lengths[i]) / l
+            } else {
+                0.0
+            },
+        )
     }
     /// Point at arc length `s`.
     pub fn at(&self, s: f64) -> Vec3 {
         let (i, t) = self.segment(s);
-        add(self.points[i], scale(sub(self.points[i + 1], self.points[i]), t))
+        add(
+            self.points[i],
+            scale(sub(self.points[i + 1], self.points[i]), t),
+        )
     }
     /// Unit tangent at arc length `s` (averaged over a short window so corners turn smoothly).
     pub fn tangent(&self, s: f64) -> Vec3 {
@@ -63,14 +70,20 @@ impl Path {
         let (a, b) = if self.closed {
             (self.at(s - h), self.at(s + h))
         } else {
-            (self.at((s - h).max(0.0)), self.at((s + h).min(self.length())))
+            (
+                self.at((s - h).max(0.0)),
+                self.at((s + h).min(self.length())),
+            )
         };
         unit(sub(b, a))
     }
     /// The centroid of the samples (for "outward" directions of closed curves).
     pub fn centroid(&self) -> Vec3 {
         let n = self.points.len() as f64;
-        scale(self.points.iter().fold([0.0; 3], |a, &p| add(a, p)), 1.0 / n)
+        scale(
+            self.points.iter().fold([0.0; 3], |a, &p| add(a, p)),
+            1.0 / n,
+        )
     }
     /// Frame along the path: x = tangent, z = `up` made perpendicular (for closed curves
     /// `None` means outward from the centroid), y = z × x.
@@ -98,7 +111,10 @@ impl Path {
             };
             let d = dist(p, add(a, scale(ab, t)));
             if d < best.0 {
-                best = (d, self.lengths[i] + t * (self.lengths[i + 1] - self.lengths[i]));
+                best = (
+                    d,
+                    self.lengths[i] + t * (self.lengths[i + 1] - self.lengths[i]),
+                );
             }
         }
         best.1
@@ -181,6 +197,31 @@ impl<'a> Target<'a> {
 
     /// Where the line through `p` along the grid axis meets the surface (the hit highest
     /// along the axis), and the surface normal there (facing +axis).
+    /// Every crossing of the line through `p` along the axis with the mesh, from the top
+    /// (largest along the axis) down: (point, unit normal facing the axis).
+    pub fn hits(&self, p: Vec3) -> Vec<(Vec3, Vec3)> {
+        let l = self.frame.local(p);
+        let i = ((l[0] - self.lo[0]) / self.cell).floor();
+        let j = ((l[1] - self.lo[1]) / self.cell).floor();
+        if i < 0.0 || j < 0.0 || i as usize >= self.dims[0] || j as usize >= self.dims[1] {
+            return Vec::new();
+        }
+        let dir = self.frame.z;
+        let mut all: Vec<(f64, Vec3, Vec3)> = Vec::new();
+        for &ti in &self.cells[i as usize * self.dims[1] + j as usize] {
+            let t = self.mesh.triangles[ti as usize];
+            let v = |k: usize| self.mesh.vertices[t[k] as usize];
+            if let Some((h, n)) = ray_triangle(p, dir, v(0), v(1), v(2)) {
+                let n = if dot(n, dir) < 0.0 { scale(n, -1.0) } else { n };
+                all.push((h, add(p, scale(dir, h)), n));
+            }
+        }
+        all.sort_by(|a, b| b.0.total_cmp(&a.0));
+        // A crossing on a shared edge shows up once per triangle: keep one.
+        all.dedup_by(|a, b| (a.0 - b.0).abs() < 1e-9);
+        all.into_iter().map(|x| (x.1, x.2)).collect()
+    }
+
     pub fn drop(&self, p: Vec3) -> Option<(Vec3, Vec3)> {
         let l = self.frame.local(p);
         let i = ((l[0] - self.lo[0]) / self.cell).floor();
@@ -267,14 +308,23 @@ mod tests {
             .collect();
         let r = Path::new(&ring, true).unwrap();
         let f = r.frame(0.0, None);
-        assert!((f.z[0] - 1.0).abs() < 1e-3, "outward at the start: {:?}", f.z);
+        assert!(
+            (f.z[0] - 1.0).abs() < 1e-3,
+            "outward at the start: {:?}",
+            f.z
+        );
         assert!((r.length() - std::f64::consts::TAU * 5.0).abs() < 0.01);
     }
 
     #[test]
     fn rays_drop_onto_a_mesh_and_frames_map() {
         let m = SelectedMesh {
-            vertices: vec![[-5.0, -5.0, 2.0], [5.0, -5.0, 2.0], [5.0, 5.0, 4.0], [-5.0, 5.0, 4.0]],
+            vertices: vec![
+                [-5.0, -5.0, 2.0],
+                [5.0, -5.0, 2.0],
+                [5.0, 5.0, 4.0],
+                [-5.0, 5.0, 4.0],
+            ],
             triangles: vec![[0, 1, 2], [0, 2, 3]],
         };
         let t = Target::new(&m, [0.0, 0.0, 1.0]).unwrap();

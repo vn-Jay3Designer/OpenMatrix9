@@ -892,3 +892,65 @@ fn vietnamese_interface_keeps_english_typing() {
     );
     c.cancel_addon_session();
 }
+
+#[test]
+fn curves_are_picked_by_clicking_and_sketch_follows_the_pointer() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-pick-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats
+        .iter()
+        .map(|(id, c)| FeatureName {
+            id,
+            command: c.as_deref(),
+        })
+        .collect();
+    let mut c = Controller::new(Document::new("pick"), Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    let line = |c: &mut Controller, a: [f64; 3], b: [f64; 3]| {
+        let before: Vec<_> = c.document().entities.keys().copied().collect();
+        c.run_addon_command("CurvePolylinePolyline").unwrap();
+        c.session_point(a).unwrap();
+        c.session_point(b).unwrap();
+        c.submit("").unwrap();
+        *c.document().entities.keys().find(|k| !before.contains(k)).unwrap()
+    };
+    let a = line(&mut c, [-10.0, 0.0, 0.0], [10.0, 0.0, 0.0]);
+    let b = line(&mut c, [0.0, -10.0, 0.0], [0.0, 10.0, 0.0]);
+    assert_ne!(a, b);
+    // Fillet: click the first line on +x, the second on +y.
+    c.clear_selection();
+    c.run_addon_command("CurveFilletCurves").unwrap();
+    assert!(c.prompt_text().starts_with("Select first curve to fillet"), "{}", c.prompt_text());
+    c.note_session_pick(Some([5.0, 0.0, 0.0]));
+    c.select_objects(&[a]).unwrap();
+    c.refresh_addon_session();
+    assert!(c.prompt_text().starts_with("Select second curve to fillet"), "{}", c.prompt_text());
+    c.note_session_pick(Some([0.0, 6.0, 0.0]));
+    c.select_objects(&[a, b]).unwrap();
+    c.refresh_addon_session();
+    assert!(c.addon_session().is_none(), "the fillet is made on the second pick");
+    assert_eq!(c.document().entities.len(), 3, "two trimmed lines and the arc");
+    // The arc (an OM9 circle with an angle domain): radius 1 around (1, 1).
+    let arc = c.document().entities.values().find_map(|e| match &e.geometry {
+        Geometry::Curve(Curve::Circle { center, radius, domain, .. }) => Some((*center, *radius, *domain)),
+        _ => None,
+    });
+    let (center, radius, domain) = arc.expect("a fillet arc");
+    assert!((center[0] - 1.0).abs() < 1e-6 && (center[1] - 1.0).abs() < 1e-6 && (radius - 1.0).abs() < 1e-9, "{center:?} {radius}");
+    assert!((domain[1] - domain[0] - std::f64::consts::FRAC_PI_2).abs() < 1e-6, "a quarter: {domain:?}");
+    // Sketch: click, move, click.
+    let before = c.document().entities.len();
+    c.clear_selection();
+    c.run_addon_command("CurveFreeFormSketch").unwrap();
+    c.session_point([0.0, 20.0, 0.0]).unwrap();
+    for i in 1..60 {
+        let x = i as f64 * 0.1;
+        c.session_hover([x, 20.0 + (x * 0.8).sin(), 0.0]);
+    }
+    c.session_point([6.0, 20.0 + (4.8f64).sin(), 0.0]).unwrap();
+    assert!(c.addon_session().is_none());
+    assert_eq!(c.document().entities.len(), before + 1, "the stroke became a curve");
+    fs::remove_dir_all(&tmp).unwrap();
+}
