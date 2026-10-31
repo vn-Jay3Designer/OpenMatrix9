@@ -1,19 +1,18 @@
 # Quick Curve Blend
 
-Nối hai đầu gần nhau của hai đường cong bằng đường chuyển tiếp mượt.
+Nối nhanh hai đầu đường cong bằng đường chuyển tiếp (Rhino Blend): bấm gần đầu cần nối của mỗi đường.
 
 - **Mã lệnh:** `CurveBlendCurvesBlendCurves`
 - **Vị trí:** menu Curve, ô số 11
 - **Icon:** `Resources/icons/curve-minimal/CurveBlendCurvesBlendCurves.svg`
-- **Gọi bằng dòng lệnh:** `CurveBlendCurvesBlendCurves`, `BlendCrv`, `QuickBlend`
+- **Gọi bằng dòng lệnh:** `CurveBlendCurvesBlendCurves`, `Blend`, `QuickBlend`
 - **Cách chạy:** từng bước trên dòng lệnh; Enter để tạo, Esc để huỷ
 
 ## Cách dùng
 
-1. Chọn hai đường cong.
-2. Continuity=Tangency/Curvature.
-3. Enter.
+1. Select first curve near end: bấm đường thứ nhất gần đầu cần nối.
+2. Select second curve near end: bấm đường thứ hai; đường nối tạo ngay.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Continuity: liên tục tiếp tuyến hoặc độ cong.
+- Continuity=Position/Tangency/Curvature/G3/G4 (mặc định Curvature).

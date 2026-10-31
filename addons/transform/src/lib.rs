@@ -754,6 +754,7 @@ mod tests {
                 state: state.clone(),
                 plane: Plane::default(),
                 selection: selection.clone(),
+                pick: None,
                 settings: Default::default(),
             };
             let r = Transforms::step(&e).unwrap();

@@ -692,6 +692,7 @@ fn from_surface_command(e: &Event) -> Reply {
         state: serde_json::Value::Null,
         plane: e.plane,
         selection: e.selection.clone(),
+        pick: None,
         settings: BTreeMap::new(),
     };
     let made = <om9_surfaces::Surfaces as Interactive>::step(&ev)

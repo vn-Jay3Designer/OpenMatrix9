@@ -51,6 +51,9 @@ pub struct AddonSession {
     /// Every object selected at some step: a command that asks for two groups (Boolean
     /// Difference: first the objects, then the cutters) may change all of them.
     seen: std::collections::BTreeSet<om9_core::identity::ObjectId>,
+    /// Where the last selecting click landed (document units): Fillet, Extend, Match … read
+    /// which part of a curve was picked.
+    pick: Option<Point3>,
 }
 
 impl AddonSession {
@@ -829,6 +832,7 @@ impl Controller {
             hover_at: None,
             mesh_data,
             seen: Default::default(),
+            pick: None,
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -897,6 +901,7 @@ impl Controller {
                 y: plane.y,
             },
             selection: self.session_selection(k, session.mesh_data),
+            pick: session.pick.map(|p| mm(p, k)),
             settings,
         };
         let bytes = serde_json::to_vec(&event).map_err(|e| Error::Io(e.to_string()))?;
@@ -1003,6 +1008,16 @@ impl Controller {
             let _ = self.session_step(Input::Hover {
                 point: mm(point, k),
             });
+        }
+    }
+
+    /// A click in a viewport that may select an object while a session waits for objects:
+    /// remember where it landed, so the command knows which part of the curve was picked.
+    pub fn note_session_pick(&mut self, point: Option<Point3>) {
+        if let Some(s) = self.addon_session.as_mut()
+            && matches!(s.reply.want, Want::Objects)
+        {
+            s.pick = point;
         }
     }
 

@@ -1,6 +1,6 @@
 # Fillet Corners
 
-Bo tròn mọi góc của polyline.
+Bo tròn mọi góc của đường gấp khúc (Rhino FilletCorners).
 
 - **Mã lệnh:** `CurveFilletCorners`
 - **Vị trí:** menu Curve, ô số 22
@@ -10,5 +10,5 @@ Bo tròn mọi góc của polyline.
 
 ## Cách dùng
 
-1. Chọn đường cong, Enter.
-2. Gõ bán kính.
+1. Select curves to fillet corners, Enter.
+2. Radius <1>: gõ bán kính.

@@ -1,6 +1,6 @@
 # Match Curve
 
-Khớp đầu đường cong thứ nhất vào đường thứ hai (vị trí / tiếp tuyến).
+Khớp đầu một đường cong vào đầu đường cong khác (Rhino Match).
 
 - **Mã lệnh:** `CurveCurveEditToolsMatch`
 - **Vị trí:** menu Curve, ô số 52
@@ -10,9 +10,12 @@ Khớp đầu đường cong thứ nhất vào đường thứ hai (vị trí / 
 
 ## Cách dùng
 
-1. Chọn đường cần sửa và đường đích.
-2. Enter.
+1. Select open curve to change - select near end.
+2. Select open curve to match - select near end.
+3. Chỉnh tuỳ chọn, Enter.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Continuity: Position/Tangency.
+- Continuity=Position/Tangency/Curvature (mặc định Curvature).
+- PreserveOtherEnd=None/Position/Tangency/Curvature.
+- Join: nối hai đường sau khi khớp.

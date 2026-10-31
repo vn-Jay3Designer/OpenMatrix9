@@ -62,6 +62,11 @@ pub const WIREFRAME: &str = "CurveCurveFromObjectsExtractWireframe";
 pub const SOFT_EDIT: &str = "CurveCurveEditToolsSoftEdit";
 pub const ARC_BLEND: &str = "CurveBlendCurvesArcBlend";
 
+mod blend;
+mod extend;
+mod fillet;
+mod offset;
+
 pub struct CurveTools;
 
 impl Interactive for CurveTools {
@@ -116,20 +121,22 @@ impl Interactive for CurveTools {
         Ok(match e.command.as_str() {
             REBUILD => rebuild(e),
             REFIT => refit(e),
-            BLEND | BLEND_ADJ | ARC_BLEND => blend(e),
+            BLEND => blend::blend(e, false),
+            BLEND_ADJ => blend::blend(e, true),
+            ARC_BLEND => blend::arc_blend(e),
             CRV2VIEW | CRV2VIEW_HISTORY => from_two_views(e),
             PULLBACK | PROJECT => project(e),
             INTERSECTION => intersection(e),
             INTERSECT_TWO => intersect_two_sets(e),
-            OFFSET => offset(e),
+            OFFSET => offset::offset(e),
             OFFSET_ON_SRF | OFFSET_NORMAL => offset_surface(e),
             ISOCURVE | ANGLE_ISO => isocurve(e),
-            FILLET | CHAMFER => fillet_chamfer(e),
-            FILLET_CORNERS => fillet_corners(e),
+            FILLET | CHAMFER => fillet::fillet(e, e.command == CHAMFER),
+            FILLET_CORNERS => fillet::fillet_corners(e),
             UV_CREATE => uv_create(e),
             UV_APPLY => uv_apply(e),
             THROUGH_POINTS => through_points(e),
-            EXTEND => extend(e),
+            EXTEND => extend::extend(e),
             MARK_START | MARK_END => mark(e),
             SEAM => seam(e),
             CONTINUE_INTERP | CONTINUE_CURVE => continue_curve(e),
@@ -141,7 +148,7 @@ impl Interactive for CurveTools {
             SKETCH | SKETCH_SRF | SKETCH_MESH | POLY_ON_SRF | INTERP_ON_SRF => draw_on(e),
             TO_LINES => to_lines(e),
             SECTION => sections(e),
-            MATCH => match_curves(e),
+            MATCH => blend::match_curve(e),
             SOFT_EDIT => soft_edit(e),
             other => return Err(format!("unknown command {other}")),
         })
@@ -252,30 +259,6 @@ fn resample(points: &[Vec3], closed: bool, n: usize) -> Vec<Vec3> {
     }
 }
 
-/// The ends of two curves that are nearest each other: (point, outward tangent) for each.
-fn facing_ends(a: &Selected, b: &Selected) -> ((Vec3, Vec3, bool), (Vec3, Vec3, bool)) {
-    let pa = dense(a, 64);
-    let pb = dense(b, 64);
-    let ends = |p: &[Vec3]| {
-        let n = p.len();
-        [
-            (p[0], unit(sub(p[0], p[1.min(n - 1)])), false),
-            (p[n - 1], unit(sub(p[n - 1], p[n.saturating_sub(2)])), true),
-        ]
-    };
-    let (ea, eb) = (ends(&pa), ends(&pb));
-    let mut best = (f64::MAX, ea[0], eb[0]);
-    for x in ea {
-        for y in eb {
-            let d = dist(x.0, y.0);
-            if d < best.0 {
-                best = (d, x, y);
-            }
-        }
-    }
-    (best.1, best.2)
-}
-
 // ---- rebuild / refit -------------------------------------------------------------------------
 
 fn rebuild(e: &Event) -> Reply {
@@ -345,72 +328,6 @@ fn refit(e: &Event) -> Reply {
 }
 
 // ---- blends ----------------------------------------------------------------------------------
-
-fn blend(e: &Event) -> Reply {
-    let cmd = e.command.as_str();
-    let label = match cmd {
-        BLEND => "Quick Curve Blend",
-        BLEND_ADJ => "Adjustable Curve Blend",
-        _ => "Arc Blend",
-    };
-    let mut flow = Flow::new(label);
-    if cmd != ARC_BLEND {
-        flow = flow.choice("Continuity", &["Tangency", "Curvature"], "Tangency");
-    }
-    if cmd == BLEND_ADJ {
-        flow = flow
-            .number("Bulge at the first curve", 1.0)
-            .number("Bulge at the second curve", 1.0);
-    }
-    let make = |c: &Collected| -> Result<Geo, String> {
-        let cs = curves(e);
-        if cs.len() != 2 {
-            return Err(format!("{label}: select two curves"));
-        }
-        let ((p0, t0, _), (p1, t1, _)) = facing_ends(cs[0], cs[1]);
-        // Leave the first curve along its direction, arrive into the second against its own.
-        let t1_in = scale(t1, -1.0);
-        if cmd == ARC_BLEND {
-            let pts = nurbs::biarc(p0, t0, p1, t1_in, 24);
-            return smooth(&pts, false).ok_or_else(|| "Arc Blend: the ends coincide".to_owned());
-        }
-        let bulge = [c.n(0).unwrap_or(1.0), c.n(1).unwrap_or(1.0)];
-        Ok(nurbs::blend(
-            p0,
-            t0,
-            p1,
-            t1_in,
-            bulge,
-            c.opt(&flow, "Continuity") == "Curvature",
-        ))
-    };
-    let finish = |c: &Collected| -> Result<Reply, String> { finish_curves(label, vec![make(c)?]) };
-    if flow.needs.is_empty() {
-        if matches!(e.input, Input::Enter)
-            && let Ok(r) = finish(&load(e))
-        {
-            return r;
-        }
-        let mut r = flow.step(
-            e,
-            &|c, _| Show {
-                geo: make(c).into_iter().collect(),
-                ..Default::default()
-            },
-            &finish,
-        );
-        r.prompt = format!("{label}: select two curves, Enter to blend their nearest ends");
-        return r;
-    }
-    flow.step(
-        e,
-        &|c, _| Show {
-            geo: make(c).into_iter().collect(),
-            ..Default::default()
-        },
-        &finish,
-    )
-}
 
 // ---- curves from views, projections ---------------------------------------------------------
 
@@ -650,42 +567,6 @@ pub fn offset_points(
         .collect()
 }
 
-fn offset(e: &Event) -> Reply {
-    let flow = Flow::new("Offset Curve")
-        .number("Offset distance", 1.0)
-        .point("Side to offset to");
-    let make = |d: f64, side: Vec3| -> Vec<Geo> {
-        curves(e)
-            .iter()
-            .filter_map(|s| {
-                let pts = dense(s, 200);
-                let o = offset_points(&pts, s.closed, &e.plane, d, Some(side));
-                let polyline_like = matches!(
-                    &s.exact,
-                    Some(Geo::Nurbs { degree: 1, .. }) | Some(Geo::Line { .. })
-                );
-                if polyline_like {
-                    let o = offset_points(&s.points, s.closed, &e.plane, d, Some(side));
-                    Some(polyline(o, s.closed))
-                } else {
-                    smooth(&o, s.closed)
-                }
-            })
-            .collect()
-    };
-    flow.step(
-        e,
-        &|c, h| Show {
-            geo: match (c.n(0), h) {
-                (Some(d), Some(p)) => make(d, p),
-                _ => Vec::new(),
-            },
-            ..Default::default()
-        },
-        &|c| finish_curves("Offset Curve", make(c.n(0).unwrap(), c.p(0).unwrap())),
-    )
-}
-
 fn offset_surface(e: &Event) -> Reply {
     let normal = e.command == OFFSET_NORMAL;
     let label = if normal {
@@ -798,17 +679,6 @@ fn isocurve(e: &Event) -> Reply {
 
 // ---- fillets and chamfers --------------------------------------------------------------------
 
-/// Two lines (point + direction) in a plane: their intersection.
-fn line_cross(p: Vec3, a: Vec3, q: Vec3, b: Vec3) -> Option<Vec3> {
-    let n = cross(a, b);
-    let nn = dot(n, n);
-    if nn < 1e-18 {
-        return None;
-    }
-    let t = dot(cross(sub(q, p), b), n) / nn;
-    Some(add(p, scale(a, t)))
-}
-
 /// Corner geometry: from the corner `x` the two legs leave along `u` and `v`.
 fn fillet_arc(x: Vec3, u: Vec3, v: Vec3, r: f64) -> Option<(Vec3, Vec3, Vec3)> {
     let (u, v) = (unit(u), unit(v));
@@ -822,107 +692,6 @@ fn fillet_arc(x: Vec3, u: Vec3, v: Vec3, r: f64) -> Option<(Vec3, Vec3, Vec3)> {
     let bis = unit(add(u, v));
     let center = add(x, scale(bis, r / half.sin()));
     Some((a, b, center))
-}
-
-fn fillet_chamfer(e: &Event) -> Reply {
-    let chamfer = e.command == CHAMFER;
-    let label = if chamfer {
-        "Chamfer Curves"
-    } else {
-        "Fillet Curves"
-    };
-    let flow = if chamfer {
-        Flow::new(label)
-            .toggle("Trim", true)
-            .number("First chamfer distance", 1.0)
-            .number("Second chamfer distance", 1.0)
-    } else {
-        Flow::new(label)
-            .toggle("Trim", true)
-            .number("Fillet radius", 1.0)
-    };
-    let make = |c: &Collected| -> Result<(Geo, Vec<(String, Geo)>), String> {
-        let cs = curves(e);
-        if cs.len() != 2 {
-            return Err(format!("{label}: select two curves"));
-        }
-        let ((p0, t0, end0), (p1, t1, end1)) = facing_ends(cs[0], cs[1]);
-        let x = line_cross(p0, t0, p1, t1).ok_or("the curves are parallel")?;
-        // Legs from the corner back along each curve.
-        let u = scale(t0, -1.0);
-        let v = scale(t1, -1.0);
-        let (a, b, geo) = if chamfer {
-            let (d0, d1) = (c.n(0).unwrap_or(1.0), c.n(1).unwrap_or(1.0));
-            let a = add(x, scale(unit(u), d0));
-            let b = add(x, scale(unit(v), d1));
-            (a, b, Geo::Line { start: a, end: b })
-        } else {
-            let r = c.n(0).unwrap_or(1.0);
-            let (a, b, center) = fillet_arc(x, u, v, r).ok_or("the curves do not make a corner")?;
-            let geo = composite_quadratic(&[Piece::Arc {
-                center,
-                start: a,
-                end: b,
-            }])
-            .or_else(|| smooth(&[a, b], false))
-            .ok_or("fillet")?;
-            (a, b, geo)
-        };
-        // Trim: each curve ends at its tangency point.
-        let mut trimmed = Vec::new();
-        if c.yes(&flow, "Trim") {
-            for (s, end, tp) in [(cs[0], end0, a), (cs[1], end1, b)] {
-                let mut pts = dense(s, 200);
-                let path = Path::new(&pts, false).ok_or("curve")?;
-                let cut = path.closest(tp);
-                pts = if end {
-                    let mut keep: Vec<Vec3> = pts
-                        .into_iter()
-                        .take_while(|&q| path.closest(q) < cut)
-                        .collect();
-                    keep.push(tp);
-                    keep
-                } else {
-                    let mut keep = vec![tp];
-                    keep.extend(pts.into_iter().skip_while(|&q| path.closest(q) <= cut));
-                    keep
-                };
-                let straight = matches!(
-                    &s.exact,
-                    Some(Geo::Line { .. }) | Some(Geo::Nurbs { degree: 1, .. })
-                );
-                let g = if straight && pts.len() >= 2 {
-                    let mut p = pts.clone();
-                    if matches!(&s.exact, Some(Geo::Line { .. })) {
-                        p = vec![p[0], *p.last().unwrap()];
-                    }
-                    Some(polyline(p, false))
-                } else {
-                    smooth(&pts, false)
-                };
-                if let Some(g) = g {
-                    trimmed.push((s.id.clone(), g));
-                }
-            }
-        }
-        Ok((geo, trimmed))
-    };
-    flow.step(
-        e,
-        &|c, _| Show {
-            geo: make(c).map(|m| vec![m.0]).unwrap_or_default(),
-            ..Default::default()
-        },
-        &|c| {
-            let (geo, trimmed) = make(c)?;
-            let mut r = Reply::finish(vec![geo]).say(format!("{label}: done"));
-            r.replace = trimmed
-                .into_iter()
-                .map(|(id, geo)| Replacement { id, geo })
-                .collect();
-            Ok(r)
-        },
-    )
 }
 
 /// A polyline with every corner rounded by `r` (exact lines and arcs).
@@ -1007,32 +776,6 @@ pub fn round_corners(points: &[Vec3], closed: bool, r: f64) -> Option<Geo> {
         pieces.push(Piece::Line(cursor, points[n - 1]));
     }
     composite_quadratic(&pieces)
-}
-
-fn fillet_corners(e: &Event) -> Reply {
-    let flow = Flow::new("Fillet Corners").number("Fillet radius", 0.5);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let r = c.n(0).unwrap();
-        let items = curves(e)
-            .iter()
-            .filter_map(|s| {
-                let pts = match &s.exact {
-                    Some(Geo::Nurbs {
-                        degree: 1, points, ..
-                    }) => {
-                        let mut p = points.clone();
-                        if s.closed && p.len() > 2 && dist(p[0], *p.last().unwrap()) < 1e-9 {
-                            p.pop();
-                        }
-                        p
-                    }
-                    _ => s.points.clone(),
-                };
-                round_corners(&pts, s.closed, r).map(|g| (s.id.clone(), g))
-            })
-            .collect();
-        replace("Fillet Corners", items)
-    })
 }
 
 // ---- UV curves -------------------------------------------------------------------------------
@@ -1164,57 +907,6 @@ fn through_points(e: &Event) -> Reply {
     );
     r.prompt = "Curve Through Points: select point objects, Enter".into();
     r
-}
-
-fn extend(e: &Event) -> Reply {
-    let flow = Flow::new("Extend Curve")
-        .choice("Type", &["Line", "Smooth"], "Line")
-        .choice("End", &["End", "Start", "Both"], "End")
-        .number("Length to extend", 1.0);
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let len = c.n(0).unwrap();
-        let items = curves(e)
-            .iter()
-            .filter(|s| !s.closed)
-            .filter_map(|s| {
-                let mut pts = dense(s, 200);
-                let n = pts.len();
-                let which = c.opt(&flow, "End");
-                let smooth_type = c.opt(&flow, "Type") == "Smooth";
-                let ext = |a: Vec3, b: Vec3| add(a, scale(unit(sub(a, b)), len));
-                if which != "Start" {
-                    let p = ext(pts[n - 1], pts[n - 2]);
-                    pts.push(p);
-                }
-                if which != "End" {
-                    let p = ext(pts[0], pts[1]);
-                    pts.insert(0, p);
-                }
-                let straight = matches!(
-                    &s.exact,
-                    Some(Geo::Line { .. }) | Some(Geo::Nurbs { degree: 1, .. })
-                );
-                let g = if straight && !smooth_type {
-                    let mut corners = match &s.exact {
-                        Some(Geo::Nurbs { points, .. }) => points.clone(),
-                        _ => vec![s.points[0], *s.points.last().unwrap()],
-                    };
-                    let m = corners.len();
-                    if which != "Start" {
-                        corners[m - 1] = ext(corners[m - 1], corners[m - 2]);
-                    }
-                    if which != "End" {
-                        corners[0] = ext(corners[0], corners[1]);
-                    }
-                    Some(polyline(corners, false))
-                } else {
-                    smooth(&resample(&pts, false, 60), false)
-                };
-                g.map(|g| (s.id.clone(), g))
-            })
-            .collect();
-        replace("Extend Curve", items)
-    })
 }
 
 fn mark(e: &Event) -> Reply {
@@ -1750,54 +1442,6 @@ fn sections(e: &Event) -> Reply {
         },
         &|c| finish_curves("Section", make(c, None)),
     )
-}
-
-fn match_curves(e: &Event) -> Reply {
-    let flow = Flow::new("Match Curve").choice("Continuity", &["Position", "Tangency"], "Tangency");
-    let make = |c: &Collected| -> Result<(String, Geo), String> {
-        let cs = curves(e);
-        if cs.len() != 2 {
-            return Err("select the curve to change and the curve to match".into());
-        }
-        let ((p0, _, end0), (p1, t1, _)) = facing_ends(cs[0], cs[1]);
-        let _ = p0;
-        let mut pts = resample(&dense(cs[0], 300), false, 24);
-        if !end0 {
-            pts.reverse();
-        }
-        let n = pts.len();
-        pts[n - 1] = p1;
-        if c.opt(&flow, "Continuity") == "Tangency" {
-            // The last segment continues the other curve's direction.
-            let l = dist(pts[n - 2], pts[n - 3]);
-            pts[n - 2] = add(p1, scale(t1, l));
-        }
-        if !end0 {
-            pts.reverse();
-        }
-        Ok((cs[0].id.clone(), smooth(&pts, false).ok_or("curve")?))
-    };
-    if matches!(e.input, Input::Enter)
-        && let Ok((id, g)) = make(&load(e))
-    {
-        let mut r = Reply::finish(Vec::new()).say("Match Curve: matched");
-        r.replace.push(Replacement { id, geo: g });
-        return r;
-    }
-    let mut r = flow.step(
-        e,
-        &|c, _| Show {
-            geo: make(c).map(|m| vec![m.1]).unwrap_or_default(),
-            ..Default::default()
-        },
-        &|_| Err(String::new()),
-    );
-    r.error = r.error.filter(|w| !w.is_empty());
-    r.prompt =
-        "Match Curve: select the curve to change, then the curve to match (nearest ends), Enter"
-            .into();
-    r.want = Want::Objects;
-    r
 }
 
 fn soft_edit(e: &Event) -> Reply {

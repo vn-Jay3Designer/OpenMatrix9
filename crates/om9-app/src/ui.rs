@@ -3373,6 +3373,8 @@ impl MatrixApp {
                         }
                     }
                 } else {
+                    // A session picking curves by location (Fillet, Extend …) reads where.
+                    self.controller.note_session_pick(self.hover);
                     let candidates = self.controller.scene().and_then(|scene| {
                         scene
                             .pick_all(

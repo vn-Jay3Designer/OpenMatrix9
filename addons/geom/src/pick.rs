@@ -5,7 +5,7 @@
 use om9_addon_abi::session::{
     Event, Geo, Selected, SelectedMesh, Vec3, add, cross, dist, dot, norm, scale, sub, unit,
 };
-use om9_addon_geom as g;
+use crate as g;
 use serde::{Deserialize, Serialize};
 
 /// Samples kept in the state when the exact curve is not available.
@@ -55,6 +55,40 @@ impl CurveRef {
     /// The curves of the selection, in order.
     pub fn all(e: &Event) -> Vec<CurveRef> {
         e.selection.iter().filter_map(CurveRef::of).collect()
+    }
+
+    /// The curve as geometry: the exact curve, or a polyline through the samples.
+    pub fn geo(&self) -> Geo {
+        self.exact.clone().unwrap_or_else(|| Geo::Polyline {
+            points: self.pts.clone(),
+            closed: self.closed,
+        })
+    }
+
+    /// The part between `t0` and `t1` (closed curves wrap when `t1 < t0`; open curves give
+    /// the reversed part).
+    pub fn sub(&self, t0: f64, t1: f64) -> Option<Geo> {
+        g::join::sub_geo(&self.geo(), t0, t1)
+    }
+
+    /// The curve the user just picked: a selected curve not in `taken` (by id), the one under
+    /// the last click when there are several, with the parameter of the click on it.
+    pub fn picked(e: &Event, taken: &[&str]) -> Option<(CurveRef, Option<f64>)> {
+        let fresh: Vec<CurveRef> = CurveRef::all(e)
+            .into_iter()
+            .filter(|c| !taken.contains(&c.id.as_str()))
+            .collect();
+        match e.pick {
+            Some(p) => fresh
+                .into_iter()
+                .map(|c| {
+                    let (t, q) = c.closest(p);
+                    (dist(q, p), c, t)
+                })
+                .min_by(|a, b| a.0.total_cmp(&b.0))
+                .map(|(_, c, t)| (c, Some(t))),
+            None => fresh.into_iter().next().map(|c| (c, None)),
+        }
     }
 
     /// Point at normalized `t ∈ [0, 1]`.

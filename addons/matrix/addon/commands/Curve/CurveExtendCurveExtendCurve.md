@@ -1,6 +1,6 @@
 # Extend Curve
 
-Kéo dài đầu đường cong theo độ dài.
+Kéo dài đường cong như Matrix (_Extend Type=Natural): tới vật biên, theo chiều dài gõ vào, hoặc tự do tới điểm bấm.
 
 - **Mã lệnh:** `CurveExtendCurveExtendCurve`
 - **Vị trí:** menu Curve, ô số 27
@@ -10,11 +10,11 @@ Kéo dài đầu đường cong theo độ dài.
 
 ## Cách dùng
 
-1. Chọn đường cong, Enter.
-2. Type=Line/Smooth, End=End/Start/Both.
-3. Gõ độ dài.
+1. Select boundary objects or enter extension length: chọn biên rồi Enter, gõ chiều dài, hoặc Enter để kéo tự do.
+2. Select curve to extend: bấm gần đầu cần kéo (bấm thêm đường khác được).
+3. Kéo tự do: End of extension.
+4. Enter để áp dụng.
 
 ## Tuỳ chọn (lệnh phụ)
 
-- Type: kéo thẳng hoặc mượt.
-- End: đầu nào.
+- Type=Natural/Line/Arc/Smooth (mặc định Natural).

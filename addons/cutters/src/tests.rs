@@ -11,6 +11,7 @@ fn event(command: &str, input: Input, settings: Value, selection: Vec<Selected>)
         state: Value::Null,
         plane: Plane::default(),
         selection,
+        pick: None,
         settings: serde_json::from_value(settings).unwrap(),
     }
 }

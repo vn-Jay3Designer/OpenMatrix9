@@ -10,6 +10,7 @@ fn event(command: &str, input: Input, selection: Vec<Selected>) -> Event {
         state: Value::Null,
         plane: Plane::default(),
         selection,
+        pick: None,
         settings: Default::default(),
     }
 }

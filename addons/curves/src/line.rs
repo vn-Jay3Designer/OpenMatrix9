@@ -512,6 +512,7 @@ mod tests {
             state: state.clone(),
             plane: Plane::default(),
             selection: sel,
+            pick: None,
             settings: Default::default(),
         }
     }

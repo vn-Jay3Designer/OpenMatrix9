@@ -67,7 +67,7 @@ pub mod circle;
 pub mod ellipse;
 pub mod interp;
 pub mod line;
-pub mod pick;
+pub use om9_addon_geom::pick;
 pub mod polyline;
 pub mod rect;
 
@@ -653,6 +653,7 @@ pub fn event(command: &str, input: Input, state: &Value) -> Event {
         state: state.clone(),
         plane: s::Plane::default(),
         selection: Vec::new(),
+        pick: None,
         settings: Default::default(),
     }
 }

@@ -359,8 +359,21 @@ fn curve_prompts_have_vietnamese() {
     let tr = Tr::parse(&fs::read_to_string(addon.join("lang/vi.toml")).unwrap(), Lang::Vi).unwrap();
     let single = ["Width", "Height", "Radius", "Diameter", "Circumference", "Area", "Ellipse"];
     let mut missing = Vec::new();
-    for f in ["line", "polyline", "interp", "rect", "circle", "ellipse"] {
-        let src = fs::read_to_string(root().join(format!("addons/curves/src/{f}.rs"))).unwrap();
+    let files = [
+        "curves/src/line",
+        "curves/src/polyline",
+        "curves/src/interp",
+        "curves/src/rect",
+        "curves/src/circle",
+        "curves/src/ellipse",
+        "curve_tools/src/fillet",
+        "curve_tools/src/blend",
+        "curve_tools/src/offset",
+        "curve_tools/src/extend",
+        "geom/src/cmd",
+    ];
+    for f in files {
+        let src = fs::read_to_string(root().join(format!("addons/{f}.rs"))).unwrap();
         let code: String = src
             .split("#[cfg(test)]")
             .next()
@@ -386,6 +399,7 @@ fn curve_prompts_have_vietnamese() {
             let sample = lit
                 .replace("{text}", "x")
                 .replace("{name}", "Foo")
+                .replace("{n}", "1")
                 .replace("{}", "1");
             if tr.text(&sample) == sample {
                 missing.push(format!("{f}: {lit}"));

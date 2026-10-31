@@ -1979,6 +1979,7 @@ pub fn apply_styles(
             state: Value::Null,
             plane: e.plane,
             selection: targets.to_vec(),
+            pick: None,
             settings,
         };
         let r = if <om9_settings::Settings as Interactive>::SESSION_COMMANDS

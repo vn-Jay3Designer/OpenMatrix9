@@ -289,20 +289,20 @@ id = "CurveBlendCurvesBlendCurves"
 label = "Quick Curve Blend"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["BlendCrv", "QuickBlend"]
-summary = "Nối hai đầu gần nhau của hai đường cong bằng đường chuyển tiếp mượt."
-steps = ["Chọn hai đường cong.", "Continuity=Tangency/Curvature.", "Enter."]
-options = ["Continuity: liên tục tiếp tuyến hoặc độ cong."]
+aliases = ["Blend", "QuickBlend"]
+summary = "Nối nhanh hai đầu đường cong bằng đường chuyển tiếp (Rhino Blend): bấm gần đầu cần nối của mỗi đường."
+steps = ["Select first curve near end: bấm đường thứ nhất gần đầu cần nối.", "Select second curve near end: bấm đường thứ hai; đường nối tạo ngay."]
+options = ["Continuity=Position/Tangency/Curvature/G3/G4 (mặc định Curvature)."]
 
 [[commands]]
 id = "CurveBlendCurvesBlendCrv"
 label = "Adjustable Curve Blend"
 handler = "om9_addon_session"
 interactive = true
-aliases = ["AdjustableBlend"]
-summary = "Nối hai đường cong, chỉnh độ phình ở mỗi đầu."
-steps = ["Chọn hai đường cong, Enter.", "Gõ độ phình đầu 1.", "Gõ độ phình đầu 2."]
-options = ["Continuity: Tangency/Curvature."]
+aliases = ["BlendCrv", "AdjustableBlend"]
+summary = "Nối chuyển tiếp chỉnh được (Rhino BlendCrv): chọn hai đầu, chỉnh độ liên tục và độ phình rồi Enter."
+steps = ["Select first curve to blend - select near end.", "Select second curve to blend - select near end.", "Chỉnh Continuity1/2, Flip1/2, Bulge1/2, Join; xem trước; Enter."]
+options = ["Continuity1/Continuity2=Position/Tangency/Curvature/G3/G4 (mặc định Curvature).", "Flip1/Flip2: đảo hướng ở đầu đó.", "Bulge1/Bulge2: độ phình (thay cho kéo điểm điều khiển).", "Join: nối đường nối với hai đường cong."]
 
 [[commands]]
 id = "CurveBlendCurvesArcBlend"
@@ -310,8 +310,9 @@ label = "Arc Blend"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ArcBlend"]
-summary = "Nối hai đường cong bằng hai cung tròn (biarc) tiếp tuyến."
-steps = ["Chọn hai đường cong.", "Enter."]
+summary = "Nối hai đầu đường cong bằng hai cung tròn tiếp xúc (Rhino ArcBlend)."
+steps = ["Select first curve near end.", "Select second curve near end.", "Chỉnh tuỳ chọn, Enter."]
+options = ["AlternateSolution: lấy lời giải dài hơn.", "RadiusDifference: chênh lệch bán kính hai cung (dạng chữ S).", "Join: nối với hai đường cong."]
 
 [[commands]]
 id = "CurveCurveFrom2Views"
@@ -377,8 +378,9 @@ label = "Offset Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Offset", "OffsetCrv"]
-summary = "Tạo đường song song cách đều trên CPlane."
-steps = ["Chọn đường cong, Enter.", "Gõ khoảng cách.", "Bấm phía cần offset."]
+summary = "Offset đường cong như Rhino: đoạn thẳng giữ thẳng, cung giữ đồng tâm, góc polyline theo Corner; nằm trong mặt phẳng của đường cong."
+steps = ["Select curve to offset: bấm đường cong (gõ số để đặt Distance).", "Side to offset: bấm phía cần offset."]
+options = ["Distance=1.", "Corner=Sharp/Round/Smooth/Chamfer (chỉ góc phía ngoài).", "ThroughPoint: offset qua điểm bấm.", "Tolerance=0.001.", "BothSides: offset hai phía.", "InCPlane: offset trong CPlane thay vì mặt phẳng đường cong.", "Cap=None/Flat/Round: bịt hai đầu khi BothSides."]
 
 [[commands]]
 id = "CurveOffsetOffsetCrvOnSrf"
@@ -427,9 +429,9 @@ label = "Fillet Curves"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Fillet", "FilletCrv"]
-summary = "Bo cung tròn giữa hai đường cong, cắt bớt đường cũ."
-steps = ["Chọn hai đường cong, Enter.", "Gõ bán kính."]
-options = ["Trim: cắt hai đường tới điểm tiếp xúc."]
+summary = "Bo cung tròn giữa hai đường cong như Rhino Fillet: chỗ bấm trên mỗi đường quyết định phần được giữ."
+steps = ["Select first curve to fillet: bấm đường thứ nhất ở phía cần giữ.", "Select second curve to fillet: bấm đường thứ hai; cung bo tạo ngay."]
+options = ["Radius=1 (0 = kéo hoặc cắt tới góc nhọn).", "Join=No: nối thành một đường.", "Trim=Yes: cắt hoặc kéo dài hai đường tới điểm tiếp xúc.", "ExtendArcsBy=Arc/Line: kéo dài cung bằng cung hay đoạn thẳng."]
 
 [[commands]]
 id = "CurveFilletCorners"
@@ -437,8 +439,8 @@ label = "Fillet Corners"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["FilletCorners"]
-summary = "Bo tròn mọi góc của polyline."
-steps = ["Chọn đường cong, Enter.", "Gõ bán kính."]
+summary = "Bo tròn mọi góc của đường gấp khúc (Rhino FilletCorners)."
+steps = ["Select curves to fillet corners, Enter.", "Radius <1>: gõ bán kính."]
 
 [[commands]]
 id = "CurveChamferCurves"
@@ -446,9 +448,9 @@ label = "Chamfer Curves"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Chamfer", "ChamferCrv"]
-summary = "Vát góc giữa hai đường cong."
-steps = ["Chọn hai đường cong, Enter.", "Gõ khoảng vát 1 và 2."]
-options = ["Trim: cắt hai đường."]
+summary = "Vát góc giữa hai đường cong như Rhino Chamfer; khoảng vát đo từ giao điểm."
+steps = ["Select first curve to chamfer: bấm phía cần giữ.", "Select second curve to chamfer."]
+options = ["Distances=1,1 (gõ Distances=a,b).", "Join=No.", "Trim=Yes.", "ExtendArcsBy=Arc/Line."]
 
 [[commands]]
 id = "CurveCurveFromObjectsCreateUVCurves"
@@ -486,9 +488,9 @@ label = "Extend Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Extend", "ExtendCrv"]
-summary = "Kéo dài đầu đường cong theo độ dài."
-steps = ["Chọn đường cong, Enter.", "Type=Line/Smooth, End=End/Start/Both.", "Gõ độ dài."]
-options = ["Type: kéo thẳng hoặc mượt.", "End: đầu nào."]
+summary = "Kéo dài đường cong như Matrix (_Extend Type=Natural): tới vật biên, theo chiều dài gõ vào, hoặc tự do tới điểm bấm."
+steps = ["Select boundary objects or enter extension length: chọn biên rồi Enter, gõ chiều dài, hoặc Enter để kéo tự do.", "Select curve to extend: bấm gần đầu cần kéo (bấm thêm đường khác được).", "Kéo tự do: End of extension.", "Enter để áp dụng."]
+options = ["Type=Natural/Line/Arc/Smooth (mặc định Natural)."]
 
 [[commands]]
 id = "CurvePointObjectMarkCurveStart"
@@ -667,9 +669,9 @@ label = "Match Curve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Match", "MatchCrv"]
-summary = "Khớp đầu đường cong thứ nhất vào đường thứ hai (vị trí / tiếp tuyến)."
-steps = ["Chọn đường cần sửa và đường đích.", "Enter."]
-options = ["Continuity: Position/Tangency."]
+summary = "Khớp đầu một đường cong vào đầu đường cong khác (Rhino Match)."
+steps = ["Select open curve to change - select near end.", "Select open curve to match - select near end.", "Chỉnh tuỳ chọn, Enter."]
+options = ["Continuity=Position/Tangency/Curvature (mặc định Curvature).", "PreserveOtherEnd=None/Position/Tangency/Curvature.", "Join: nối hai đường sau khi khớp."]
 
 [[commands]]
 id = "CurveCurveFromObjectsSilhouette"

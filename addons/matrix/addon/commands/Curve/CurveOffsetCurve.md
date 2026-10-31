@@ -1,6 +1,6 @@
 # Offset Curve
 
-Tạo đường song song cách đều trên CPlane.
+Offset đường cong như Rhino: đoạn thẳng giữ thẳng, cung giữ đồng tâm, góc polyline theo Corner; nằm trong mặt phẳng của đường cong.
 
 - **Mã lệnh:** `CurveOffsetCurve`
 - **Vị trí:** menu Curve, ô số 18
@@ -10,6 +10,15 @@ Tạo đường song song cách đều trên CPlane.
 
 ## Cách dùng
 
-1. Chọn đường cong, Enter.
-2. Gõ khoảng cách.
-3. Bấm phía cần offset.
+1. Select curve to offset: bấm đường cong (gõ số để đặt Distance).
+2. Side to offset: bấm phía cần offset.
+
+## Tuỳ chọn (lệnh phụ)
+
+- Distance=1.
+- Corner=Sharp/Round/Smooth/Chamfer (chỉ góc phía ngoài).
+- ThroughPoint: offset qua điểm bấm.
+- Tolerance=0.001.
+- BothSides: offset hai phía.
+- InCPlane: offset trong CPlane thay vì mặt phẳng đường cong.
+- Cap=None/Flat/Round: bịt hai đầu khi BothSides.

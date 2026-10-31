@@ -9,14 +9,17 @@
 //! - de Boor evaluation, used by previews and tests.
 use om9_addon_abi::session::{Geo, Vec3, add, cross, dist, dot, norm, scale, sub, unit};
 
+pub mod blend;
 pub mod cmd;
 pub mod csg;
 pub mod fit;
 pub mod gems;
 pub mod interp;
+pub mod join;
 pub mod mesh;
 pub mod nurbs;
 pub mod path;
+pub mod pick;
 pub mod sdf;
 pub mod section;
 pub mod shapes;

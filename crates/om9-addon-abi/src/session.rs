@@ -169,6 +169,11 @@ pub struct Event {
     pub plane: Plane,
     #[serde(default)]
     pub selection: Vec<Selected>,
+    /// Where the click that last changed the selection landed (the point under the cursor on
+    /// the CPlane, or its snap), world millimetres. Commands that pick a curve by location
+    /// (Fillet keeps the picked sides, Extend the picked end) read it with the selection.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pick: Option<Vec3>,
     /// The add-on's settings (builder panel values), by key.
     #[serde(default)]
     pub settings: BTreeMap<String, Value>,
@@ -763,6 +768,7 @@ mod tests {
             state: serde_json::json!({"points": [[0, 0, 0]]}),
             plane: Plane::default(),
             selection: vec![],
+            pick: None,
             settings: BTreeMap::new(),
         };
         let text = serde_json::to_string(&e).unwrap();
