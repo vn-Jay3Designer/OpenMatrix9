@@ -1149,8 +1149,8 @@ key = "loft_style"
 type = "enum"
 option = "Style"
 label = "Kiểu loft"
-choices = ["normal", "loose", "straight"]
-choice_labels = ["Normal", "Loose", "Straight"]
+choices = ["normal", "loose", "tight", "straight", "uniform"]
+choice_labels = ["Normal", "Loose", "Tight", "Straight", "Uniform"]
 default = "normal"
 commands = ["SurfaceLoft"]
 

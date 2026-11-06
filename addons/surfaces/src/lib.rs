@@ -16,6 +16,7 @@ use om9_addon_geom::fit::{grid, grid_mesh, sub_grid, surface_on_grid, surface_th
 use om9_addon_geom::mesh::{Frame, Mesh};
 use om9_addon_geom::nurbs::{self, Srf};
 use om9_addon_geom::path::{Path, Target};
+use om9_addon_geom::exact::{self, Nc};
 use om9_addon_geom::{interpolate, section, shapes};
 use serde_json::json;
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
@@ -648,6 +649,58 @@ fn multi_rail(e: &Event) -> Reply {
     )
 }
 
+/// The exact NURBS of a picked curve, running the way its samples (`points`) run (the
+/// host's exact form does not carry a reversed flag).
+fn exact_curve(s: &Selected) -> Option<Nc> {
+    let c = Nc::from_geo(s.exact.as_ref()?)?;
+    let n = s.points.len();
+    if n < 10 {
+        return Some(c);
+    }
+    let (a, b) = (c.closest(s.points[n / 10]), c.closest(s.points[n / 5]));
+    Some(if b < a { c.reversed() } else { c })
+}
+
+/// Rhino 5 Loft from the exact section curves: they are aligned (direction, and the seams
+/// of closed sections), made compatible (same degree and knots, shapes unchanged) and
+/// interpolated pole by pole across, so every section lies exactly on the surface (except
+/// Loose, which uses the sections' poles as its own). `None` when a section has no exact
+/// form (the sampled loft is used then).
+fn loft_exact(cs: &[&Selected], kind: &str, closed_loft: bool) -> Option<Result<Geo, String>> {
+    let mut secs: Vec<Nc> = cs.iter().map(|s| exact_curve(s)).collect::<Option<_>>()?;
+    let closed = secs.iter().all(|c| c.closed(1e-6));
+    if !closed && secs.iter().any(|c| c.closed(1e-6)) {
+        return Some(Err("the sections must be all closed or all open".into()));
+    }
+    if closed_loft && secs.len() < 3 {
+        return Some(Err("a closed loft needs three or more sections".into()));
+    }
+    exact::align_sections(&mut secs, closed);
+    exact::make_compatible(&mut secs);
+    let along = (secs[0].degree, secs[0].knots.clone());
+    let across = if kind == "loose" {
+        exact::loose_across(&secs, closed_loft)
+    } else {
+        let params = match kind {
+            // Open: m values over [0, 1]; closed: m + 1 (the first section again at 1).
+            "uniform" => {
+                let m = secs.len();
+                let (count, step) = if closed_loft { (m + 1, m) } else { (m, m - 1) };
+                (0..count).map(|i| i as f64 / step as f64).collect()
+            }
+            "tight" => exact::section_params(&secs, true, closed_loft),
+            _ => exact::section_params(&secs, false, closed_loft),
+        };
+        let q = if kind == "straight" { 1 } else { 3 };
+        exact::interpolate_across(&secs, &params, q, closed_loft)
+            .map(|(rows, knots)| (rows, knots, if kind == "straight" { 1 } else { 3.min(secs.len() - 1) }))
+    };
+    let Some((rows, knots, q)) = across else {
+        return Some(Err("could not fit the loft".into()));
+    };
+    Some(Ok(exact::surface(&rows, [q, along.0], [knots, along.1])))
+}
+
 fn loft(e: &Event) -> Reply {
     let kind = e.text("loft_style", "normal").to_owned();
     let closed_loft = e.flag("loft_closed", false);
@@ -659,6 +712,9 @@ fn loft(e: &Event) -> Reply {
             let cs = curves(e);
             if cs.len() < 2 {
                 return Err("select two or more sections".into());
+            }
+            if let Some(g) = loft_exact(&cs, &kind, closed_loft) {
+                return Ok((vec![g?], format!("{} sections ({kind})", cs.len())));
             }
             let closed = cs.iter().all(|c| c.closed);
             let n = 32;
@@ -786,6 +842,36 @@ fn boundary(cs: &[&Selected], n: usize) -> Result<[Vec<Vec3>; 4], String> {
     Ok([a, b, c, d])
 }
 
+/// Rhino 5 EdgeSrf from 2, 3 or 4 exact curves: the surface's edges are the curves
+/// themselves (2: the two curves are opposite edges, joined by straight lines; 3: the fourth
+/// edge collapses to the corner). `None` when a curve has no exact form or they do not meet.
+fn edge_srf_exact(cs: &[&Selected]) -> Option<Geo> {
+    let all: Vec<Nc> = cs.iter().map(|s| exact_curve(s)).collect::<Option<_>>()?;
+    let tol = 1e-3;
+    let (bottom, right, top, left) = match all.len() {
+        2 => {
+            let (a, mut b) = (all[0].clone(), all[1].clone());
+            if dist(a.start(), b.start()) + dist(a.end(), b.end()) > dist(a.start(), b.end()) + dist(a.end(), b.start()) {
+                b = b.reversed();
+            }
+            let line = |p: Vec3, q: Vec3| Nc::from_geo(&Geo::Line { start: p, end: q });
+            let (l, r) = (line(a.start(), b.start())?, line(a.end(), b.end())?);
+            (a, r, b, l)
+        }
+        3 | 4 => {
+            let c = exact::chain(&all, tol)?;
+            if dist(c.last()?.end(), c[0].start()) > tol {
+                return None;
+            }
+            let left = if c.len() == 4 { c[3].reversed() } else { exact::point_curve(c[0].start()) };
+            (c[0].clone(), c[1].clone(), c[2].reversed(), left)
+        }
+        _ => return None,
+    };
+    let (rows, degree, knots) = exact::coons(&bottom, &right, &top, &left)?;
+    Some(exact::surface(&rows, degree, knots))
+}
+
 fn patch(e: &Event) -> Reply {
     let label = if e.command == PATCH {
         "Patch"
@@ -798,6 +884,11 @@ fn patch(e: &Event) -> Reply {
         "select the edge curves (or one closed boundary), Enter",
         || {
             let cs = curves(e);
+            if e.command == EDGE_CURVES {
+                if let Some(g) = edge_srf_exact(&cs) {
+                    return Ok((vec![g], format!("surface from {} edge curves", cs.len())));
+                }
+            }
             let n = 24;
             let [b0, r0, t0, l0] = boundary(&cs, n)?;
             // Chain order: bottom →, right ↑, top ←, left ↓. Coons wants top → and left ↑.
@@ -963,6 +1054,15 @@ fn plane(e: &Event) -> Reply {
 
 /// The NURBS of a curve: exact when it is one, else fitted through its samples.
 fn curve_nurbs(s: &Selected) -> Option<(usize, Vec<Vec3>, Vec<f64>, Vec<f64>)> {
+    // Exact for every curve kind the host describes (lines, polylines, circles, arcs, NURBS).
+    if let Some(c) = exact_curve(s) {
+        return Some((
+            c.degree,
+            c.points.iter().map(|p| exact::euclid(*p)).collect(),
+            c.points.iter().map(|p| p[3]).collect(),
+            c.knots,
+        ));
+    }
     match &s.exact {
         Some(Geo::Nurbs {
             degree,
