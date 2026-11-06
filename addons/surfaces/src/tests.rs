@@ -231,11 +231,15 @@ fn planar_with_a_hole_and_plane() {
     let hole = curve("h", circle_pts([0.0; 3], 2.0, 0, 32), true);
     let r = run(PLANAR, vec![outer, hole], json!({}), vec![Input::Enter]);
     assert_eq!(r.create.len(), 1);
-    if let Geo::Mesh {
+    let Geo::Trimmed { loops, display, .. } = &r.create[0] else {
+        panic!("a trimmed plane: {:?}", r.create[0]);
+    };
+    assert_eq!(loops.len(), 2, "outer and hole");
+    if let Some(Geo::Mesh {
         vertices,
         triangles,
         ..
-    } = &r.create[0]
+    }) = display.as_deref()
     {
         let area: f64 = triangles
             .iter()
@@ -816,4 +820,30 @@ fn plane_follows_rhino5_rectangle_and_deformable() {
     let e = event(PLANE, opt("Rounded", Some("Yes")), vec![], json!({}));
     let r = Surfaces::step(&e).unwrap();
     assert!(r.error.is_some() && r.prompt.contains("plane") && !r.options.iter().any(|o| o.name == "Rounded"), "{}", r.prompt);
+}
+
+/// Rhino 5 PlanarSrf: a plane trimmed by the exact curves (a circle stays a circle), inner
+/// curves are holes, and curves that only overlap make separate surfaces.
+#[test]
+fn planar_curves_are_exact_trims_like_rhino5() {
+    let outer = exact_circle("o", [0.0; 3], 5.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let hole = exact_circle("h", [1.0, 0.0, 0.0], 2.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let r = run(PLANAR, vec![outer, hole], json!({}), vec![Input::Enter]);
+    let Geo::Trimmed { surface, loops, .. } = &r.create[0] else { panic!() };
+    // Each loop is the exact NURBS circle (every point on the circle).
+    for (ring, (c, rad)) in loops.iter().zip([([0.0, 0.0, 0.0], 5.0), ([1.0, 0.0, 0.0], 2.0)]) {
+        let nc = Nc::from_geo(&ring[0]).unwrap();
+        for i in 0..=100 {
+            assert!((dist(nc.eval(i as f64 / 100.0), c) - rad).abs() < 1e-12);
+        }
+    }
+    // The sheet covers the outer loop in its plane.
+    let s = Srf::of(surface).unwrap();
+    assert!(s.at_st(0.0, 0.0)[0] < -5.0 && s.at_st(1.0, 1.0)[0] > 5.0 && s.at_st(0.5, 0.5)[2].abs() < 1e-12);
+    // Two overlapping circles: two surfaces, no holes.
+    let a = exact_circle("a", [0.0; 3], 3.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let b = exact_circle("b", [4.0, 0.0, 0.0], 3.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let r = run(PLANAR, vec![a, b], json!({}), vec![Input::Enter]);
+    assert_eq!(r.create.len(), 2);
+    assert!(r.create.iter().all(|g| matches!(g, Geo::Trimmed { loops, .. } if loops.len() == 1)));
 }

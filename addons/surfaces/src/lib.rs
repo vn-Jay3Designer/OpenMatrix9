@@ -979,31 +979,39 @@ fn planar(e: &Event) -> Reply {
                 }
                 c
             };
+            // Rhino: a curve wholly within another is a hole; curves that only overlap make
+            // separate surfaces. "Wholly within": every sample inside.
+            let within = |h: &[[f64; 2]], poly: &[[f64; 2]]| {
+                let step = (h.len() / 64).max(1);
+                h.iter().step_by(step).all(|p| inside(*p, poly))
+            };
             let mut out = Vec::new();
             for (i, o_) in outlines.iter().enumerate() {
                 let depth = outlines
                     .iter()
                     .enumerate()
-                    .filter(|(j, other)| *j != i && inside(o_[0], other))
+                    .filter(|(j, other)| *j != i && within(o_, other))
                     .count();
                 if depth % 2 == 1 {
                     continue;
                 }
-                let holes: Vec<Vec<[f64; 2]>> = outlines
+                // Holes: the curves right inside this one (one level deeper).
+                let hole_ids: Vec<usize> = outlines
                     .iter()
                     .enumerate()
                     .filter(|(j, h)| {
-                        *j != i && inside(h[0], o_) && {
+                        *j != i && within(h, o_) && {
                             outlines
                                 .iter()
                                 .enumerate()
-                                .filter(|(k, other)| *k != *j && inside(h[0], other))
+                                .filter(|(k, other)| *k != *j && within(h, other))
                                 .count()
                                 == depth + 1
                         }
                     })
-                    .map(|(_, h)| h.clone())
+                    .map(|(j, _)| j)
                     .collect();
+                let holes: Vec<Vec<[f64; 2]>> = hole_ids.iter().map(|j| outlines[*j].clone()).collect();
                 let poly = shapes::bridge_holes(o_, &holes);
                 let tris = shapes::triangulate(&poly);
                 let m = Mesh {
@@ -1013,7 +1021,52 @@ fn planar(e: &Event) -> Reply {
                         .map(|t| [t[0] as u32, t[1] as u32, t[2] as u32])
                         .collect(),
                 };
-                out.push(m.geo("Planar surface", None, None));
+                let display = m.geo("Planar surface", None, None);
+                // Rhino's PlanarSrf: a plane trimmed by the curves themselves (exact NURBS
+                // loops), the holes inside. The mesh shows where no B-Rep kernel runs.
+                let ring = |j: usize| -> Geo {
+                    exact_curve(cs[j]).map_or_else(
+                        || {
+                            let pts = dense(cs[j]);
+                            let mut q = pts.clone();
+                            if dist(q[0], *q.last().unwrap()) > 1e-9 {
+                                q.push(q[0]);
+                            }
+                            Nc::from_geo(&Geo::Polyline { points: q, closed: false })
+                                .map(|c| c.to_geo())
+                                .unwrap_or(Geo::Polyline { points: pts, closed: true })
+                        },
+                        |c| c.to_geo(),
+                    )
+                };
+                let (mut lo, mut hi) = ([f64::MAX; 2], [f64::MIN; 2]);
+                for p in o_ {
+                    for a in 0..2 {
+                        lo[a] = lo[a].min(p[a]);
+                        hi[a] = hi[a].max(p[a]);
+                    }
+                }
+                let pad = ((hi[0] - lo[0]).max(hi[1] - lo[1]) * 0.01).max(1e-3);
+                let corner = |x: f64, y: f64| f.point([x, y, 0.0]);
+                let sheet = Geo::Surface {
+                    degree: [1, 1],
+                    size: [2, 2],
+                    points: vec![
+                        corner(lo[0] - pad, lo[1] - pad),
+                        corner(lo[0] - pad, hi[1] + pad),
+                        corner(hi[0] + pad, lo[1] - pad),
+                        corner(hi[0] + pad, hi[1] + pad),
+                    ],
+                    weights: vec![1.0; 4],
+                    knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+                };
+                let mut loops = vec![vec![ring(i)]];
+                loops.extend(hole_ids.into_iter().map(|j| vec![ring(j)]));
+                out.push(Geo::Trimmed {
+                    surface: Box::new(sheet),
+                    loops,
+                    display: Some(Box::new(display)),
+                });
             }
             let k = out.len();
             Ok((out, format!("{k} planar surfaces")))
