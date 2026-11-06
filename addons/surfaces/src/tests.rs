@@ -203,7 +203,7 @@ fn revolve_is_an_exact_cylinder() {
         REVOLVE,
         vec![prof],
         json!({}),
-        vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0])],
+        vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0]), Input::Enter],
     );
     let s = Srf::of(&r.create[0]).unwrap();
     for i in 0..=40 {
@@ -636,7 +636,7 @@ fn loft_is_exact_through_its_sections_like_rhino5() {
 #[test]
 fn revolve_of_a_circle_is_an_exact_torus() {
     let prof = exact_circle("p", [10.0, 0.0, 0.0], 2.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
-    let r = run(REVOLVE, vec![prof], json!({}), vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0])]);
+    let r = run(REVOLVE, vec![prof], json!({}), vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0]), Input::Enter]);
     let s = Srf::of(&r.create[0]).unwrap();
     for i in 0..=60 {
         for j in 0..=60 {
@@ -686,4 +686,84 @@ fn edge_curves_keep_their_edges_exactly() {
     let s = Srf::of(&r.create[0]).unwrap();
     let mid = s.at_st(0.5, 0.5);
     assert!(dist(mid, [2.0, 1.0, 0.5]) < 1e-12, "{mid:?}");
+}
+
+fn opt(name: &str, value: Option<&str>) -> Input {
+    Input::Option { name: name.into(), value: value.map(str::to_owned) }
+}
+
+/// Rhino 5 Revolve: curves, axis start, axis end, revolution angle (Enter = 360, typed, or a
+/// click around the axis); FullCircle, StartAngle, Deformable/PointCount, DeleteInput.
+#[test]
+fn revolve_follows_rhino5_prompts_and_options() {
+    let prof = || line("p", [5.0, 0.0, 0.0], [5.0, 0.0, 10.0]);
+    let axis = || vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0])];
+    let angle_of = |g: &Geo| -> f64 {
+        // The end of the turn (u = 1) at the profile's start: its angle around z.
+        let s = Srf::of(g).unwrap();
+        let p = s.at_st(1.0, 0.0);
+        let a = p[1].atan2(p[0]).to_degrees();
+        if a <= 1e-6 { a + 360.0 } else { a }
+    };
+    // The prompt asks for the angle after the axis, with 360 as default.
+    let mut e = event(REVOLVE, Input::Start, vec![prof()], json!({}));
+    let mut r = Surfaces::step(&e).unwrap();
+    for i in axis() {
+        e.state = r.state.clone();
+        e.input = i;
+        r = Surfaces::step(&e).unwrap();
+    }
+    assert!(!r.done && r.prompt.contains("Revolution angle") && r.prompt.contains("360"), "{}", r.prompt);
+    // The pointer turns the preview: at (0, 5, 0) it shows a quarter turn.
+    e.state = r.state.clone();
+    e.input = Input::Hover { point: [0.0, 5.0, 0.0] };
+    let h = Surfaces::step(&e).unwrap();
+    assert!((angle_of(&h.preview[0]) - 90.0).abs() < 1e-6);
+    let mut steps = axis();
+    steps.push(text("90"));
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    assert!((angle_of(&r.create[0]) - 90.0).abs() < 1e-9);
+    // A click at (0, 5, 0) around the z axis: 90 degrees.
+    let mut steps = axis();
+    steps.push(pt([0.0, 5.0, 0.0]));
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    assert!((angle_of(&r.create[0]) - 90.0).abs() < 1e-6);
+    // FullCircle wins over a typed angle; StartAngle turns the start.
+    let mut steps = axis();
+    steps.insert(0, opt("FullCircle", Some("Yes")));
+    steps.push(text("45"));
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    let s = Srf::of(&r.create[0]).unwrap();
+    assert!(dist(s.at_st(0.0, 0.0), s.at_st(1.0, 0.0)) < 1e-9, "full turn");
+    let mut steps = axis();
+    steps.insert(0, opt("StartAngle", Some("30")));
+    steps.push(text("60"));
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    let s = Srf::of(&r.create[0]).unwrap();
+    let p = s.at_st(0.0, 0.0);
+    assert!((p[1].atan2(p[0]).to_degrees() - 30.0).abs() < 1e-6, "{p:?}");
+    assert!((angle_of(&r.create[0]) - 90.0).abs() < 1e-6);
+    // Deformable: degree 3, not rational, PointCount points around; still near the cylinder.
+    let mut steps = axis();
+    steps.insert(0, opt("Deformable", Some("Yes")));
+    steps.insert(1, opt("PointCount", Some("12")));
+    steps.push(Input::Enter);
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    match &r.create[0] {
+        Geo::Surface { degree, weights, size, .. } => {
+            assert_eq!((degree[0], size[0]), (3, 12));
+            assert!(weights.iter().all(|w| (*w - 1.0).abs() < 1e-12));
+        }
+        other => panic!("{other:?}"),
+    }
+    // DeleteInput removes the profile in the same step.
+    let mut steps = axis();
+    steps.insert(0, opt("DeleteInput", Some("Yes")));
+    steps.push(Input::Enter);
+    let r = run(REVOLVE, vec![prof()], json!({}), steps);
+    assert_eq!(r.delete, vec!["p".to_string()]);
+}
+
+fn text(t: &str) -> Input {
+    Input::Text { text: t.into() }
 }

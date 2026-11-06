@@ -503,6 +503,8 @@ WebViewer = "Xem trên web"
 RenderEffectsApplyDisplacement = "Hiệu ứng lồi lõm"
 
 [options]
+StartAngle = "Góc bắt đầu"
+FullCircle = "Trọn vòng"
 # Rhino 5 (bổ sung)
 ToPoint = "Tới điểm"
 Closed = "Khép kín"
@@ -659,6 +661,12 @@ All = "Tất cả"
 Used = "Phần đã dùng"
 
 [phrases]
+"Select curves to revolve" = "Chọn đường cong để xoay"
+"Start of revolve axis" = "Điểm đầu trục xoay"
+"End of revolve axis" = "Điểm cuối trục xoay"
+"Revolution angle" = "Góc xoay"
+"the revolution angle must be more than 0 and at most 360" = "góc xoay phải lớn hơn 0 và tối đa 360"
+"pick away from the axis" = "hãy bấm xa trục"
 "the sections must be all closed or all open" = "các tiết diện phải cùng kín hoặc cùng hở"
 "a closed loft needs three or more sections" = "loft kín cần từ ba tiết diện trở lên"
 "could not fit the loft" = "không dựng được mặt loft"
