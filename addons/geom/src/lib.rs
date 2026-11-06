@@ -162,7 +162,7 @@ pub fn eval_geo(g: &Geo, t: f64) -> Option<Vec3> {
 /// Solve a banded system: row `i` holds its non-zeros `rows[i].1` from column `rows[i].0`.
 /// Gaussian elimination without pivoting, which is stable for B-spline collocation
 /// matrices (totally positive, de Boor); refuses a vanishing pivot.
-fn solve_band(rows: &[(usize, Vec<f64>)], n: usize, mut b: Vec<Vec3>) -> Option<Vec<Vec3>> {
+pub(crate) fn solve_band(rows: &[(usize, Vec<f64>)], n: usize, mut b: Vec<Vec3>) -> Option<Vec<Vec3>> {
     // Band limits: kl below, ku above the diagonal.
     let mut kl = 0usize;
     let mut ku = 0usize;
