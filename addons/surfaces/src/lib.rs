@@ -1156,45 +1156,129 @@ pub fn revolve_surface(
     }
 }
 
+/// Rhino 5 Revolve: curves, start of the axis, end of the axis, then the revolution angle
+/// (default 360; the pointer sets it, FullCircle makes 360). Options as on the Rhino 5
+/// command line: StartAngle, FullCircle, Deformable with PointCount (a non-rational degree 3
+/// surface), DeleteInput. Exact (rational) otherwise.
 fn revolve(e: &Event) -> Reply {
-    let angle = e.number("rev_angle", 360.0).to_radians();
-    let start = e.number("rev_start", 0.0).to_radians();
     let flow = Flow::new("Revolve")
-        .point("Start of the revolve axis")
-        .point("End of the revolve axis");
-    let make = |c: &Collected, end: Option<Vec3>| -> Result<Vec<Geo>, String> {
-        let (Some(a), Some(b)) = (c.p(0), c.p(1).or(end)) else {
+        .select_prompt("Select curves to revolve")
+        .point("Start of revolve axis")
+        .point("End of revolve axis")
+        .angle("Revolution angle", e.number("rev_angle", 360.0))
+        .num("StartAngle", e.number("rev_start", 0.0))
+        .toggle("FullCircle", false)
+        .toggle("Deformable", false)
+        .num("PointCount", 8.0)
+        .toggle("DeleteInput", false);
+    let profiles: Vec<(String, (usize, Vec<Vec3>, Vec<f64>, Vec<f64>))> = curves(e)
+        .iter()
+        .filter_map(|s| Some((s.id.clone(), curve_nurbs(s)?)))
+        .collect();
+    // The angle the pointer shows around the axis, from the profile's own side.
+    let pointer_angle = |a: Vec3, b: Vec3, at: Vec3| -> Option<f64> {
+        let ax = unit(sub(b, a));
+        let radial = |p: Vec3| {
+            let r = sub(p, a);
+            sub(r, scale(ax, dot(r, ax)))
+        };
+        let (_, (_, poles, _, _)) = profiles.first()?;
+        let far = poles.iter().copied().max_by(|p, q| norm(radial(*p)).total_cmp(&norm(radial(*q))))?;
+        let (r0, r1) = (radial(far), radial(at));
+        if norm(r0) < 1e-12 || norm(r1) < 1e-12 {
+            return None;
+        }
+        let (x, y) = (unit(r0), unit(cross(ax, r0)));
+        let t = dot(r1, y).atan2(dot(r1, x)).to_degrees();
+        Some(if t <= 1e-9 { t + 360.0 } else { t })
+    };
+    let make = |c: &Collected, angle_deg: f64| -> Result<Vec<Geo>, String> {
+        let (Some(a), Some(b)) = (c.p(0), c.p(1)) else {
             return Err("pick the axis".into());
         };
         if dist(a, b) < 1e-9 {
             return Err("the axis needs two different points".into());
         }
-        let out: Vec<Geo> = curves(e)
-            .iter()
-            .filter_map(|s| curve_nurbs(s))
-            .map(|p| revolve_surface(p, a, sub(b, a), start, angle))
-            .collect();
-        if out.is_empty() {
-            Err("select the profile curves".into())
-        } else {
-            Ok(out)
+        if profiles.is_empty() {
+            return Err("select the profile curves".into());
         }
+        let angle = if c.yes(&flow, "FullCircle") { 360.0 } else { angle_deg };
+        if !(angle.abs() > 1e-9 && angle.abs() <= 360.0 + 1e-9) {
+            return Err("the revolution angle must be more than 0 and at most 360".into());
+        }
+        let start = c.num(&flow, "StartAngle").to_radians();
+        let mut out: Vec<Geo> = profiles
+            .iter()
+            .map(|(_, p)| revolve_surface(p.clone(), a, sub(b, a), start, angle.to_radians()))
+            .collect();
+        if c.yes(&flow, "Deformable") {
+            let count = (c.num(&flow, "PointCount").round() as usize).max(4);
+            out = out
+                .iter()
+                .filter_map(|g| {
+                    let s = Srf::of(g)?;
+                    // Like the exact surface: u around (`count` points), v along the profile;
+                    // degree 3 both ways, not rational.
+                    let nv = 4.max(match g { Geo::Surface { size, .. } => size[1] * 2, _ => 4 });
+                    let rows: Vec<Vec<Vec3>> = (0..count)
+                        .map(|i| (0..nv).map(|j| s.at_st(i as f64 / (count - 1) as f64, j as f64 / (nv - 1) as f64)).collect())
+                        .collect();
+                    surface_through(&rows, [3, 3])
+                })
+                .collect();
+        }
+        Ok(out)
     };
     flow.step(
         e,
-        &|c, h| Show {
-            geo: make(c, h).unwrap_or_default(),
-            ..Default::default()
+        &|c, h| {
+            // At the angle step the pointer sets the angle; before, a full turn previews.
+            let angle = match (c.p(1), h) {
+                (Some(b), Some(at)) => c.p(0).and_then(|a| pointer_angle(a, b, at)).unwrap_or(360.0),
+                _ => 360.0,
+            };
+            let mut c2 = c.clone();
+            if c2.p(1).is_none() {
+                if let Some(at) = h {
+                    c2.answers.push(om9_addon_geom::cmd::Answer::Point(at));
+                }
+            }
+            Show {
+                geo: make(&c2, angle).unwrap_or_default(),
+                ..Default::default()
+            }
         },
         &|c| {
-            let out = make(c, None)?;
+            // Typed (or Enter: the default), or clicked: the angle the click shows.
+            let angle = match (c.p(2), c.p(0), c.p(1)) {
+                (Some(at), Some(a), Some(b)) => pointer_angle(a, b, at).ok_or("pick away from the axis")?,
+                _ => c.n(0).unwrap_or(flow_default(&flow, "Revolution angle", 360.0)),
+            };
+            let out = make(c, angle)?;
             let n = out.len();
-            Ok(Reply::finish(out).say(format!(
-                "Revolve: {n} surfaces, {}°",
-                fmt(angle.to_degrees())
-            )))
+            let shown = if c.yes(&flow, "FullCircle") { 360.0 } else { angle };
+            let mut r = Reply::finish(out).say(format!("Revolve: {n} surfaces, {}°", fmt(shown)));
+            if c.yes(&flow, "DeleteInput") {
+                r.delete = profiles.iter().map(|(id, _)| id.clone()).collect();
+            }
+            Ok(r)
         },
     )
+}
+
+/// The default of a number step (as the flow was built with it).
+fn flow_default(flow: &Flow, prompt: &str, fallback: f64) -> f64 {
+    flow.needs
+        .iter()
+        .find_map(|n| match n {
+            om9_addon_geom::cmd::Need::Number(p, d) | om9_addon_geom::cmd::Need::Angle(p, d)
+                if p == prompt =>
+            {
+                Some(*d)
+            }
+            _ => None,
+        })
+        .unwrap_or(fallback)
 }
 
 fn rail_revolve(e: &Event) -> Reply {
