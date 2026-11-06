@@ -7,9 +7,15 @@
 // already-validated data onto the OCCT construction API and contains its exceptions.
 #include "brep_snapshot.hxx"
 #include <vector>
+#include <cmath>
 
 #include <BRepBuilderAPI_MakeEdge.hxx>
 #include <BRepBuilderAPI_MakeFace.hxx>
+#include <Geom_BSplineCurve.hxx>
+#include <ShapeFix_Face.hxx>
+#include <ShapeFix_Wire.hxx>
+#include <Precision.hxx>
+#include <TColgp_Array1OfPnt.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
 #include <BRepBuilderAPI_MakeVertex.hxx>
 #include <BRepBuilderAPI_MakeWire.hxx>
@@ -320,6 +326,116 @@ extern "C" int om9_occt_planar(const double* points, size_t count, const double*
   return 1;
  } catch (...) {
   if (message && capacity > 0) std::snprintf(message, capacity, "Unknown planar failure");
+  return 2;
+ }
+}
+namespace {
+// A clamped expanded knot vector as OCCT's distinct knots and multiplicities.
+void split_knots(const double* knots, size_t count, std::vector<double>& unique, std::vector<int>& mults) {
+ for (size_t i = 0; i < count; ++i) {
+  if (!std::isfinite(knots[i])) throw std::invalid_argument("trimmed face knot");
+  if (!unique.empty() && knots[i] < unique.back()) throw std::invalid_argument("trimmed face knots decrease");
+  if (unique.empty() || knots[i] - unique.back() > 1.0e-14) { unique.push_back(knots[i]); mults.push_back(1); }
+  else ++mults.back();
+ }
+}
+}  // namespace
+extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, const double* weights,
+                                     const double* u_knots, const double* v_knots, size_t curve_count,
+                                     const size_t* curves, const double* curve_poles,
+                                     const double* curve_weights, const double* curve_knots,
+                                     double deflection, size_t max_points, size_t max_nodes,
+                                     size_t max_bytes, Om9BrepSink sink, void* context, char* message,
+                                     int capacity) {
+ try {
+  if (!shape || !poles || !weights || !u_knots || !v_knots) throw std::invalid_argument("trimmed face buffers");
+  const int du = int(shape[0]), dv = int(shape[1]), nu = int(shape[2]), nv = int(shape[3]);
+  TColgp_Array2OfPnt net(1, nu, 1, nv);
+  TColStd_Array2OfReal net_weights(1, nu, 1, nv);
+  for (int i = 0; i < nu; ++i)
+   for (int j = 0; j < nv; ++j) {
+    const size_t k = size_t(i) * size_t(nv) + size_t(j);
+    net.SetValue(i + 1, j + 1, gp_Pnt(poles[3 * k], poles[3 * k + 1], poles[3 * k + 2]));
+    if (!(weights[k] > 0.0)) throw std::invalid_argument("trimmed face weight");
+    net_weights.SetValue(i + 1, j + 1, weights[k]);
+   }
+  std::vector<double> uk, vk;
+  std::vector<int> um, vm;
+  split_knots(u_knots, size_t(nu + du + 1), uk, um);
+  split_knots(v_knots, size_t(nv + dv + 1), vk, vm);
+  TColStd_Array1OfReal ua(1, int(uk.size())), va(1, int(vk.size()));
+  TColStd_Array1OfInteger uma(1, int(um.size())), vma(1, int(vm.size()));
+  for (int i = 0; i < int(uk.size()); ++i) { ua.SetValue(i + 1, uk[i]); uma.SetValue(i + 1, um[i]); }
+  for (int i = 0; i < int(vk.size()); ++i) { va.SetValue(i + 1, vk[i]); vma.SetValue(i + 1, vm[i]); }
+  Handle(Geom_BSplineSurface) surface =
+      new Geom_BSplineSurface(net, net_weights, ua, va, uma, vma, du, dv, false, false);
+  if (curve_count == 0) {
+   BRepBuilderAPI_MakeFace whole(surface, Precision::Confusion());
+   if (!whole.IsDone()) throw std::runtime_error("surface face build failed");
+   return om9_emit_brep_snapshot(checked(whole.Face(), "invalid surface face"), deflection, max_points,
+                                 max_nodes, max_bytes, sink, context, message, capacity);
+  }
+  if (!curves || !curve_poles || !curve_weights || !curve_knots) throw std::invalid_argument("trimmed face curves");
+  // One wire per loop, curves end to end.
+  std::vector<TopoDS_Wire> wires;
+  size_t pole_at = 0, knot_at = 0;
+  size_t current = size_t(-1);
+  BRepBuilderAPI_MakeWire wire;
+  auto close_wire = [&]() {
+   if (current == size_t(-1)) return;
+   if (!wire.IsDone() || !wire.Wire().Closed()) throw std::invalid_argument("trimmed face loop is not closed");
+   wires.push_back(wire.Wire());
+   wire = BRepBuilderAPI_MakeWire();
+  };
+  for (size_t c = 0; c < curve_count; ++c) {
+   const int degree = int(curves[4 * c]);
+   const size_t n = curves[4 * c + 1];
+   const size_t ring = curves[4 * c + 2];
+   const bool reversed = curves[4 * c + 3] != 0;
+   if (ring != current) { close_wire(); current = ring; }
+   TColgp_Array1OfPnt cp(1, int(n));
+   TColStd_Array1OfReal cw(1, int(n));
+   for (size_t i = 0; i < n; ++i) {
+    const double* p = curve_poles + 3 * (pole_at + i);
+    cp.SetValue(int(i) + 1, gp_Pnt(p[0], p[1], p[2]));
+    cw.SetValue(int(i) + 1, curve_weights[pole_at + i]);
+   }
+   std::vector<double> ck;
+   std::vector<int> cm;
+   split_knots(curve_knots + knot_at, n + size_t(degree) + 1, ck, cm);
+   TColStd_Array1OfReal ka(1, int(ck.size()));
+   TColStd_Array1OfInteger ma(1, int(cm.size()));
+   for (int i = 0; i < int(ck.size()); ++i) { ka.SetValue(i + 1, ck[i]); ma.SetValue(i + 1, cm[i]); }
+   Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(cp, cw, ka, ma, degree, false);
+   BRepBuilderAPI_MakeEdge edge(curve);
+   if (!edge.IsDone()) throw std::invalid_argument("trimmed face edge");
+   TopoDS_Edge e = edge.Edge();
+   if (reversed) e.Reverse();
+   wire.Add(e);
+   if (!wire.IsDone()) throw std::invalid_argument("trimmed face loop is disconnected");
+   pole_at += n;
+   knot_at += n + size_t(degree) + 1;
+  }
+  close_wire();
+  BRepBuilderAPI_MakeFace make(surface, wires.front(), true);
+  if (!make.IsDone()) throw std::runtime_error("trimmed face build failed");
+  for (size_t i = 1; i < wires.size(); ++i) make.Add(wires[i]);
+  // P-curves of the boundary on the surface, wire order and hole orientation.
+  Handle(ShapeFix_Face) fix = new ShapeFix_Face(make.Face());
+  fix->SetPrecision(Precision::Confusion());
+  fix->FixWireTool()->FixAddPCurveMode() = 1;
+  fix->FixOrientationMode() = 1;
+  fix->Perform();
+  return om9_emit_brep_snapshot(checked(fix->Face(), "invalid trimmed face"), deflection, max_points,
+                                max_nodes, max_bytes, sink, context, message, capacity);
+ } catch (const Standard_Failure& e) {
+  if (message && capacity > 0) std::snprintf(message, capacity, "%s", e.what());
+  return 2;
+ } catch (const std::exception& e) {
+  if (message && capacity > 0) std::snprintf(message, capacity, "%s", e.what());
+  return 1;
+ } catch (...) {
+  if (message && capacity > 0) std::snprintf(message, capacity, "Unknown trimmed face failure");
   return 2;
  }
 }

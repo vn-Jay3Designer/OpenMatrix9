@@ -1,0 +1,51 @@
+name: Kernel tests (Windows, OCCT)
+
+# Runs om9-kernel integration tests against the pinned OCCT 8.0.1 SDK on demand. The release
+# workflow only builds the app, so native (C++) kernel changes are verified here.
+on:
+  push:
+    branches: ['codex/**']
+    paths: ['crates/om9-kernel/**', '.github/workflows/kernel-tests-windows.yml']
+  workflow_dispatch:
+    inputs:
+      test:
+        description: 'Integration test target (crates/om9-kernel/tests/<name>.rs)'
+        required: true
+        default: 'trimmed_face'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_BUILD_JOBS: '2'
+
+jobs:
+  kernel:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Pin Rust toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          if($LASTEXITCODE -ne 0){throw 'Rust installation failed'}
+          rustup override set 1.98.1
+      - name: Run the kernel test against OCCT
+        shell: pwsh
+        env:
+          CARGO_TARGET_DIR: ${{ runner.temp }}/om9-target
+          TEST_TARGET: ${{ inputs.test || 'trimmed_face' }}
+        run: |
+          if ($env:TEST_TARGET -notmatch '^[A-Za-z0-9_]+$') { throw 'Invalid test target' }
+          . ./tools/ci/msvc.ps1
+          Initialize-OM9Msvc
+          & python implementation/tools/fetch_occt.py --fetch
+          if ($LASTEXITCODE -ne 0) { throw 'OCCT pin verification/materialization failed' }
+          $sdk = Join-Path $PWD 'build/standalone-deps/occt-8.0.1-sdk'
+          $env:OM9_OCCT_SDK = $sdk
+          $env:PATH = (Join-Path $sdk 'bin') + ';' + $env:PATH
+          & cargo test --release -p om9-kernel --test $env:TEST_TARGET -j 2 -- --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Kernel tests failed' }
