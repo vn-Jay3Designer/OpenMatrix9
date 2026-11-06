@@ -503,6 +503,10 @@ WebViewer = "Xem trên web"
 RenderEffectsApplyDisplacement = "Hiệu ứng lồi lõm"
 
 [options]
+UDegree = "Bậc U"
+VDegree = "Bậc V"
+UPointCount = "Số điểm U"
+VPointCount = "Số điểm V"
 StartAngle = "Góc bắt đầu"
 FullCircle = "Trọn vòng"
 # Rhino 5 (bổ sung)
@@ -661,6 +665,7 @@ All = "Tất cả"
 Used = "Phần đã dùng"
 
 [phrases]
+"First corner of plane" = "Góc thứ nhất của mặt phẳng"
 "Select curves to revolve" = "Chọn đường cong để xoay"
 "Start of revolve axis" = "Điểm đầu trục xoay"
 "End of revolve axis" = "Điểm cuối trục xoay"
