@@ -266,6 +266,11 @@ fn to_geometry(g: &Geo, k: f64) -> Result<(Geometry, Option<Value>, String)> {
                 name("Surface"),
             )
         }
+        Geo::Trimmed {
+            surface,
+            loops,
+            display,
+        } => return trimmed_geometry(surface, loops, display.as_deref(), k),
         Geo::Mesh {
             name: n,
             vertices,
@@ -299,6 +304,59 @@ fn to_geometry(g: &Geo, k: f64) -> Result<(Geometry, Option<Value>, String)> {
     })
 }
 
+/// A trimmed surface from an add-on: an exact face made by the B-Rep kernel (the loops'
+/// curves are NURBS lying on the surface). A build without the kernel keeps the add-on's
+/// display mesh (or the untrimmed surface).
+fn trimmed_geometry(
+    surface: &Geo,
+    loops: &[Vec<Geo>],
+    display: Option<&Geo>,
+    k: f64,
+) -> Result<(Geometry, Option<Value>, String)> {
+    #[cfg(feature = "occt-brep")]
+    {
+        let _ = display;
+        let Geometry::Surface(srf) = to_geometry(surface, k)?.0 else {
+            return Err(Error::Invalid("trimmed surface base"));
+        };
+        let mut rings = Vec::with_capacity(loops.len());
+        for ring in loops {
+            let mut curves = Vec::with_capacity(ring.len());
+            for g in ring {
+                match to_geometry(g, k)?.0 {
+                    Geometry::Curve(Curve::Nurbs(c)) => curves.push(c),
+                    Geometry::Curve(Curve::Line { start, end, .. }) => curves.push(NurbsCurve {
+                        degree: 1,
+                        poles: vec![start, end],
+                        weights: vec![1.0; 2],
+                        knots: vec![0.0, 0.0, 1.0, 1.0],
+                        domain: [0.0, 1.0],
+                        periodic: false,
+                        reversed: false,
+                        seam: None,
+                    }),
+                    _ => return Err(Error::Invalid("trim loop curves are lines or NURBS")),
+                }
+            }
+            rings.push(curves);
+        }
+        let limits = om9_core::budget::Limits::default();
+        let brep = om9_kernel::creation::trimmed_face(
+            &srf,
+            &rings,
+            om9_kernel::creation::DEFAULT_DEFLECTION_MM,
+            &limits,
+        )
+        .map_err(|e| Error::Io(format!("trimmed surface: {e}")))?;
+        Ok((Geometry::Brep(brep), None, "Surface".into()))
+    }
+    #[cfg(not(feature = "occt-brep"))]
+    {
+        let _ = loops;
+        to_geometry(display.unwrap_or(surface), k)
+    }
+}
+
 /// Line segments (document units) that draw one preview geometry.
 fn preview_lines(g: &Geo, k: f64, limits: &om9_core::budget::Limits) -> Vec<[Point3; 2]> {
     let strip =
@@ -320,6 +378,18 @@ fn preview_lines(g: &Geo, k: f64, limits: &om9_core::budget::Limits) -> Vec<[Poi
             .into_iter()
             .map(|[a, b]| [doc(vertices[a], k), doc(vertices[b], k)])
             .collect(),
+        // A trimmed surface previews as its boundary loops (and its display mesh's edges).
+        Geo::Trimmed { loops, display, .. } => {
+            let mut out: Vec<[Point3; 2]> = loops
+                .iter()
+                .flatten()
+                .flat_map(|c| preview_lines(c, k, limits))
+                .collect();
+            if let Some(d) = display {
+                out.extend(preview_lines(d, k, limits));
+            }
+            out
+        }
         Geo::Polyline { points, closed } => {
             let mut pts: Vec<Point3> = points.iter().map(|p| doc(*p, k)).collect();
             if *closed && pts.len() > 2 {

@@ -46,6 +46,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'OCCT pin verification/materialization failed' }
           $sdk = Join-Path $PWD 'build/standalone-deps/occt-8.0.1-sdk'
           $env:OM9_OCCT_SDK = $sdk
-          $env:PATH = (Join-Path $sdk 'bin') + ';' + $env:PATH
+          # OCCT's own DLLs and its third-party runtime (TBB, FreeType …) for the test binary.
+          $thirdparty = Join-Path $env:RUNNER_TEMP 'occt-3rdparty'
+          Expand-Archive -LiteralPath 'build/standalone-deps/occt-8.0.1-3rdparty-vc14-64.zip' -DestinationPath $thirdparty -Force
+          $dirs = @(Join-Path $sdk 'bin') + @(Get-ChildItem $thirdparty -Recurse -Filter *.dll | ForEach-Object { $_.DirectoryName } | Sort-Object -Unique)
+          $env:PATH = ($dirs -join ';') + ';' + $env:PATH
           & cargo test --release -p om9-kernel --test $env:TEST_TARGET -j 2 -- --nocapture
           if ($LASTEXITCODE -ne 0) { throw 'Kernel tests failed' }
