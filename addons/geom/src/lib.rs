@@ -13,6 +13,7 @@ pub mod audit;
 pub mod blend;
 pub mod cmd;
 pub mod csg;
+pub mod exact;
 pub mod fit;
 pub mod gems;
 pub mod interp;

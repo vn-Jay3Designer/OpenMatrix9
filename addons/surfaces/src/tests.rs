@@ -552,3 +552,138 @@ fn every_command_starts() {
         assert!(!r.done && !r.prompt.is_empty(), "{c}");
     }
 }
+
+fn exact_circle(id: &str, c: Vec3, r: f64, x: Vec3, y: Vec3) -> Selected {
+    let g = Geo::Circle { center: c, x, y, radius: r };
+    let pts: Vec<Vec3> = (0..256).map(|k| om9_addon_geom::eval_geo(&g, k as f64 / 256.0).unwrap()).collect();
+    Selected { exact: Some(g), ..curve(id, pts, true) }
+}
+
+fn loft_with(sel: Vec<Selected>, style: &str, closed: bool) -> Geo {
+    run(LOFT, sel, json!({"loft_style": style, "loft_closed": closed}), vec![Input::Enter]).create.remove(0)
+}
+
+/// Rhino 5 Loft keeps its sections: two equal circles make an exact cylinder, and every
+/// section of a normal, tight, uniform or straight loft lies exactly on the surface.
+#[test]
+fn loft_is_exact_through_its_sections_like_rhino5() {
+    let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let t0 = std::time::Instant::now();
+    let g = loft_with(vec![exact_circle("a", [0.0; 3], 5.0, x, y), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], "normal", false);
+    let s = Srf::of(&g).unwrap();
+    for i in 0..=100 {
+        for j in 0..=100 {
+            let p = s.at_st(i as f64 / 100.0, j as f64 / 100.0);
+            assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 5.0).abs() < 1e-9, "{p:?}");
+        }
+    }
+    // Three sections, the middle one wound the other way and started elsewhere: still on the
+    // surface, no twist (the middle of the surface keeps a circle's radius 8 there).
+    let secs = || vec![
+        exact_circle("a", [0.0; 3], 5.0, x, y),
+        exact_circle("b", [0.0, 0.0, 5.0], 8.0, [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]),
+        exact_circle("c", [0.0, 0.0, 10.0], 5.0, x, y),
+    ];
+    for style in ["normal", "tight", "uniform", "straight"] {
+        let g = loft_with(secs(), style, false);
+        let s = Srf::of(&g).unwrap();
+        for (z, r) in [(0.0, 5.0), (5.0, 8.0), (10.0, 5.0)] {
+            // The isocurve through that section: find u where z matches.
+            let u = (0..=2000).map(|i| i as f64 / 2000.0).min_by(|a, b| (s.at_st(*a, 0.3)[2] - z).abs().total_cmp(&(s.at_st(*b, 0.3)[2] - z).abs())).unwrap();
+            for j in 0..=40 {
+                let p = s.at_st(u, j as f64 / 40.0);
+                assert!((p[2] - z).abs() < 1e-6 && ((p[0] * p[0] + p[1] * p[1]).sqrt() - r).abs() < 1e-6, "{style} {p:?}");
+            }
+        }
+        // No twist: a straight line of the surface keeps its angle (x/y sign) from bottom to top.
+        let (a, b) = (s.at_st(0.0, 0.1), s.at_st(1.0, 0.1));
+        assert!(a[0] * b[0] + a[1] * b[1] > 0.0, "{style} twisted {a:?} {b:?}");
+    }
+    // Loose: through the first and last only, inside the others' hull.
+    let g = loft_with(secs(), "loose", false);
+    let s = Srf::of(&g).unwrap();
+    assert!((s.at_st(0.0, 0.2)[2]).abs() < 1e-9 && (s.at_st(1.0, 0.2)[2] - 10.0).abs() < 1e-9);
+    // Closed loft of four sections: through all, and the same at both ends of u.
+    let ring = vec![
+        exact_circle("a", [10.0, 0.0, 0.0], 1.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        exact_circle("b", [0.0, 10.0, 0.0], 1.5, [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+        exact_circle("c", [-10.0, 0.0, 0.0], 1.0, [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        exact_circle("d", [0.0, -10.0, 0.0], 1.5, [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),
+    ];
+    let g = loft_with(ring, "normal", true);
+    let s = Srf::of(&g).unwrap();
+    for j in 0..=20 {
+        let v = j as f64 / 20.0;
+        assert!(dist(s.at_st(0.0, v), s.at_st(1.0, v)) < 1e-9);
+        let p = s.at_st(0.0, v);
+        assert!((dist(p, [10.0, 0.0, 0.0]) - 1.0).abs() < 1e-9, "{p:?}");
+    }
+    // Mixed open sections (line, arc, cubic) are made compatible.
+    let line = Selected { exact: Some(Geo::Line { start: [0.0; 3], end: [4.0, 0.0, 0.0] }), ..line("l", [0.0; 3], [4.0, 0.0, 0.0]) };
+    let arcg = Geo::Arc { center: [2.0, 0.0, 3.0], x: [-1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], radius: 2.0, angle: PI };
+    let arc_pts: Vec<Vec3> = (0..=64).map(|k| om9_addon_geom::eval_geo(&arcg, k as f64 / 64.0).unwrap()).collect();
+    let arc = Selected { exact: Some(arcg), ..curve("a", arc_pts, false) };
+    let g = loft_with(vec![line, arc], "normal", false);
+    let s = Srf::of(&g).unwrap();
+    for j in 0..=40 {
+        let p = s.at_st(1.0, j as f64 / 40.0);
+        assert!((dist(p, [2.0, 0.0, 3.0]) - 2.0).abs() < 1e-9, "{p:?}");
+    }
+    assert!(t0.elapsed().as_secs_f64() < 1.0, "{:?}", t0.elapsed());
+}
+
+/// Revolving an exact circle (Rhino 5: rational) gives an exact torus.
+#[test]
+fn revolve_of_a_circle_is_an_exact_torus() {
+    let prof = exact_circle("p", [10.0, 0.0, 0.0], 2.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    let r = run(REVOLVE, vec![prof], json!({}), vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0])]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=60 {
+        for j in 0..=60 {
+            let p = s.at_st(i as f64 / 60.0, j as f64 / 60.0);
+            let rho = (p[0] * p[0] + p[1] * p[1]).sqrt();
+            assert!((((rho - 10.0).powi(2) + p[2] * p[2]).sqrt() - 2.0).abs() < 1e-9, "{p:?}");
+        }
+    }
+}
+
+fn exact_sel(id: &str, g: Geo, closed: bool) -> Selected {
+    let pts: Vec<Vec3> = (0..=128).map(|k| om9_addon_geom::eval_geo(&g, k as f64 / 128.0).unwrap()).collect();
+    Selected { exact: Some(g), ..curve(id, pts, closed) }
+}
+
+/// Rhino 5 EdgeSrf: the surface's edges are exactly the picked curves (any order and
+/// direction); two curves are opposite edges.
+#[test]
+fn edge_curves_keep_their_edges_exactly() {
+    // A square of side 10 whose bottom edge is a half circle bulging down, others straight.
+    let arc = Geo::Arc { center: [5.0, 0.0, 0.0], x: [-1.0, 0.0, 0.0], y: [0.0, -1.0, 0.0], radius: 5.0, angle: PI };
+    let sel = vec![
+        exact_sel("top", Geo::Line { start: [0.0, 10.0, 0.0], end: [10.0, 10.0, 0.0] }, false),
+        exact_sel("arc", arc.clone(), false),
+        exact_sel("left", Geo::Line { start: [0.0, 10.0, 0.0], end: [0.0, 0.0, 0.0] }, false),
+        exact_sel("right", Geo::Line { start: [10.0, 0.0, 0.0], end: [10.0, 10.0, 0.0] }, false),
+    ];
+    let r = run(EDGE_CURVES, sel, json!({}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    // One edge is the arc: every point of it is 5 from (5,0,0), below y = 0.
+    let edges = [(0, 0.0), (0, 1.0), (1, 0.0), (1, 1.0)];
+    let mut found_arc = false;
+    for (dir, at) in edges {
+        let pts: Vec<Vec3> = (0..=50).map(|k| { let t = k as f64 / 50.0; if dir == 0 { s.at_st(at, t) } else { s.at_st(t, at) } }).collect();
+        if pts.iter().all(|p| (dist(*p, [5.0, 0.0, 0.0]) - 5.0).abs() < 1e-9) {
+            found_arc = true;
+        }
+    }
+    assert!(found_arc, "the arc is an edge");
+    // Flat inside (all on z = 0).
+    for i in 0..=10 { for j in 0..=10 { assert!(s.at_st(i as f64 / 10.0, j as f64 / 10.0)[2].abs() < 1e-12); } }
+    // Two curves: a ruled surface between them.
+    let r = run(EDGE_CURVES, vec![
+        exact_sel("a", Geo::Line { start: [0.0; 3], end: [4.0, 0.0, 0.0] }, false),
+        exact_sel("b", Geo::Line { start: [4.0, 2.0, 1.0], end: [0.0, 2.0, 1.0] }, false),
+    ], json!({}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    let mid = s.at_st(0.5, 0.5);
+    assert!(dist(mid, [2.0, 1.0, 0.5]) < 1e-12, "{mid:?}");
+}

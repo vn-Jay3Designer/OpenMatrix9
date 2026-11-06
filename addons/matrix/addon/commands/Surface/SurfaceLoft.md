@@ -20,5 +20,5 @@ Mặt qua các đường tiết diện theo thứ tự.
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
-| `Style=` | Kiểu loft | normal | normal, loose, straight |
+| `Style=` | Kiểu loft | normal | normal, loose, tight, straight, uniform |
 | `Closed=` | Khép kín | No |  |

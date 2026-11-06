@@ -621,6 +621,9 @@ Toggle = "Đổi hướng"
 FixEnds = "Giữ hai đầu"
 
 [values]
+Tight = "Sát"
+Loose = "Lỏng"
+Straight = "Thẳng"
 SqrtChrd = "Căn dây cung"
 Interpolated = "Đi qua điểm"
 ControlPoint = "Điểm điều khiển"
@@ -656,6 +659,10 @@ All = "Tất cả"
 Used = "Phần đã dùng"
 
 [phrases]
+"the sections must be all closed or all open" = "các tiết diện phải cùng kín hoặc cùng hở"
+"a closed loft needs three or more sections" = "loft kín cần từ ba tiết diện trở lên"
+"could not fit the loft" = "không dựng được mặt loft"
+"surface from {} edge curves" = "mặt từ {} đường cạnh"
 "Select master curve" = "Chọn đường cong mẫu"
 "The master curve must be a NURBS curve or a polyline" = "Đường cong mẫu phải là đường NURBS hoặc đường gấp khúc"
 "Match Curve: averaged" = "Khớp đường cong: đã lấy trung bình"
