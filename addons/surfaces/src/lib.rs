@@ -8,7 +8,7 @@
 //! tangent, rebuild, refit, shrink and untrim.
 #![allow(clippy::too_many_arguments, clippy::type_complexity)]
 use om9_addon_abi::session::{
-    Event, Geo, Input, Interactive, Replacement, Reply, Selected, SelectedMesh, Vec3, Want, add,
+    Event, Geo, Input, Interactive, OptionToken, Replacement, Reply, Selected, SelectedMesh, Vec3, Want, add,
     cross, dist, dot, fmt, norm, scale, sub, unit,
 };
 use om9_addon_geom::cmd::{Collected, Flow, Show};
@@ -18,7 +18,8 @@ use om9_addon_geom::nurbs::{self, Srf};
 use om9_addon_geom::path::{Path, Target};
 use om9_addon_geom::exact::{self, Nc};
 use om9_addon_geom::{interpolate, section, shapes};
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 pub const SWEEP1: &str = "SurfaceSweepSweep1Rail";
@@ -1020,34 +1021,128 @@ fn planar(e: &Event) -> Reply {
     )
 }
 
-fn plane(e: &Event) -> Reply {
-    let flow = Flow::new("Plane")
-        .no_selection()
-        .point("First corner")
-        .point("Opposite corner");
-    let make = |a: Vec3, b: Vec3| -> Geo {
-        let (la, lb) = (e.plane.local(a), e.plane.local(b));
-        let p = |u: f64, v: f64| e.plane.at(u, v, la[2]);
-        surface_on_grid(
-            &[
-                vec![p(la[0], la[1]), p(la[0], lb[1])],
-                vec![p(lb[0], la[1]), p(lb[0], lb[1])],
-            ],
-            [1, 1],
-        )
-        .unwrap()
+/// Rhino 5 Plane: the rectangle is drawn as the Rectangle command draws it (`First corner of
+/// plane ( Deformable 3Point Vertical Center )`, other corner or a typed length then width),
+/// and becomes a planar surface. Deformable: degree and control point counts in u and v
+/// (UDegree, VDegree, UPointCount, VPointCount; the surface stays the same plane).
+#[derive(Serialize, Deserialize)]
+struct PlaneState {
+    rect: Value,
+    deformable: bool,
+    degree: [usize; 2],
+    count: [usize; 2],
+}
+
+impl Default for PlaneState {
+    fn default() -> Self {
+        PlaneState { rect: Value::Null, deformable: false, degree: [3, 3], count: [4, 4] }
+    }
+}
+
+fn plane_surface(corners: &[Vec3], st: &PlaneState) -> Option<Geo> {
+    let [a, b, c, d] = [corners.first()?, corners.get(1)?, corners.get(2)?, corners.get(3)?];
+    let (degree, count) = if st.deformable {
+        let pu = st.degree[0].clamp(1, 11);
+        let pv = st.degree[1].clamp(1, 11);
+        ([pu, pv], [st.count[0].max(pu + 1), st.count[1].max(pv + 1)])
+    } else {
+        ([1, 1], [2, 2])
     };
-    flow.step(
-        e,
-        &|c, h| Show {
-            geo: match (c.p(0), h) {
-                (Some(a), Some(b)) => vec![make(a, b)],
-                _ => Vec::new(),
-            },
-            ..Default::default()
-        },
-        &|c| Ok(Reply::finish(vec![make(c.p(0).unwrap(), c.p(1).unwrap())]).say("Plane: done")),
-    )
+    // Poles at the Greville points of uniform clamped knots: a bilinear sheet is exact.
+    let knots = |n: usize, p: usize| {
+        let k = om9_addon_geom::clamped_uniform(n, p);
+        let last = *k.last().unwrap();
+        k.iter().map(|x| x / last).collect::<Vec<f64>>()
+    };
+    let (ku, kv) = (knots(count[0], degree[0]), knots(count[1], degree[1]));
+    let greville = |k: &[f64], n: usize, p: usize| -> Vec<f64> {
+        (0..n).map(|i| k[i + 1..=i + p].iter().sum::<f64>() / p as f64).collect()
+    };
+    let (gu, gv) = (greville(&ku, count[0], degree[0]), greville(&kv, count[1], degree[1]));
+    let lerp = |p: Vec3, q: Vec3, t: f64| add(p, scale(sub(q, p), t));
+    let mut points = Vec::with_capacity(count[0] * count[1]);
+    for u in &gu {
+        for v in &gv {
+            points.push(lerp(lerp(*a, *b, *u), lerp(*d, *c, *u), *v));
+        }
+    }
+    Some(Geo::Surface {
+        degree,
+        size: count,
+        weights: vec![1.0; points.len()],
+        points,
+        knots: [ku, kv],
+    })
+}
+
+fn plane(e: &Event) -> Reply {
+    let mut st: PlaneState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    let ours = ["Deformable", "UDegree", "VDegree", "UPointCount", "VPointCount"];
+    let tokens = |st: &PlaneState| {
+        let mut t = vec![OptionToken::toggle("Deformable", st.deformable)];
+        if st.deformable {
+            t.push(OptionToken::number("UDegree", Some(st.degree[0] as f64)));
+            t.push(OptionToken::number("VDegree", Some(st.degree[1] as f64)));
+            t.push(OptionToken::number("UPointCount", Some(st.count[0] as f64)));
+            t.push(OptionToken::number("VPointCount", Some(st.count[1] as f64)));
+        }
+        t
+    };
+    let mut refuse = None;
+    let mut inner = e.clone();
+    inner.state = st.rect.clone();
+    if let Input::Option { name, value } = &e.input {
+        if ours.contains(&name.as_str()) {
+            let num = value.as_deref().and_then(om9_addon_abi::session::parse_number);
+            match name.as_str() {
+                "Deformable" => st.deformable = match value.as_deref() {
+                    Some(v) => v.eq_ignore_ascii_case("yes") || v.eq_ignore_ascii_case("true"),
+                    None => !st.deformable,
+                },
+                _ => match num.filter(|v| v.fract() == 0.0 && *v >= 1.0 && *v <= 100.0) {
+                    Some(v) => {
+                        let v = v as usize;
+                        match name.as_str() {
+                            "UDegree" => st.degree[0] = v.min(11),
+                            "VDegree" => st.degree[1] = v.min(11),
+                            "UPointCount" => st.count[0] = v.max(2),
+                            _ => st.count[1] = v.max(2),
+                        }
+                    }
+                    None => refuse = Some(format!("{name}: a whole number from 1 to 100")),
+                },
+            }
+            // Ask again from where the rectangle is (a hover replays its prompt).
+            inner.input = Input::Start;
+        } else if name == "Rounded" || name == "Corner" || name == "Rho" {
+            refuse = Some(format!("Unknown option {name}"));
+            inner.input = Input::Start;
+        }
+    }
+    let mut r = om9_curves::rect::step(&inner);
+    st.rect = r.state.clone();
+    // Rectangles become planes, previews and results alike.
+    let corners = |g: &Geo| match g {
+        Geo::Polyline { points, .. } if points.len() == 4 => Some(points.clone()),
+        _ => None,
+    };
+    r.preview = r.preview.iter().filter_map(|g| plane_surface(&corners(g)?, &st)).collect();
+    r.create = r.create.iter().filter_map(|g| plane_surface(&corners(g)?, &st)).collect();
+    if r.done && !r.create.is_empty() {
+        for m in &mut r.messages {
+            *m = m.replacen("Rectangle", "Plane", 1);
+        }
+    }
+    r.prompt = r.prompt.replace("First corner of rectangle", "First corner of plane");
+    r.options.retain(|o| o.name != "Rounded");
+    let mut opts = tokens(&st);
+    opts.extend(r.options.drain(..));
+    r.options = opts;
+    r.state = serde_json::to_value(&st).unwrap_or(Value::Null);
+    if let Some(why) = refuse {
+        r.error = Some(why);
+    }
+    r
 }
 
 // ---- revolve ---------------------------------------------------------------------------------

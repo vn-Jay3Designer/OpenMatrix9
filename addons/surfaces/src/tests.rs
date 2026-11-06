@@ -767,3 +767,53 @@ fn revolve_follows_rhino5_prompts_and_options() {
 fn text(t: &str) -> Input {
     Input::Text { text: t.into() }
 }
+
+/// Rhino 5 Plane draws its rectangle like Rectangle (corner/length/width, 3Point, Vertical,
+/// Center) and has Deformable (degrees and point counts) instead of Rounded.
+#[test]
+fn plane_follows_rhino5_rectangle_and_deformable() {
+    let corners = |g: &Geo| {
+        let s = Srf::of(g).unwrap();
+        [s.at_st(0.0, 0.0), s.at_st(1.0, 0.0), s.at_st(1.0, 1.0), s.at_st(0.0, 1.0)]
+    };
+    let has = |c: &[Vec3; 4], p: Vec3| c.iter().any(|q| dist(*q, p) < 1e-9);
+    // Typed length then width.
+    let r = run(PLANE, vec![], json!({}), vec![pt([1.0, 1.0, 0.0]), text("4"), text("2")]);
+    let c = corners(&r.create[0]);
+    let size = (dist(c[0], c[1]), dist(c[1], c[2]));
+    assert!(((size.0 - 4.0).abs() < 1e-9 && (size.1 - 2.0).abs() < 1e-9) || ((size.0 - 2.0).abs() < 1e-9 && (size.1 - 4.0).abs() < 1e-9), "{size:?}");
+    // Center: corners symmetric about the center.
+    let r = run(PLANE, vec![], json!({}), vec![opt("Center", None), pt([0.0; 3]), pt([3.0, 2.0, 0.0])]);
+    let c = corners(&r.create[0]);
+    assert!(has(&c, [-3.0, -2.0, 0.0]) && has(&c, [3.0, 2.0, 0.0]));
+    // Vertical: stands on the edge, up from the CPlane.
+    let r = run(PLANE, vec![], json!({}), vec![opt("Vertical", None), pt([0.0; 3]), pt([5.0, 0.0, 0.0]), text("3")]);
+    let c = corners(&r.create[0]);
+    assert!(c.iter().any(|p| (p[2].abs() - 3.0).abs() < 1e-9), "{c:?}");
+    // 3Point: edge then width.
+    let r = run(PLANE, vec![], json!({}), vec![opt("3Point", None), pt([0.0; 3]), pt([4.0, 0.0, 0.0]), pt([2.0, 2.0, 0.0])]);
+    let c = corners(&r.create[0]);
+    assert!(has(&c, [0.0, 2.0, 0.0]) && has(&c, [4.0, 2.0, 0.0]), "{c:?}");
+    // Deformable: degree 3 × 2, 6 × 5 poles, still the same flat rectangle.
+    let r = run(PLANE, vec![], json!({}), vec![
+        opt("Deformable", Some("Yes")), opt("UDegree", Some("3")), opt("VDegree", Some("2")),
+        opt("UPointCount", Some("6")), opt("VPointCount", Some("5")),
+        pt([0.0; 3]), pt([6.0, 4.0, 0.0]),
+    ]);
+    match &r.create[0] {
+        Geo::Surface { degree, size, .. } => assert_eq!((*degree, *size), ([3, 2], [6, 5])),
+        other => panic!("{other:?}"),
+    }
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=10 {
+        for j in 0..=10 {
+            let p = s.at_st(i as f64 / 10.0, j as f64 / 10.0);
+            assert!(p[2].abs() < 1e-12 && p[0] > -1e-9 && p[0] < 6.0 + 1e-9 && p[1] > -1e-9 && p[1] < 4.0 + 1e-9);
+        }
+    }
+    assert!(dist(s.at_st(0.5, 0.5), [3.0, 2.0, 0.0]) < 1e-9);
+    // Rounded is not a Plane option; the prompt names the plane.
+    let e = event(PLANE, opt("Rounded", Some("Yes")), vec![], json!({}));
+    let r = Surfaces::step(&e).unwrap();
+    assert!(r.error.is_some() && r.prompt.contains("plane") && !r.options.iter().any(|o| o.name == "Rounded"), "{}", r.prompt);
+}
