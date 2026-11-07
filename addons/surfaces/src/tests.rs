@@ -927,7 +927,7 @@ fn loft_point_seams_and_simplify_like_rhino5() {
     let s = Srf::of(&r.create[0]).unwrap();
     assert!(dist(s.at_st(1.0, 0.0), [5.0, 0.0, 10.0]) < 1e-9, "automatic aligns the seam: {:?} {:?}", s.at_st(1.0, 0.0), s.at_st(0.0, 0.0));
     // Rebuild with 12 points: non-rational sections, near the circles.
-    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], json!({"loft_simplify": "rebuild", "loft_rebuild_points": 12.0}), vec![Input::Enter]);
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], json!({"loft_simplify": "rebuild", "loft_rebuild_points": 12}), vec![Input::Enter]);
     match &r.create[0] {
         Geo::Surface { weights, size, .. } => {
             assert!(weights.iter().all(|w| (*w - 1.0).abs() < 1e-12));
