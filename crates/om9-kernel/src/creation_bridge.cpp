@@ -14,6 +14,11 @@
 #include <Geom_BSplineCurve.hxx>
 #include <ShapeFix_Face.hxx>
 #include <ShapeFix_Wire.hxx>
+#include <GeomProjLib.hxx>
+#include <Geom2d_Curve.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepLib.hxx>
+#include <BRepCheck_Analyzer.hxx>
 #include <Precision.hxx>
 #include <TColgp_Array1OfPnt.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -376,7 +381,14 @@ extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, c
                                  max_nodes, max_bytes, sink, context, message, capacity);
   }
   if (!curves || !curve_poles || !curve_weights || !curve_knots) throw std::invalid_argument("trimmed face curves");
-  // One wire per loop, curves end to end.
+  // The bare face of the surface: its wires are replaced by the loops below.
+  BRepBuilderAPI_MakeFace bare(surface, Precision::Confusion());
+  if (!bare.IsDone()) throw std::runtime_error("surface face build failed");
+  TopoDS_Face face = TopoDS::Face(bare.Face().EmptyCopied());
+  BRep_Builder builder;
+  const double tol = 1.0e-6;
+  // One wire per loop, curves end to end; every edge gets its p-curve on the surface
+  // (the 3D curve projected), so the face is valid without guessing.
   std::vector<TopoDS_Wire> wires;
   size_t pole_at = 0, knot_at = 0;
   size_t current = size_t(-1);
@@ -407,9 +419,13 @@ extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, c
    TColStd_Array1OfInteger ma(1, int(cm.size()));
    for (int i = 0; i < int(ck.size()); ++i) { ka.SetValue(i + 1, ck[i]); ma.SetValue(i + 1, cm[i]); }
    Handle(Geom_BSplineCurve) curve = new Geom_BSplineCurve(cp, cw, ka, ma, degree, false);
+   Handle(Geom2d_Curve) on_surface =
+       GeomProjLib::Curve2d(curve, curve->FirstParameter(), curve->LastParameter(), surface);
+   if (on_surface.IsNull()) throw std::invalid_argument("a trim curve does not lie on the surface");
    BRepBuilderAPI_MakeEdge edge(curve);
    if (!edge.IsDone()) throw std::invalid_argument("trimmed face edge");
    TopoDS_Edge e = edge.Edge();
+   builder.UpdateEdge(e, on_surface, face, tol);
    if (reversed) e.Reverse();
    wire.Add(e);
    if (!wire.IsDone()) throw std::invalid_argument("trimmed face loop is disconnected");
@@ -417,16 +433,19 @@ extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, c
    knot_at += n + size_t(degree) + 1;
   }
   close_wire();
-  BRepBuilderAPI_MakeFace make(surface, wires.front(), true);
-  if (!make.IsDone()) throw std::runtime_error("trimmed face build failed");
-  for (size_t i = 1; i < wires.size(); ++i) make.Add(wires[i]);
-  // P-curves of the boundary on the surface, wire order and hole orientation.
-  Handle(ShapeFix_Face) fix = new ShapeFix_Face(make.Face());
-  fix->SetPrecision(Precision::Confusion());
-  fix->FixWireTool()->FixAddPCurveMode() = 1;
+  for (const TopoDS_Wire& w : wires) builder.Add(face, w);
+  BRepLib::SameParameter(face, tol, Standard_True);
+  // Outer boundary counter-clockwise, holes clockwise (on the surface's parameters).
+  Handle(ShapeFix_Face) fix = new ShapeFix_Face(face);
+  fix->SetPrecision(tol);
   fix->FixOrientationMode() = 1;
   fix->Perform();
-  return om9_emit_brep_snapshot(checked(fix->Face(), "invalid trimmed face"), deflection, max_points,
+  const TopoDS_Face result = fix->Face();
+  if (!BRepCheck_Analyzer(result).IsValid()) {
+   if (!BRepCheck_Analyzer(face).IsValid()) throw std::runtime_error("invalid trimmed face (before orientation fix)");
+   throw std::runtime_error("invalid trimmed face (after orientation fix)");
+  }
+  return om9_emit_brep_snapshot(checked(result, "invalid trimmed face"), deflection, max_points,
                                 max_nodes, max_bytes, sink, context, message, capacity);
  } catch (const Standard_Failure& e) {
   if (message && capacity > 0) std::snprintf(message, capacity, "%s", e.what());
