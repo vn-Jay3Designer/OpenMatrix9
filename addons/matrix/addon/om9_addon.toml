@@ -1163,6 +1163,46 @@ default = false
 commands = ["SurfaceLoft"]
 
 [[settings]]
+key = "loft_seams"
+type = "enum"
+option = "Seams"
+label = "Đường nối"
+choices = ["automatic", "natural"]
+choice_labels = ["Automatic", "Natural"]
+default = "automatic"
+commands = ["SurfaceLoft"]
+
+[[settings]]
+key = "loft_simplify"
+type = "enum"
+option = "Simplify"
+label = "Đơn giản hóa"
+choices = ["none", "rebuild", "refit"]
+choice_labels = ["Do not simplify", "Rebuild", "Refit"]
+default = "none"
+commands = ["SurfaceLoft"]
+
+[[settings]]
+key = "loft_rebuild_points"
+type = "number"
+option = "RebuildPoints"
+label = "Số điểm dựng lại"
+default = 10.0
+min = 4.0
+max = 1000.0
+commands = ["SurfaceLoft"]
+
+[[settings]]
+key = "loft_refit_tolerance"
+type = "number"
+option = "RefitTolerance"
+label = "Dung sai khớp lại (mm)"
+default = 0.01
+min = 0.0001
+max = 10.0
+commands = ["SurfaceLoft"]
+
+[[settings]]
 key = "rev_angle"
 type = "angle"
 option = "Angle"

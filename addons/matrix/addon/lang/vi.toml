@@ -503,6 +503,10 @@ WebViewer = "Xem trên web"
 RenderEffectsApplyDisplacement = "Hiệu ứng lồi lõm"
 
 [options]
+Seams = "Đường nối"
+Simplify = "Đơn giản hóa"
+RebuildPoints = "Số điểm dựng lại"
+RefitTolerance = "Dung sai khớp lại"
 UDegree = "Bậc U"
 VDegree = "Bậc V"
 UPointCount = "Số điểm U"
@@ -627,6 +631,8 @@ Toggle = "Đổi hướng"
 FixEnds = "Giữ hai đầu"
 
 [values]
+Automatic = "Tự động"
+Rebuild = "Dựng lại"
 Tight = "Sát"
 Loose = "Lỏng"
 Straight = "Thẳng"
@@ -665,6 +671,8 @@ All = "Tất cả"
 Used = "Phần đã dùng"
 
 [phrases]
+"a point can only start or end the loft" = "điểm chỉ được ở đầu hoặc cuối loft"
+"Do not simplify" = "Không đơn giản hóa"
 "Select curves to extrude" = "Chọn đường cong để đùn"
 "Extrusion distance" = "Khoảng cách đùn"
 "the extrusion distance must not be 0" = "khoảng cách đùn phải khác 0"
