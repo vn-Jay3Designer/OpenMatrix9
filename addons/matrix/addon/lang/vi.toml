@@ -665,6 +665,10 @@ All = "Tất cả"
 Used = "Phần đã dùng"
 
 [phrases]
+"Select curves to extrude" = "Chọn đường cong để đùn"
+"Extrusion distance" = "Khoảng cách đùn"
+"the extrusion distance must not be 0" = "khoảng cách đùn phải khác 0"
+"select curves to extrude" = "chọn đường cong để đùn"
 "First corner of plane" = "Góc thứ nhất của mặt phẳng"
 "Select curves to revolve" = "Chọn đường cong để xoay"
 "Start of revolve axis" = "Điểm đầu trục xoay"

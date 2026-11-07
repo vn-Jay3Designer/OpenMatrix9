@@ -119,9 +119,9 @@ pub enum Need {
     Point(String),
     /// A typed number (Enter takes the default), with its prompt.
     Number(String, f64),
-    /// An angle in degrees: typed (a number answer), Enter for the default, or a click (a
-    /// point answer the command turns into an angle, e.g. around an axis).
-    Angle(String, f64),
+    /// A value typed (a number answer), Enter for the default, or given by a click (a point
+    /// answer the command turns into the value: an angle around an axis, a distance …).
+    Value(String, f64),
     /// A curve picked by a click (its id and where on it), with its prompt.
     Curve(String),
     /// Enter to accept what the preview shows (options may change first), with its prompt.
@@ -300,9 +300,10 @@ impl Flow {
         self.needs.push(Need::Number(prompt.to_owned(), default));
         self
     }
-    /// An angle step (degrees): type it, Enter for `default`, or click (a point answer).
-    pub fn angle(mut self, prompt: &str, default: f64) -> Flow {
-        self.needs.push(Need::Angle(prompt.to_owned(), default));
+    /// A value step: type it, Enter for `default`, or click (a point answer the command
+    /// turns into the value).
+    pub fn value(mut self, prompt: &str, default: f64) -> Flow {
+        self.needs.push(Need::Value(prompt.to_owned(), default));
         self
     }
     pub fn toggle(mut self, name: &str, on: bool) -> Flow {
@@ -430,7 +431,7 @@ impl Flow {
         }
         match &e.input {
             Input::Point { point } => match next {
-                Some(Need::Point(_) | Need::Angle(..)) => c.answers.push(Answer::Point(*point)),
+                Some(Need::Point(_) | Need::Value(..)) => c.answers.push(Answer::Point(*point)),
                 Some(Need::Number(..)) => {
                     // A click for a number: the distance from the last point.
                     match c.points().last() {
@@ -461,7 +462,7 @@ impl Flow {
                         },
                     }
                 }
-                Some(Need::Number(..) | Need::Angle(..)) => match om9_addon_abi::session::parse_number(text) {
+                Some(Need::Number(..) | Need::Value(..)) => match om9_addon_abi::session::parse_number(text) {
                     Some(v) => c.answers.push(Answer::Number(v)),
                     None => error = Some(format!("{text}: type a number")),
                 },
@@ -519,7 +520,7 @@ impl Flow {
                 }
             }
             Input::Enter => match next {
-                Some(Need::Number(_, d) | Need::Angle(_, d)) => c.answers.push(Answer::Number(*d)),
+                Some(Need::Number(_, d) | Need::Value(_, d)) => c.answers.push(Answer::Number(*d)),
                 Some(Need::Confirm(_)) => c.answers.push(Answer::Done),
                 Some(Need::Point(p) | Need::Curve(p)) => error = Some(format!("{}: {}", self.label, p)),
                 None => {}
@@ -590,7 +591,7 @@ impl Flow {
             Some(Need::Curve(p)) => (p.clone(), Want::Objects),
             Some(Need::Confirm(p)) => (p.clone(), Want::Nothing),
             Some(Need::Number(p, d)) => (format!("{p} <{}>", om9_addon_abi::session::fmt(*d)), Want::Number),
-            Some(Need::Angle(p, d)) => (format!("{p} <{}>", om9_addon_abi::session::fmt(*d)), Want::Point),
+            Some(Need::Value(p, d)) => (format!("{p} <{}>", om9_addon_abi::session::fmt(*d)), Want::Point),
             None => match (&self.select_prompt, self.plain) {
                 (Some(p), _) => (format!("{p}. Press Enter when done"), Want::Objects),
                 (None, true) => ("Press Enter when done".to_owned(), Want::Objects),
