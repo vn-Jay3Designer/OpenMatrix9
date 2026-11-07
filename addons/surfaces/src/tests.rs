@@ -892,3 +892,54 @@ fn extrude_all_follows_rhino5_and_is_exact() {
     let z = Surfaces::step(&e).unwrap();
     assert!(!z.done && z.error.is_some());
 }
+
+fn point_sel(id: &str, p: Vec3) -> Selected {
+    Selected { kind: "point".into(), ..curve(id, vec![p], false) }
+}
+
+/// Rhino 5 Loft options: a point may end (or start) the loft, Natural keeps the seams,
+/// Rebuild / Refit simplify the sections.
+#[test]
+fn loft_point_seams_and_simplify_like_rhino5() {
+    let (x, y) = ([1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    // Circle r5 at z 0 to the point (0, 0, 10), straight: an exact cone.
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), point_sel("p", [0.0, 0.0, 10.0])], json!({"loft_style": "straight"}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=20 {
+        for j in 0..=40 {
+            let p = s.at_st(i as f64 / 20.0, j as f64 / 40.0);
+            let want = 5.0 * (1.0 - p[2] / 10.0);
+            assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - want).abs() < 1e-9, "{p:?}");
+        }
+    }
+    assert!(dist(s.at_st(1.0, 0.3), [0.0, 0.0, 10.0]) < 1e-12);
+    // A point in the middle is refused.
+    let e = event(LOFT, Input::Enter, vec![exact_circle("a", [0.0; 3], 5.0, x, y), point_sel("p", [0.0, 0.0, 5.0]), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], json!({}));
+    let r = Surfaces::step(&e).unwrap();
+    assert!(!r.done && r.error.is_some());
+    // Natural: the second circle keeps its own start (turned 90°), so the surface's v = 0
+    // line ends where that circle starts.
+    let b = exact_circle("b", [0.0, 0.0, 10.0], 5.0, y, [-1.0, 0.0, 0.0]);
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), b.clone()], json!({"loft_seams": "natural"}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    assert!(dist(s.at_st(1.0, 0.0), [0.0, 5.0, 10.0]) < 1e-9);
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), b], json!({}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    assert!(dist(s.at_st(1.0, 0.0), [5.0, 0.0, 10.0]) < 1e-9, "automatic aligns the seam: {:?} {:?}", s.at_st(1.0, 0.0), s.at_st(0.0, 0.0));
+    // Rebuild with 12 points: non-rational sections, near the circles.
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], json!({"loft_simplify": "rebuild", "loft_rebuild_points": 12.0}), vec![Input::Enter]);
+    match &r.create[0] {
+        Geo::Surface { weights, size, .. } => {
+            assert!(weights.iter().all(|w| (*w - 1.0).abs() < 1e-12));
+            assert!((12..=15).contains(&size[1]), "{size:?}");
+        }
+        other => panic!("{other:?}"),
+    }
+    // Refit within 0.001: every point of the surface within that of the cylinder.
+    let r = run(LOFT, vec![exact_circle("a", [0.0; 3], 5.0, x, y), exact_circle("b", [0.0, 0.0, 10.0], 5.0, x, y)], json!({"loft_simplify": "refit", "loft_refit_tolerance": 0.001}), vec![Input::Enter]);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for j in 0..=200 {
+        let p = s.at_st(0.5, j as f64 / 200.0);
+        assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 5.0).abs() < 1e-3, "{p:?}");
+    }
+}

@@ -22,3 +22,7 @@ Mặt qua các đường tiết diện theo thứ tự.
 |---|---|---|---|
 | `Style=` | Kiểu loft | normal | normal, loose, tight, straight, uniform |
 | `Closed=` | Khép kín | No |  |
+| `Seams=` | Đường nối | automatic | automatic, natural |
+| `Simplify=` | Đơn giản hóa | none | none, rebuild, refit |
+| `RebuildPoints=` | Số điểm dựng lại | 10 | 4 … 1000 |
+| `RefitTolerance=` | Dung sai khớp lại (mm) | 0.01 | 0.0001 … 10 |

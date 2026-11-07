@@ -667,16 +667,71 @@ fn exact_curve(s: &Selected) -> Option<Nc> {
 /// interpolated pole by pole across, so every section lies exactly on the surface (except
 /// Loose, which uses the sections' poles as its own). `None` when a section has no exact
 /// form (the sampled loft is used then).
-fn loft_exact(cs: &[&Selected], kind: &str, closed_loft: bool) -> Option<Result<Geo, String>> {
-    let mut secs: Vec<Nc> = cs.iter().map(|s| exact_curve(s)).collect::<Option<_>>()?;
-    let closed = secs.iter().all(|c| c.closed(1e-6));
-    if !closed && secs.iter().any(|c| c.closed(1e-6)) {
+/// Rhino's Loft "Simplify": Rebuild (N control points through the section) or Refit (fewest
+/// points within `tol`); `none` keeps the exact section.
+fn simplify_section(c: Nc, how: &str, points: usize, tol: f64) -> Nc {
+    let closed = c.closed(1e-9);
+    let fit = |n: usize| -> Option<Nc> {
+        let n = n.max(4);
+        // A closed section repeats its start at the end (interpolate closes it).
+        let step = if closed { n as f64 } else { (n - 1) as f64 };
+        let pts: Vec<Vec3> = (0..n).map(|i| c.eval(i as f64 / step)).collect();
+        Nc::from_geo(&interpolate(&pts, 3, closed)?)
+    };
+    match how {
+        "rebuild" => fit(points).unwrap_or(c),
+        "refit" => {
+            let mut n = 8;
+            while n <= 4096 {
+                if let Some(f) = fit(n) {
+                    let worst = (0..=400)
+                        .map(|i| {
+                            let p = c.eval(i as f64 / 400.0);
+                            dist(p, f.eval(f.closest(p)))
+                        })
+                        .fold(0.0, f64::max);
+                    if worst <= tol {
+                        return f;
+                    }
+                }
+                n *= 2;
+            }
+            c
+        }
+        _ => c,
+    }
+}
+
+fn loft_exact(e: &Event, cs: &[&Selected], kind: &str, closed_loft: bool) -> Option<Result<Geo, String>> {
+    // Sections in pick order; a point may start or end the loft (Rhino's Point option).
+    let simplify = e.text("loft_simplify", "none");
+    let rebuild_points = e.number("loft_rebuild_points", 10.0).round().max(4.0) as usize;
+    let refit_tol = e.number("loft_refit_tolerance", 0.01).max(1e-6);
+    let mut secs: Vec<Nc> = cs
+        .iter()
+        .map(|s| {
+            if s.kind == "point" {
+                Some(exact::point_curve(s.points[0]))
+            } else {
+                exact_curve(s).map(|c| simplify_section(c, simplify, rebuild_points, refit_tol))
+            }
+        })
+        .collect::<Option<_>>()?;
+    let is_point: Vec<bool> = cs.iter().map(|s| s.kind == "point").collect();
+    if is_point.iter().enumerate().any(|(i, p)| *p && i != 0 && i + 1 != is_point.len()) {
+        return Some(Err("a point can only start or end the loft".into()));
+    }
+    let curves_only: Vec<&Nc> = secs.iter().zip(&is_point).filter(|(_, p)| !**p).map(|(c, _)| c).collect();
+    let closed = curves_only.iter().all(|c| c.closed(1e-6));
+    if !closed && curves_only.iter().any(|c| c.closed(1e-6)) {
         return Some(Err("the sections must be all closed or all open".into()));
     }
     if closed_loft && secs.len() < 3 {
         return Some(Err("a closed loft needs three or more sections".into()));
     }
-    exact::align_sections(&mut secs, closed);
+    if e.text("loft_seams", "automatic") != "natural" {
+        exact::align_sections(&mut secs, closed);
+    }
     exact::make_compatible(&mut secs);
     let along = (secs[0].degree, secs[0].knots.clone());
     let across = if kind == "loose" {
@@ -711,10 +766,16 @@ fn loft(e: &Event) -> Reply {
         "select the section curves in order, Enter",
         || {
             let cs = curves(e);
-            if cs.len() < 2 {
+            // Sections in pick order, with points allowed (at the ends).
+            let picked: Vec<&Selected> = e
+                .selection
+                .iter()
+                .filter(|s| (s.kind == "curve" && s.points.len() >= 2) || (s.kind == "point" && !s.points.is_empty()))
+                .collect();
+            if picked.len() < 2 || cs.is_empty() {
                 return Err("select two or more sections".into());
             }
-            if let Some(g) = loft_exact(&cs, &kind, closed_loft) {
+            if let Some(g) = loft_exact(e, &picked, &kind, closed_loft) {
                 return Ok((vec![g?], format!("{} sections ({kind})", cs.len())));
             }
             let closed = cs.iter().all(|c| c.closed);

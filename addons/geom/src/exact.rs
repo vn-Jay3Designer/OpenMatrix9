@@ -329,7 +329,33 @@ impl Nc {
                 lo = a;
             }
         }
-        (lo + hi) / 2.0
+        // Polish: Newton on f(u) = (C(u) − p)·C'(u) = 0 (the scan only settles the distance
+        // to about 1e-7 because it is flat at its minimum).
+        let mut u = (lo + hi) / 2.0;
+        let h = 1e-6;
+        let f = |u: f64| {
+            let (a, b) = ((u - h).max(0.0), (u + h).min(1.0));
+            let d = scale(om9_addon_abi::session::sub(self.eval(b), self.eval(a)), 1.0 / (b - a));
+            let r = om9_addon_abi::session::sub(self.eval(u), p);
+            r[0] * d[0] + r[1] * d[1] + r[2] * d[2]
+        };
+        for _ in 0..8 {
+            let (a, b) = ((u - h).max(0.0), (u + h).min(1.0));
+            let slope = (f(b) - f(a)) / (b - a);
+            if slope.abs() < 1e-300 {
+                break;
+            }
+            let next = (u - f(u) / slope).clamp(0.0, 1.0);
+            if dist(self.eval(next), p) > dist(self.eval(u), p) {
+                break;
+            }
+            if (next - u).abs() < 1e-15 {
+                u = next;
+                break;
+            }
+            u = next;
+        }
+        u
     }
 }
 
