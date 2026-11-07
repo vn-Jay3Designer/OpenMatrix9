@@ -19,6 +19,7 @@
 #include <BRep_Builder.hxx>
 #include <BRepLib.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
 #include <BRepCheck.hxx>
 #include <BRepCheck_Result.hxx>
 #include <BRepCheck_ListOfStatus.hxx>
@@ -477,18 +478,21 @@ extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, c
    knot_at += n + size_t(degree) + 1;
   }
   close_wire();
-  for (const TopoDS_Wire& w : wires) builder.Add(face, w);
+  // Orient each wire on the surface: alone on a face, the outer boundary must leave the
+  // point at infinity outside; a hole must hold it inside (OCCT's material-on-the-left rule).
+  for (size_t i = 0; i < wires.size(); ++i) {
+   TopoDS_Face probe = TopoDS::Face(bare.Face().EmptyCopied());
+   builder.Add(probe, wires[i]);
+   BRepLib::SameParameter(probe, tol, Standard_True);
+   const TopAbs_State infinity = BRepTopAdaptor_FClass2d(probe, tol).PerformInfinitePoint();
+   const bool outer = i == 0;
+   if ((outer && infinity == TopAbs_IN) || (!outer && infinity == TopAbs_OUT)) wires[i].Reverse();
+   builder.Add(face, wires[i]);
+  }
   BRepLib::SameParameter(face, tol, Standard_True);
-  // Outer boundary counter-clockwise, holes clockwise (on the surface's parameters).
-  Handle(ShapeFix_Face) fix = new ShapeFix_Face(face);
-  fix->SetPrecision(tol);
-  fix->FixOrientationMode() = 1;
-  fix->Perform();
-  const TopoDS_Face result = fix->Face();
+  const TopoDS_Face result = face;
   if (!BRepCheck_Analyzer(result).IsValid()) {
-   const bool before = !BRepCheck_Analyzer(face).IsValid();
-   throw std::runtime_error(std::string("invalid trimmed face (") + (before ? "before" : "after") +
-                            " orientation fix): " + check_report(result));
+   throw std::runtime_error(std::string("invalid trimmed face: ") + check_report(result));
   }
   return om9_emit_brep_snapshot(checked(result, "invalid trimmed face"), deflection, max_points,
                                 max_nodes, max_bytes, sink, context, message, capacity);
