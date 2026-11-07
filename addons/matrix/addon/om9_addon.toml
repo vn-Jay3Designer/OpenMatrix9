@@ -1184,17 +1184,17 @@ commands = ["SurfaceLoft"]
 
 [[settings]]
 key = "loft_rebuild_points"
-type = "number"
+type = "int"
 option = "RebuildPoints"
 label = "Số điểm dựng lại"
-default = 10.0
-min = 4.0
-max = 1000.0
+default = 10
+min = 4
+max = 1000
 commands = ["SurfaceLoft"]
 
 [[settings]]
 key = "loft_refit_tolerance"
-type = "number"
+type = "length"
 option = "RefitTolerance"
 label = "Dung sai khớp lại (mm)"
 default = 0.01
