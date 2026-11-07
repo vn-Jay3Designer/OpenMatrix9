@@ -19,6 +19,12 @@
 #include <BRep_Builder.hxx>
 #include <BRepLib.hxx>
 #include <BRepCheck_Analyzer.hxx>
+#include <BRepCheck.hxx>
+#include <BRepCheck_Result.hxx>
+#include <BRepCheck_ListOfStatus.hxx>
+#include <TopExp_Explorer.hxx>
+#include <sstream>
+#include <string>
 #include <Precision.hxx>
 #include <TColgp_Array1OfPnt.hxx>
 #include <BRepBuilderAPI_MakePolygon.hxx>
@@ -345,6 +351,44 @@ void split_knots(const double* knots, size_t count, std::vector<double>& unique,
  }
 }
 }  // namespace
+namespace {
+// BRepCheck's findings on a face, its wires and edges (for error messages).
+std::string check_report(const TopoDS_Shape& shape) {
+ BRepCheck_Analyzer analyzer(shape);
+ std::ostringstream out;
+ const TopAbs_ShapeEnum kinds[] = {TopAbs_FACE, TopAbs_WIRE, TopAbs_EDGE, TopAbs_VERTEX};
+ for (TopAbs_ShapeEnum kind : kinds) {
+  int index = 0;
+  for (TopExp_Explorer it(shape, kind); it.More(); it.Next(), ++index) {
+   Handle(BRepCheck_Result) result = analyzer.Result(it.Current());
+   if (result.IsNull()) continue;
+   for (BRepCheck_ListIteratorOfListOfStatus st(result->Status()); st.More(); st.Next()) {
+    if (st.Value() == BRepCheck_NoError) continue;
+    out << (kind == TopAbs_FACE ? "face" : kind == TopAbs_WIRE ? "wire" : kind == TopAbs_EDGE ? "edge" : "vertex")
+        << index << ":";
+    BRepCheck::Print(st.Value(), out);
+    out << " ";
+   }
+   if (kind == TopAbs_EDGE || kind == TopAbs_WIRE) {
+    for (TopExp_Explorer f(shape, TopAbs_FACE); f.More(); f.Next()) {
+     result->InitContextIterator();
+     for (; result->MoreShapeInContext(); result->NextShapeInContext()) {
+      for (BRepCheck_ListIteratorOfListOfStatus st(result->StatusOnShape()); st.More(); st.Next()) {
+       if (st.Value() == BRepCheck_NoError) continue;
+       out << (kind == TopAbs_WIRE ? "wire" : "edge") << index << "@face:";
+       BRepCheck::Print(st.Value(), out);
+       out << " ";
+      }
+     }
+     break;
+    }
+   }
+  }
+ }
+ std::string text = out.str();
+ return text.empty() ? std::string("no BRepCheck status") : text;
+}
+}  // namespace
 extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, const double* weights,
                                      const double* u_knots, const double* v_knots, size_t curve_count,
                                      const size_t* curves, const double* curve_poles,
@@ -442,8 +486,9 @@ extern "C" int om9_occt_trimmed_face(const size_t* shape, const double* poles, c
   fix->Perform();
   const TopoDS_Face result = fix->Face();
   if (!BRepCheck_Analyzer(result).IsValid()) {
-   if (!BRepCheck_Analyzer(face).IsValid()) throw std::runtime_error("invalid trimmed face (before orientation fix)");
-   throw std::runtime_error("invalid trimmed face (after orientation fix)");
+   const bool before = !BRepCheck_Analyzer(face).IsValid();
+   throw std::runtime_error(std::string("invalid trimmed face (") + (before ? "before" : "after") +
+                            " orientation fix): " + check_report(result));
   }
   return om9_emit_brep_snapshot(checked(result, "invalid trimmed face"), deflection, max_points,
                                 max_nodes, max_bytes, sink, context, message, capacity);
