@@ -847,3 +847,48 @@ fn planar_curves_are_exact_trims_like_rhino5() {
     assert_eq!(r.create.len(), 2);
     assert!(r.create.iter().all(|g| matches!(g, Geo::Trimmed { loops, .. } if loops.len() == 1)));
 }
+
+/// Rhino 5 ExtrudeCrv (Extrude All): curves, then the distance (typed, Enter, or a click; the
+/// preview follows the pointer); exact surfaces; BothSides; DeleteInput.
+#[test]
+fn extrude_all_follows_rhino5_and_is_exact() {
+    let circ = || exact_circle("c", [0.0; 3], 4.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let on_cylinder = |g: &Geo, z0: f64, z1: f64| {
+        let s = Srf::of(g).unwrap();
+        let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+        for i in 0..=40 {
+            for j in 0..=40 {
+                let p = s.at_st(i as f64 / 40.0, j as f64 / 40.0);
+                assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 4.0).abs() < 1e-9, "{p:?}");
+                lo = lo.min(p[2]);
+                hi = hi.max(p[2]);
+            }
+        }
+        assert!((lo - z0).abs() < 1e-9 && (hi - z1).abs() < 1e-9, "{lo} {hi}");
+    };
+    let r = run(EXTRUDE_ALL, vec![circ()], json!({}), vec![text("5")]);
+    on_cylinder(&r.create[0], 0.0, 5.0);
+    // Enter: the default (2); a click 3 above the curve: 3.
+    let r = run(EXTRUDE_ALL, vec![circ()], json!({}), vec![Input::Enter]);
+    on_cylinder(&r.create[0], 0.0, 2.0);
+    let r = run(EXTRUDE_ALL, vec![circ()], json!({}), vec![pt([9.0, 1.0, 3.0])]);
+    on_cylinder(&r.create[0], 0.0, 3.0);
+    // BothSides and DeleteInput.
+    let r = run(EXTRUDE_ALL, vec![circ()], json!({}), vec![opt("BothSides", Some("Yes")), opt("DeleteInput", Some("Yes")), text("1.5")]);
+    on_cylinder(&r.create[0], -1.5, 1.5);
+    assert_eq!(r.delete, vec!["c".to_string()]);
+    // The preview follows the pointer's height.
+    let mut e = event(EXTRUDE_ALL, Input::Start, vec![circ()], json!({}));
+    let s0 = Surfaces::step(&e).unwrap();
+    e.state = s0.state.clone();
+    e.input = Input::Hover { point: [0.0, 9.0, 7.0] };
+    let h = Surfaces::step(&e).unwrap();
+    on_cylinder(&h.preview[0], 0.0, 7.0);
+    // Zero is refused, the command stays open.
+    let mut e = event(EXTRUDE_ALL, Input::Start, vec![circ()], json!({}));
+    let s0 = Surfaces::step(&e).unwrap();
+    e.state = s0.state.clone();
+    e.input = text("0");
+    let z = Surfaces::step(&e).unwrap();
+    assert!(!z.done && z.error.is_some());
+}

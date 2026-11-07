@@ -1313,7 +1313,7 @@ fn revolve(e: &Event) -> Reply {
         .select_prompt("Select curves to revolve")
         .point("Start of revolve axis")
         .point("End of revolve axis")
-        .angle("Revolution angle", e.number("rev_angle", 360.0))
+        .value("Revolution angle", e.number("rev_angle", 360.0))
         .num("StartAngle", e.number("rev_start", 0.0))
         .toggle("FullCircle", false)
         .toggle("Deformable", false)
@@ -1419,7 +1419,7 @@ fn flow_default(flow: &Flow, prompt: &str, fallback: f64) -> f64 {
     flow.needs
         .iter()
         .find_map(|n| match n {
-            om9_addon_geom::cmd::Need::Number(p, d) | om9_addon_geom::cmd::Need::Angle(p, d)
+            om9_addon_geom::cmd::Need::Number(p, d) | om9_addon_geom::cmd::Need::Value(p, d)
                 if p == prompt =>
             {
                 Some(*d)
@@ -1501,29 +1501,77 @@ fn rail_revolve(e: &Event) -> Reply {
     )
 }
 
+/// Rhino 5 ExtrudeCrv (Matrix "Extrude All"): curves, then `Extrusion distance <d>` along
+/// the CPlane normal: typed, Enter for the default, or a click (its height over the first
+/// curve's start; the preview follows the pointer). BothSides, DeleteInput. Exact: each
+/// surface is the curve's own NURBS and its copy moved (degree 1 across).
 fn extrude_all(e: &Event) -> Reply {
-    let d = e.number("ea_distance", 2.0);
-    let both = e.flag("ea_both_sides", false);
-    built(e, "Extrude All", "select curves, Enter", || {
-        let n = e.plane.normal();
-        let out: Vec<Geo> = curves(e)
+    let flow = Flow::new("Extrude All")
+        .select_prompt("Select curves to extrude")
+        .value("Extrusion distance", e.number("ea_distance", 2.0))
+        .toggle("BothSides", e.flag("ea_both_sides", false))
+        .toggle("DeleteInput", false);
+    let n = e.plane.normal();
+    let picked = curves(e);
+    let base = picked.first().and_then(|c| c.points.first().copied());
+    let height = |at: Vec3| base.map(|b| dot(sub(at, b), n));
+    let make = |d: f64, both: bool| -> Result<Vec<Geo>, String> {
+        if picked.is_empty() {
+            return Err("select curves to extrude".into());
+        }
+        if !(d.abs() > 1e-9 && d.is_finite()) {
+            return Err("the extrusion distance must not be 0".into());
+        }
+        let lo = if both { scale(n, -d) } else { [0.0; 3] };
+        let hi = scale(n, d);
+        Ok(picked
             .iter()
-            .filter_map(|c| {
-                let mut p = resample(&dense(c), c.closed, 48);
-                if c.closed {
-                    p.push(p[0]);
-                }
-                let lo = if both { scale(n, -d) } else { [0.0; 3] };
-                let rows = vec![
-                    p.iter().map(|&q| add(q, lo)).collect::<Vec<_>>(),
-                    p.iter().map(|&q| add(q, scale(n, d))).collect(),
-                ];
-                surface_through(&rows, [1, 3])
+            .filter_map(|s| {
+                let c = exact_curve(s).or_else(|| {
+                    let mut q = dense(s);
+                    if s.closed && dist(q[0], *q.last()?) > 1e-9 {
+                        q.push(q[0]);
+                    }
+                    let g = interpolate(&q, 3, false)?;
+                    Nc::from_geo(&g)
+                })?;
+                let shift = |v: Vec3| -> Vec<om9_addon_geom::exact::H> {
+                    c.points
+                        .iter()
+                        .map(|p| [p[0] + v[0] * p[3], p[1] + v[1] * p[3], p[2] + v[2] * p[3], p[3]])
+                        .collect()
+                };
+                let rows = vec![shift(lo), shift(hi)];
+                Some(exact::surface(&rows, [1, c.degree], [vec![0.0, 0.0, 1.0, 1.0], c.knots.clone()]))
             })
-            .collect();
-        let k = out.len();
-        Ok((out, format!("{k} extrusions {} mm", fmt(d))))
-    })
+            .collect())
+    };
+    flow.step(
+        e,
+        &|c, h| {
+            let d = match h.and_then(height) {
+                Some(d) if c.answers.is_empty() && d.abs() > 1e-9 => d,
+                _ => flow_default(&flow, "Extrusion distance", 2.0),
+            };
+            Show {
+                geo: make(d, c.yes(&flow, "BothSides")).unwrap_or_default(),
+                ..Default::default()
+            }
+        },
+        &|c| {
+            let d = match c.p(0) {
+                Some(at) => height(at).ok_or("select curves to extrude")?,
+                None => c.n(0).unwrap_or(flow_default(&flow, "Extrusion distance", 2.0)),
+            };
+            let out = make(d, c.yes(&flow, "BothSides"))?;
+            let k = out.len();
+            let mut r = Reply::finish(out).say(format!("Extrude All: {k} surfaces, {} mm", fmt(d)));
+            if c.yes(&flow, "DeleteInput") {
+                r.delete = picked.iter().map(|s| s.id.clone()).collect();
+            }
+            Ok(r)
+        },
+    )
 }
 
 // ---- blends, fillets, chamfers ---------------------------------------------------------------
