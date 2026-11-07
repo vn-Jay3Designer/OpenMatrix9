@@ -91,3 +91,23 @@ fn an_open_loop_is_refused() {
     let open = vec![line([0., 0., 0.], [10., 0., 0.]), line([10., 0., 0.], [10., 10., 0.])];
     assert!(creation::trimmed_face(&sheet(), &[open], DEFAULT_DEFLECTION_MM, &limits()).is_err());
 }
+
+#[test]
+fn any_winding_of_the_outer_loop_and_of_several_holes_gives_the_same_face() {
+    // Outer square drawn clockwise, two holes with opposite windings: OCCT orientation is
+    // fixed by the bridge, so the user's drawing direction never matters (as in Rhino 5).
+    let outer = vec![
+        line([0., 0., 0.], [0., 10., 0.]),
+        line([0., 10., 0.], [10., 10., 0.]),
+        line([10., 10., 0.], [10., 0., 0.]),
+        line([10., 0., 0.], [0., 0., 0.]),
+    ];
+    let a = vec![circle([3., 3., 0.], 1., false)];
+    let b = vec![circle([7., 7., 0.], 1.5, true)];
+    let brep = creation::trimmed_face(&sheet(), &[outer, a, b], DEFAULT_DEFLECTION_MM, &limits())
+        .expect("two holes");
+    let m = creation::measure(&brep, &limits()).expect("measure");
+    let want = 100.0 - std::f64::consts::PI * (1.0 + 2.25);
+    assert!((m.area_mm2 - want).abs() < 1e-6, "{} vs {want}", m.area_mm2);
+    assert_eq!(m.faces, 1);
+}
