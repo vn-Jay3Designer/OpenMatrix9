@@ -943,3 +943,70 @@ fn loft_point_seams_and_simplify_like_rhino5() {
         assert!(((p[0] * p[0] + p[1] * p[1]).sqrt() - 5.0).abs() < 1e-3, "{p:?}");
     }
 }
+
+/// Feed one input with a given selection, carrying the state.
+fn feed(command: &str, state: &Value, input: Input, selection: Vec<Selected>, settings: Value) -> Reply {
+    let mut e = event(command, input, selection, settings);
+    e.state = state.clone();
+    Surfaces::step(&e).unwrap()
+}
+
+/// Rhino 5 Sweep1: rail, then cross sections in order (Point option), Enter, then the
+/// options (Style, Closed, GlobalBlend, Simplify) with a preview, Enter creates.
+#[test]
+fn sweep1_follows_rhino5_prompts_and_options() {
+    let rail = || exact_sel("rail", Geo::Line { start: [0.0; 3], end: [0.0, 0.0, 10.0] }, false);
+    let ring = || exact_circle("c", [0.0; 3], 2.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let r = feed(SWEEP1, &Value::Null, Input::Start, vec![], json!({}));
+    assert_eq!(r.prompt, "Select rail");
+    let r = feed(SWEEP1, &r.state, Input::Selection, vec![rail()], json!({}));
+    assert!(r.prompt.starts_with("Select cross section curves"), "{}", r.prompt);
+    assert!(r.options.iter().any(|o| o.name == "Point"));
+    let r = feed(SWEEP1, &r.state, Input::Selection, vec![rail(), ring()], json!({}));
+    assert!(r.prompt.contains("1 selected"), "{}", r.prompt);
+    // Point option: the sweep ends at the apex.
+    let r = feed(SWEEP1, &r.state, opt("Point", None), vec![rail(), ring()], json!({}));
+    assert_eq!(r.want, Want::Point);
+    let r = feed(SWEEP1, &r.state, pt([0.0, 0.0, 10.0]), vec![rail(), ring()], json!({}));
+    // Enter ends the selection: options and a preview, nothing created yet.
+    let r = feed(SWEEP1, &r.state, Input::Enter, vec![rail(), ring()], json!({}));
+    assert!(!r.done && r.error.is_none(), "{:?} {}", r.error, r.prompt);
+    assert!(!r.preview.is_empty());
+    for name in ["Style", "GlobalBlend", "Simplify", "RebuildPoints", "RefitTolerance"] {
+        assert!(r.options.iter().any(|o| o.name == name), "{name}");
+    }
+    // Closed is only offered for a closed rail with two or more sections.
+    assert!(!r.options.iter().any(|o| o.name == "Closed"));
+    // Global shape blending: linear from the circle to the point, a cone.
+    let r = feed(SWEEP1, &r.state, opt("GlobalBlend", None), vec![rail(), ring()], json!({}));
+    let r = feed(SWEEP1, &r.state, Input::Enter, vec![rail(), ring()], json!({}));
+    assert!(r.done, "{}", r.prompt);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=20 {
+        for j in 0..=20 {
+            let p = s.at_st(i as f64 / 20.0, j as f64 / 20.0);
+            let want = 2.0 * (1.0 - p[2] / 10.0);
+            assert!((p[0].hypot(p[1]) - want).abs() < 1e-3, "{p:?}");
+        }
+    }
+}
+
+/// A ring: one profile around a closed rail is an exact surface of revolution; Roadlike Top
+/// keeps it too (the rail lies flat).
+#[test]
+fn sweep1_ring_is_exact_like_rhino5() {
+    let rail = exact_circle("rail", [0.0; 3], 10.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let prof = exact_circle("p", [10.0, 0.0, 0.0], 1.0, [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]);
+    for style in ["freeform", "roadlike_top"] {
+        let r = run(SWEEP1, vec![rail.clone(), prof.clone()], json!({"sw1_style": style}), vec![Input::Enter]);
+        assert!(r.messages.iter().any(|m| m.contains("exact")), "{:?}", r.messages);
+        let s = Srf::of(&r.create[0]).unwrap();
+        for i in 0..=40 {
+            for j in 0..=40 {
+                let p = s.at_st(i as f64 / 40.0, j as f64 / 40.0);
+                let d = (p[0].hypot(p[1]) - 10.0).hypot(p[2]);
+                assert!((d - 1.0).abs() < 1e-9, "{style}: {d}");
+            }
+        }
+    }
+}

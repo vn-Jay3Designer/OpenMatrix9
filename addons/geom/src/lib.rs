@@ -26,6 +26,7 @@ pub mod sdf;
 pub mod section;
 pub mod shapes;
 pub mod subd;
+pub mod sweep;
 
 pub const EPS: f64 = 1e-9;
 

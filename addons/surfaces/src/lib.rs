@@ -17,6 +17,7 @@ use om9_addon_geom::mesh::{Frame, Mesh};
 use om9_addon_geom::nurbs::{self, Srf};
 use om9_addon_geom::path::{Path, Target};
 use om9_addon_geom::exact::{self, Nc};
+use om9_addon_geom::sweep;
 use om9_addon_geom::{interpolate, section, shapes};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -473,30 +474,298 @@ pub fn sweep_rows(
     Some(closed_rows(rows, closed_profiles))
 }
 
+/// The exact curve of a selected curve, or one fitted through its samples.
+fn nc_of(s: &Selected) -> Option<Nc> {
+    if let Some(c) = exact_curve(s) {
+        return Some(c);
+    }
+    let mut p = dense(s);
+    if s.closed && p.len() > 2 && dist(p[0], *p.last()?) < 1e-9 {
+        p.pop();
+    }
+    Nc::from_geo(&interpolate(&p, 3, s.closed)?)
+}
+
+fn sweep_style(name: &str) -> sweep::Style {
+    match name.to_ascii_lowercase().as_str() {
+        "roadliketop" | "roadlike_top" => sweep::Style::Roadlike([0.0, 0.0, 1.0]),
+        "roadlikeright" | "roadlike_right" => sweep::Style::Roadlike([1.0, 0.0, 0.0]),
+        "roadlikefront" | "roadlike_front" => sweep::Style::Roadlike([0.0, 1.0, 0.0]),
+        _ => sweep::Style::Freeform,
+    }
+}
+
+/// Sweep1 command state: the rail, then the sections, then the options (Rhino 5 order).
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct Sweep1State {
+    /// 0: select the rail; 1: select the sections; 2: options and preview.
+    stage: u8,
+    rail: Option<String>,
+    /// Section ids in pick order (curves and point objects).
+    sections: Vec<String>,
+    /// Point option: a point typed or clicked to start / end the sweep.
+    point_start: Option<Vec3>,
+    point_end: Option<Vec3>,
+    /// Waiting for the Point option's point.
+    want_point: bool,
+    /// The options stage's own state (a [`Flow`]).
+    flow: Value,
+}
+
+/// Sweep1 from a rail and sections (point sections first or last).
+fn sweep1_surface(
+    e: &Event,
+    rail: &Selected,
+    sections: &[Nc],
+    style: &str,
+    closed: bool,
+    global: bool,
+    simplify: (&str, usize, f64),
+) -> Result<(Geo, String), String> {
+    let rail_nc = nc_of(rail).ok_or("the rail has no curve")?;
+    let secs: Vec<Nc> = sections
+        .iter()
+        .map(|c| {
+            let point = c.points.iter().all(|p| dist(exact::euclid(*p), exact::euclid(c.points[0])) < 1e-12);
+            if point { c.clone() } else { simplify_section(c.clone(), simplify.0, simplify.1, simplify.2) }
+        })
+        .collect();
+    let o = sweep::Options {
+        style: sweep_style(style),
+        closed,
+        global_blend: global,
+        tol: e.number("sw_tolerance", 0.001).max(1e-6),
+        ..Default::default()
+    };
+    let s = sweep::sweep1(&rail_nc, &secs, &o)?;
+    let how = if s.exact {
+        "exact".to_owned()
+    } else {
+        format!("within {} mm", fmt(o.tol))
+    };
+    Ok((s.geo(), how))
+}
+
 fn sweep1(e: &Event) -> Reply {
+    if e.command != SWEEP1 {
+        return profile_sweep(e);
+    }
+    let label = "Sweep 1 Rail";
+    let mut st: Sweep1State = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    let by_id = |id: &str| e.selection.iter().find(|s| s.id == id);
+    let is_section = |s: &Selected| (s.kind == "curve" && s.points.len() >= 2) || (s.kind == "point" && !s.points.is_empty());
+    let save = |st: &Sweep1State| serde_json::to_value(st).unwrap_or(Value::Null);
+    // Start with curves already selected: the rail is the longest, the rest are sections
+    // in the order picked (as Matrix users window-select a ring rail and its profiles).
+    // (A one-shot call - Enter with no state, as SubD's sweep makes - works the same.)
+    if matches!(e.input, Input::Start) || e.state.is_null() {
+        st = Sweep1State::default();
+        let cs = curves(e);
+        if cs.len() >= 2 {
+            if let Ok((rail, profiles)) = rail_and_profiles(e) {
+                st.rail = Some(rail.id.clone());
+                st.sections = profiles.iter().map(|p| p.id.clone()).collect();
+                // Points selected too are point sections.
+                st.sections.extend(e.selection.iter().filter(|s| s.kind == "point").map(|s| s.id.clone()));
+                st.stage = 2;
+            }
+        } else if cs.len() == 1 {
+            st.rail = Some(cs[0].id.clone());
+            st.stage = 1;
+        }
+    }
+    if st.stage == 0 {
+        if let Some(c) = curves(e).first() {
+            st.rail = Some(c.id.clone());
+            st.stage = 1;
+        } else {
+            let r = Reply::ask("Select rail", save(&st)).want(Want::Objects);
+            return if matches!(e.input, Input::Enter) { r.refuse(format!("{label}: select the rail")) } else { r };
+        }
+    }
+    let Some(rail) = st.rail.clone().and_then(|id| by_id(&id).cloned()) else {
+        return Reply::ask("Select rail", save(&Sweep1State::default()))
+            .want(Want::Objects)
+            .refuse(format!("{label}: the rail is no longer selected"));
+    };
+    let mut entering = false;
+    if st.stage == 1 {
+        // Sections: everything picked after the rail, in order.
+        for s in e.selection.iter().filter(|s| s.id != rail.id && is_section(s)) {
+            if !st.sections.contains(&s.id) {
+                st.sections.push(s.id.clone());
+            }
+        }
+        st.sections.retain(|id| by_id(id).is_some());
+        let mut error = None;
+        match &e.input {
+            Input::Option { name, .. } if name.eq_ignore_ascii_case("Point") => st.want_point = true,
+            Input::Point { point } if st.want_point => {
+                if st.sections.is_empty() && st.point_start.is_none() {
+                    st.point_start = Some(*point);
+                } else {
+                    st.point_end = Some(*point);
+                }
+                st.want_point = false;
+            }
+            Input::Text { text } if st.want_point => match om9_addon_abi::session::parse_point(text, &e.plane, None) {
+                Some(p) => {
+                    if st.sections.is_empty() && st.point_start.is_none() {
+                        st.point_start = Some(p);
+                    } else {
+                        st.point_end = Some(p);
+                    }
+                    st.want_point = false;
+                }
+                None => error = Some(format!("{text}: type a point (x,y,z)")),
+            },
+            Input::Enter if st.want_point => st.want_point = false,
+            Input::Enter => {
+                if st.sections.is_empty() {
+                    error = Some(format!("{label}: select the cross section curves"));
+                } else {
+                    st.stage = 2;
+                }
+            }
+            _ => {}
+        }
+        if st.stage == 1 {
+            let r = if st.want_point {
+                Reply::ask("Point to start or end the sweep", save(&st)).want(Want::Point)
+            } else {
+                let n = st.sections.len() + usize::from(st.point_start.is_some()) + usize::from(st.point_end.is_some());
+                let prompt = if n == 0 {
+                    "Select cross section curves".to_owned()
+                } else {
+                    format!("Select cross section curves ({n} selected). Press Enter when done")
+                };
+                Reply::ask(prompt, save(&st)).want(Want::Objects).with_options(vec![OptionToken::action("Point")])
+            };
+            return match error {
+                Some(why) => r.refuse(why),
+                None => r,
+            };
+        }
+        // Into the options: start them fresh (this Enter only ended the selection).
+        st.flow = Value::Null;
+        entering = true;
+    }
+    // Stage 2: the sections, then options with a live preview; Enter creates.
+    let mut picked: Vec<Nc> = Vec::new();
+    if let Some(p) = st.point_start {
+        picked.push(exact::point_curve(p));
+    }
+    for id in &st.sections {
+        let Some(s) = by_id(id) else { continue };
+        if s.kind == "point" {
+            picked.push(exact::point_curve(s.points[0]));
+        } else if let Some(c) = nc_of(s) {
+            picked.push(c);
+        }
+    }
+    if let Some(p) = st.point_end {
+        picked.push(exact::point_curve(p));
+    }
+    let rail_closed = rail.closed;
+    let mut flow = Flow::new(label)
+        .no_selection()
+        .plain()
+        .confirm("Press Enter to create the sweep, or change an option")
+        .choice(
+            "Style",
+            &["Freeform", "RoadlikeTop", "RoadlikeRight", "RoadlikeFront"],
+            match e.text("sw1_style", "freeform") {
+                "roadlike_top" => "RoadlikeTop",
+                "roadlike_right" => "RoadlikeRight",
+                "roadlike_front" => "RoadlikeFront",
+                _ => "Freeform",
+            },
+        );
+    if rail_closed && picked.len() >= 2 {
+        flow = flow.toggle("Closed", e.flag("sw1_closed", false));
+    }
+    let flow = flow
+        .toggle("GlobalBlend", e.flag("sw1_global_blend", false))
+        .choice(
+            "Simplify",
+            &["None", "Rebuild", "Refit"],
+            match e.text("sw1_simplify", "none") {
+                "rebuild" => "Rebuild",
+                "refit" => "Refit",
+                _ => "None",
+            },
+        )
+        .num("RebuildPoints", e.number("sw1_rebuild_points", 10.0))
+        .num("RefitTolerance", e.number("sw1_refit_tolerance", 0.01));
+    let make = |c: &Collected| -> Result<(Geo, String), String> {
+        let simplify = c.opt(&flow, "Simplify").to_ascii_lowercase();
+        sweep1_surface(
+            e,
+            &rail,
+            &picked,
+            c.opt(&flow, "Style"),
+            rail_closed && picked.len() >= 2 && c.yes(&flow, "Closed"),
+            c.yes(&flow, "GlobalBlend"),
+            (&simplify, c.num(&flow, "RebuildPoints").round().max(4.0) as usize, c.num(&flow, "RefitTolerance").max(1e-6)),
+        )
+    };
+    let mut sub = e.clone();
+    sub.state = st.flow.clone();
+    if entering || matches!(sub.input, Input::Selection) {
+        sub.input = Input::Hover { point: [0.0; 3] };
+    }
+    let failed = std::cell::RefCell::new(None);
+    let mut r = flow.step(
+        &sub,
+        &|c, _| match make(c) {
+            Ok(g) => Show { geo: vec![g.0], ..Default::default() },
+            Err(why) => {
+                *failed.borrow_mut() = Some(why);
+                Show::default()
+            }
+        },
+        &|c| {
+            let (g, what) = make(c)?;
+            Ok(Reply::finish(vec![g]).say(format!("{label}: {} sections, {what}", picked.len())))
+        },
+    );
+    if !r.done {
+        st.flow = r.state.clone();
+        r.state = save(&st);
+        let why = failed.borrow_mut().take();
+        if let (None, Some(why)) = (&r.error, why) {
+            r = r.refuse(format!("{label}: {why}"));
+        }
+    }
+    r
+}
+
+/// Profile Sweep and Four Profile Sweep (Matrix builders): the ring rail and its profiles
+/// selected together, always all the way round a closed rail.
+fn profile_sweep(e: &Event) -> Reply {
     let label = match e.command.as_str() {
         PROFILE_SWEEP => "Profile Sweep",
-        FOUR_PROFILE_SWEEP => "Four Profile Sweep",
-        _ => "Sweep 1 Rail",
+        _ => "Four Profile Sweep",
     };
-    let stations = e.number("sw_stations", 48.0).round().clamp(4.0, 400.0) as usize;
     built(e, label, "select the rail and the profiles, Enter", || {
         let (rail, profiles) = rail_and_profiles(e)?;
         if e.command == FOUR_PROFILE_SWEEP && profiles.len() != 4 {
             return Err("select the ring rail and four profiles".into());
         }
-        // Closed rails (rings) keep the profiles' up pointing away from the rail's middle.
-        let up = if rail.closed {
-            None
-        } else {
-            Some(e.plane.normal())
-        };
-        let rows =
-            sweep_rows(&dense(rail), rail.closed, &profiles, up, stations, 24).ok_or("rail")?;
-        Ok((
-            vec![surface(&rows)?],
-            format!("{} profiles along the rail", profiles.len()),
-        ))
+        let secs: Vec<Nc> = profiles.iter().filter_map(|p| nc_of(p)).collect();
+        if secs.len() != profiles.len() {
+            return Err("a profile has no curve".into());
+        }
+        let (g, what) = sweep1_surface(
+            e,
+            rail,
+            &secs,
+            e.text("sw1_style", "freeform"),
+            rail.closed,
+            e.flag("sw1_global_blend", false),
+            ("none", 10, 0.01),
+        )?;
+        Ok((vec![g], format!("{} profiles along the rail, {what}", secs.len())))
     })
 }
 
