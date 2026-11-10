@@ -354,3 +354,87 @@ fn addon_steps_see_the_current_selection_after_scene_changes() {
     let d = line_at(&c, -5.0);
     assert!((offset_of(&mut c, d, [1.5, -6.0, 0.0]) + 5.004).abs() < 1e-6);
 }
+
+/// Benchmark (ignored): Surface add-on commands on picked curves in an empty and a large
+/// document — the whole command (to its one commit) and, for Revolve, each pointer move while
+/// the angle follows the pointer.
+#[test]
+#[ignore]
+fn bench_surface_commands() {
+    let tmp = std::env::temp_dir().join(format!("om9-bench-srf-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let samples: usize = std::env::var("BENCH_N").ok().and_then(|v| v.parse().ok()).unwrap_or(20);
+    let shared = host(&tmp);
+    for n in [2usize, 5000, 20000] {
+        let mut c = controller(n, Some(&shared));
+        let ids: Vec<_> = c.document().entities.keys().copied().take(2).collect();
+        let run = |c: &mut Controller, code: &str, pick: &[_], steps: &[&str]| -> f64 {
+            c.select_objects(pick).unwrap();
+            let before = c.document().entities.len();
+            let t0 = std::time::Instant::now();
+            c.run_addon_command(code).unwrap();
+            for s in steps {
+                match s.strip_prefix('@') {
+                    Some(p) => {
+                        let v: Vec<f64> = p.split(',').map(|x| x.parse().unwrap()).collect();
+                        c.session_point([v[0], v[1], v[2]]).unwrap();
+                    }
+                    None => {
+                        c.submit(s).unwrap();
+                    }
+                }
+            }
+            let dt = t0.elapsed().as_secs_f64() * 1e3;
+            assert_eq!(c.document().entities.len(), before + 1, "{code}: one surface");
+            c.undo().unwrap();
+            dt
+        };
+        for (name, code, pick, steps) in [
+            ("Loft 2 curves", "SurfaceLoft", &ids[..], vec![""]),
+            ("Sweep1", "SurfaceSweepSweep1Rail", &ids[..], vec![""]),
+            ("Revolve 360", "SurfaceRevolve", &ids[..1], vec!["@-1,0,0", "@-1,1,0", ""]),
+        ] {
+            let t: Vec<f64> = (0..samples).map(|_| run(&mut c, code, pick, &steps)).collect();
+            eprintln!("BENCH-SRF doc={n:>5} {name:<14} whole {:>8.3} ms", median(t));
+        }
+        // Pointer moves while Revolve's angle follows the pointer.
+        c.select_objects(&ids[..1]).unwrap();
+        c.run_addon_command("SurfaceRevolve").unwrap();
+        c.session_point([-1.0, 0.0, 0.0]).unwrap();
+        c.session_point([-1.0, 1.0, 0.0]).unwrap();
+        let t0 = std::time::Instant::now();
+        for i in 0..100 {
+            c.session_hover([2.0, 0.5, 1.0 + i as f64 * 0.01]);
+        }
+        eprintln!("BENCH-SRF doc={n:>5} Revolve hover  {:>8.4} ms per move", t0.elapsed().as_secs_f64() * 1e3 / 100.0);
+        c.cancel_addon_session();
+    }
+}
+
+/// Where a Surface command's time goes in a large document (ignored).
+#[test]
+#[ignore]
+fn bench_surface_phases() {
+    let tmp = std::env::temp_dir().join(format!("om9-bench-ph-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let shared = host(&tmp);
+    let mut c = controller(20000, Some(&shared));
+    let ids: Vec<_> = c.document().entities.keys().copied().take(2).collect();
+    for _ in 0..3 {
+        let t = std::time::Instant::now();
+        c.select_objects(&ids).unwrap();
+        let sel = t.elapsed();
+        let t = std::time::Instant::now();
+        c.run_addon_command("SurfaceLoft").unwrap();
+        let start = t.elapsed();
+        let t = std::time::Instant::now();
+        c.submit("").unwrap();
+        let enter = t.elapsed();
+        let t = std::time::Instant::now();
+        c.undo().unwrap();
+        let undo = t.elapsed();
+        eprintln!("PHASE select {sel:?} start {start:?} enter+commit {enter:?} undo {undo:?}");
+    }
+}

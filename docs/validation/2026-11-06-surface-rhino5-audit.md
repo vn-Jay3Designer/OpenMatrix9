@@ -14,7 +14,7 @@ exact / within 0.001 mm; **Perf** = measured.
 | Test | Built-in OM9 | Add-on before | Add-on now |
 |---|---|---|---|
 | Loft two r5 circles → cylinder | 0.0042 mm, 0.07 ms | 0.0002 mm, 0.23 ms | < 1e-9 mm |
-| Sweep1 r1 circle around R10 ring → torus | 0.0011 mm, 2.1 ms | 0.0002 mm, 0.61 ms | (round 2) |
+| Sweep1 r1 circle around R10 ring → torus | 0.0011 mm, 2.1 ms | 0.0002 mm, 0.61 ms | < 1e-9 mm (exact revolution) |
 | Grid fit 400 × 400 (one direction) | – | 45 ms (dense) | 10 ms (banded) |
 
 ## Commands
@@ -22,15 +22,15 @@ exact / within 0.001 mm; **Perf** = measured.
 | Command (Rhino 5) | Rhino 5 flow / options | Add-on today | Gaps |
 |---|---|---|---|
 | Loft | curves in order (Point at ends); seams: Flip, Automatic, Natural; dialog Style Loose/Normal/Tight/Straight/Uniform, Closed, Match start/end tangent, SplitAtTangents, Do not simplify / Rebuild N / Refit | **done**: select in order, Point at ends, seams Natural/Automatic (setting), Style (5), Closed, Do not simplify / Rebuild N / Refit tol; exact through sections | Match start/end tangent; interactive seam Flip; SplitAtTangents |
-| Sweep1 | rail, then cross sections (Point), seams; Style Freeform/Roadlike Top/Right/Front, Align with surface, Closed, Global shape blending, Untrimmed miters, Simplify, Refit rail | settings `sw_stations`; sampled (0.0002 mm) | ordered prompts; Style; Closed; Point; simplify; exact |
-| Sweep2 | two rails, cross sections (Point), seams; Maintain height, Closed, Preserve first/last, Refit rails, edge continuity, Add slash, simplify | select all, Enter; Maintain height | ordered prompts; Closed; Point; Preserve; continuity |
+| Sweep1 | rail, then cross sections (Point), seams; Style Freeform/Roadlike Top/Right/Front, Align with surface, Closed, Global shape blending, Untrimmed miters, Simplify, Refit rail | **done**: Select rail → cross sections (Point) → Enter → options with preview (Style Freeform/Roadlike Top/Right/Front, Closed, GlobalBlend, Simplify None/Rebuild/Refit) → Enter; RMF frames; exact sections, stations to 0.001 mm; straight rail exact extrusion, circular rail exact revolution | Align with surface; Untrimmed miters; interactive seams |
+| Sweep2 | two rails, cross sections (Point), seams; Maintain height, Closed, Preserve first/last, Refit rails, edge continuity, Add slash, simplify | **done**: first rail → second rail → cross sections (Point) → Enter → options (MaintainHeight, Closed, Simplify) → Enter; edges on the rails, stations to 0.001 mm | Preserve first/last and edge continuity (need surface edges); Refit rails; Add slash |
 | Revolve | curves, axis start, axis end, (start angle), revolution angle; DeleteInput, Deformable, PointCount, FullCircle, AskForStartAngle, SplitAtTangents | **done**: curves → axis start → axis end → Revolution angle <360> (typed, Enter, or click around the axis; preview follows the pointer); StartAngle, FullCircle, Deformable + PointCount, DeleteInput; exact rational otherwise | SplitAtTangents (polycurve input) |
-| RailRevolve | profile, rail, axis start, axis end; ScaleHeight | profile+rail then axis; sampled | ScaleHeight; exact |
+| RailRevolve | profile, rail, axis start, axis end; ScaleHeight | **done**: Select profile curve → Select rail curve → axis start → axis end; ScaleHeight; exact tensor product (no sampling) | SplitAtTangents |
 | EdgeSrf | select 2–4 curves/edges, Enter | **done**: exact Coons on poles (2, 3, 4 curves) | surface edges as input (host) |
 | PlanarSrf | planar curves; inner curves = holes; overlapping → separate | **done**: exact trimmed face (`Geo::Trimmed` → OCCT face, any winding, several holes; kernel tests area 100−4π, 9π, 100−3.25π); containment by whole curve, overlapping curves → separate surfaces | – |
 | Plane | rectangle (corner, corner / length); 3Point, Vertical (toolbar variants); Deformable, U/V degree, point count | **done**: Rectangle prompts (corner/corner, typed length/width, Center, 3Point, Vertical), Deformable + degree + point count; Rounded refused | – |
-| NetworkSrf | curves both directions (NoAutoSort); tolerances edge/interior/angle; edge matching Loose/Position/Tangency/Curvature | families by direction; sampled | tolerances; edge matching; exact edges |
-| Patch | points/curves/edges; sample spacing, spans U/V, stiffness, adjust tangency, auto trim, starting surface | Coons from boundary | real patch fit with options |
+| NetworkSrf | curves both directions (NoAutoSort); tolerances edge/interior/angle; edge matching Loose/Position/Tangency/Curvature | **done**: auto sort by crossings, Gordon surface through every curve on exact curves (edge/interior tolerance, crossing gap); 3×4 network ≈ 3 ms | NoAutoSort; closed curve networks; Tangency/Curvature edge matching (surface edges) |
+| Patch | points/curves/edges; sample spacing, spans U/V, stiffness, adjust tangency, auto trim, starting surface | **done**: fit through curves and points (Sample point spacing, U/V spans, Stiffness), Automatic trim to the closed outer curve (trimmed face, curves drawn on the surface; kernel test on a curved face) | Adjust tangency; Starting surface / pull / Preserve edges |
 | ExtrudeCrv (Extrude All) | curve, distance by two points; Direction, BothSides, Solid, ToBoundary, DeleteInput, SetBasePoint | **done**: select → Extrusion distance (typed, Enter, click), BothSides, DeleteInput; exact | Direction, Solid, ToBoundary, SetBasePoint (need B-Rep solids, round 3) |
 | FilletSrf | first surface (side), second surface (side); Radius, Extend, Trim, Split | radius + flips in settings | side picking; Extend/Trim/Split |
 | ChamferSrf | as FilletSrf; Distances (two), Extend, Trim, Split | one distance | two distances; Extend/Trim/Split |
@@ -45,10 +45,27 @@ exact / within 0.001 mm; **Perf** = measured.
 
 1. **Done 2026-11-07.** Exact NURBS base; Loft, Revolve, EdgeSrf exact; banded grid fit; Plane,
    PlanarSrf (exact trimmed faces through OCCT), Extrude flows and options.
-2. Sweep1, Sweep2, Profile/Multi sweep, RailRevolve, NetworkSrf, Patch — Rhino prompts,
-   options, exact sections.
+2. **Done 2026-11-10.** Sweep1, Sweep2, Profile/Multi sweep, RailRevolve, NetworkSrf, Patch —
+   Rhino prompts, options, exact sections.
 3. Fillet, Chamfer, Blend, Offset, Match, Merge, Extend and the edit tools — prompts and
    options per page.
 
 Each round: speed of preview and result on empty and 5,000/20,000-object files, accuracy
 against exact references, Vietnamese strings, package tests.
+
+## Speed (round 2, release, Linux container, `addon_bench`)
+
+Whole command, from start to its one commit (median of 20); built-in Line measured in the
+same run for comparison:
+
+| Document | Loft 2 curves | Sweep1 | Revolve 360 | Built-in Line |
+|---|---|---|---|---|
+| 2 objects | 2.9 ms | 10.3 ms | 3.2 ms | 0.12 ms |
+| 5,000 lines | 65.4 ms | 67.1 ms | 64.7 ms | 62.1 ms |
+| 20,000 lines | 324.5 ms | 323.8 ms | 333.6 ms | 299.4 ms |
+
+In large documents the time is OM9's commit of one new object (the same incremental path as
+its own commands: at 20,000 objects ≈ 230–320 ms commit, the add-on step ≈ 5 ms). Pointer move
+while Revolve's preview follows the pointer: 0.40–0.81 ms per move, independent of the
+document size. Geometry alone (release): Sweep1 ring with two sections 17 ms (55 stations,
+0.0008 mm), NetworkSrf 3×4 3.3 ms, Patch 10×10 spans 0.9 ms, RailRevolve exact < 0.1 ms.
