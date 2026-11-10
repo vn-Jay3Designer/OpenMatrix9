@@ -1227,3 +1227,53 @@ fn fillet_srf_follows_rhino5_picks() {
         }
     }
 }
+
+/// Rhino 5 ChamferSrf: Distances (first, then second), then the two surfaces with the sides
+/// kept; the chamfer runs from the first distance on the first surface to the second on
+/// the second, measured from the intersection.
+#[test]
+fn chamfer_srf_follows_rhino5() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        name: String::new(),
+        bbox: [[0.0; 3]; 2],
+        points: vec![],
+        closed: false,
+        gem: None,
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
+    let step = |state: &Value, input: Input, sel: Vec<Selected>, pick: Option<Vec3>| {
+        let mut e = event(CHAMFER, input, sel, json!({}));
+        e.state = state.clone();
+        e.pick = pick;
+        Surfaces::step(&e).unwrap()
+    };
+    let r = step(&Value::Null, Input::Start, vec![], None);
+    assert_eq!(r.prompt, "Select first surface to chamfer");
+    let r = step(&r.state, opt("Distances", None), vec![], None);
+    assert!(r.prompt.starts_with("First chamfer distance"), "{}", r.prompt);
+    let r = step(&r.state, text("0.5"), vec![], None);
+    assert!(r.prompt.starts_with("Second chamfer distance"), "{}", r.prompt);
+    let r = step(&r.state, text("2"), vec![], None);
+    assert_eq!(r.prompt, "Select first surface to chamfer");
+    let r = step(&r.state, Input::Selection, vec![floor.clone()], Some([6.0, 4.0, 0.0]));
+    let r = step(&r.state, Input::Selection, vec![floor, wall], Some([0.0, 4.0, 4.0]));
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=8 {
+        let t = i as f64 / 8.0;
+        let ends = [s.at_st(t, 0.0), s.at_st(t, 1.0), s.at_st(0.0, t), s.at_st(1.0, t)];
+        assert!(ends.iter().any(|p| p[2].abs() < 1e-9 && (p[0] - 0.5).abs() < 1e-9), "{ends:?}");
+        assert!(ends.iter().any(|p| p[0].abs() < 1e-9 && (p[2] - 2.0).abs() < 1e-9), "{ends:?}");
+    }
+}

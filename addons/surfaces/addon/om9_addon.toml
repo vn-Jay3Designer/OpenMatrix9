@@ -239,11 +239,11 @@ id = "SurfaceChamferSurfaces"
 label = "Chamfer Surfaces"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["ChamferSrf"]
-summary = "Vát phẳng giữa hai mặt cắt nhau."
-steps = ["Chọn hai mặt.", "Chỉnh khoảng vát.", "Enter."]
+summary = "Vát phẳng giữa hai mặt cắt nhau như Rhino 5 ChamferSrf: hai khoảng vát tính từ giao tuyến."
+steps = ["Chọn mặt thứ nhất: bấm vào phía muốn giữ.", "Chọn mặt thứ hai: bấm vào phía muốn giữ."]
+options = ["Distances: khoảng vát trên mặt thứ nhất, rồi trên mặt thứ hai."]
 
 [[commands]]
 id = "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"
@@ -576,6 +576,26 @@ option = "BothSides"
 label = "Offset cả hai phía"
 default = false
 commands = ["SurfaceOffsetSurface"]
+
+[[settings]]
+key = "cs_distance"
+type = "length"
+option = "FirstDistance"
+label = "Khoảng vát trên mặt thứ nhất (mm)"
+default = 1.0
+min = 0.0001
+max = 1000.0
+commands = ["SurfaceChamferSurfaces"]
+
+[[settings]]
+key = "cs_second_distance"
+type = "length"
+option = "SecondDistance"
+label = "Khoảng vát trên mặt thứ hai (mm)"
+default = 1.0
+min = 0.0001
+max = 1000.0
+commands = ["SurfaceChamferSurfaces"]
 
 [[settings]]
 key = "sw1_style"

@@ -127,8 +127,8 @@ impl Interactive for Surfaces {
             REVOLVE => revolve(e),
             RAIL_REVOLVE => rail_revolve(e),
             TWEEN => tween(e),
-            FILLET => fillet_srf(e),
-            VAR_FILLET | CHAMFER | VAR_CHAMFER => fillet(e),
+            FILLET | CHAMFER => fillet_srf(e),
+            VAR_FILLET | VAR_CHAMFER => fillet(e),
             OFFSET => offset_srf(e),
             VAR_OFFSET => offset(e),
             MERGE => merge(e),
@@ -2053,46 +2053,83 @@ fn solve3(r: [Vec3; 3], rhs: Vec3) -> Option<Vec3> {
 
 /// Rows of a fillet (arcs) or chamfer (lines) along the intersection of two meshes, radius /
 /// distance `r(t)` along it; `flip` picks the side of each surface.
-/// FilletSrf command state.
+/// FilletSrf / ChamferSrf command state.
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct FilletState {
     /// First surface and where it was clicked (the side kept).
     first: Option<(String, Vec3)>,
     radius: Option<f64>,
-    want_radius: bool,
+    /// Chamfer distances on the first and second surface.
+    distances: Option<[f64; 2]>,
+    /// Asking for: 1 the radius or first distance, 2 the second distance.
+    want: u8,
 }
 
-/// Rhino 5 FilletSrf: Select first surface to fillet (Radius), Select second surface to
-/// fillet; the clicks say which sides are kept, so which corner gets the rolling ball.
+/// Rhino 5 FilletSrf (Radius) and ChamferSrf (Distances): Select first surface, Select second
+/// surface; each click says the side kept, so which corner is rounded or cut.
 fn fillet_srf(e: &Event) -> Reply {
-    let label = "Fillet Surfaces";
+    let chamfer = e.command == CHAMFER;
+    let (label, noun) = if chamfer { ("Chamfer Surfaces", "chamfer") } else { ("Fillet Surfaces", "fillet") };
     let mut st: FilletState = serde_json::from_value(e.state.clone()).unwrap_or_default();
     if matches!(e.input, Input::Start) {
         st = FilletState::default();
     }
     let radius = st.radius.unwrap_or_else(|| e.number("fs_radius", 1.0));
+    let dist0 = e.number("cs_distance", 1.0);
+    let dists = st.distances.unwrap_or([dist0, e.number("cs_second_distance", dist0)]);
     let save = |st: &FilletState| serde_json::to_value(st).unwrap_or(Value::Null);
     let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    // Meshes (no exact surface): the mesh fillet / chamfer, both picked, Enter.
+    if surfaces.is_empty() && !meshes(e).is_empty() && st.first.is_none() {
+        return fillet(e);
+    }
     let center = |s: &Selected| Srf::of(s.exact.as_ref().unwrap()).map_or(s.bbox[0], |f| f.at_st(0.5, 0.5));
+    let number = |t: &str| t.trim().replace(',', ".").parse::<f64>().ok().filter(|v| *v > 0.0);
     let mut error = None;
     match &e.input {
-        Input::Option { name, value } if name.eq_ignore_ascii_case("Radius") => match value.as_deref().and_then(|v| v.trim().replace(',', ".").parse::<f64>().ok()) {
-            Some(r) if r > 0.0 => st.radius = Some(r),
-            _ => st.want_radius = true,
+        Input::Option { name, value } if name.eq_ignore_ascii_case("Radius") && !chamfer => match value.as_deref().and_then(number) {
+            Some(r) => st.radius = Some(r),
+            None => st.want = 1,
         },
-        Input::Text { text } if st.want_radius => match text.trim().replace(',', ".").parse::<f64>() {
-            Ok(r) if r > 0.0 => {
-                st.radius = Some(r);
-                st.want_radius = false;
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("Distances") && chamfer => st.want = 1,
+        Input::Text { text } if st.want > 0 => match number(text) {
+            Some(v) if chamfer => {
+                let mut d = dists;
+                d[usize::from(st.want - 1)] = v;
+                st.distances = Some(d);
+                st.want = if st.want == 1 { 2 } else { 0 };
             }
-            _ => error = Some(format!("{text}: type a radius more than 0")),
+            Some(v) => {
+                st.radius = Some(v);
+                st.want = 0;
+            }
+            None => error = Some(format!("{text}: type a number more than 0")),
         },
-        Input::Enter if st.want_radius => st.want_radius = false,
+        Input::Enter if st.want > 0 => st.want = if chamfer && st.want == 1 { 2 } else { 0 },
         _ => {}
     }
-    if st.want_radius {
-        return Reply::ask(format!("Radius <{}>", fmt(radius)), save(&st)).want(Want::Number);
+    let dists = st.distances.unwrap_or(dists);
+    if st.want > 0 {
+        let prompt = match (chamfer, st.want) {
+            (false, _) => format!("Radius <{}>", fmt(radius)),
+            (true, 1) => format!("First chamfer distance <{}>", fmt(dists[0])),
+            (true, _) => format!("Second chamfer distance <{}>", fmt(dists[1])),
+        };
+        let r = Reply::ask(prompt, save(&st)).want(Want::Number);
+        return match error {
+            Some(why) => r.refuse(why),
+            None => r,
+        };
     }
+    let options = || {
+        if chamfer {
+            let mut t = OptionToken::action("Distances");
+            t.value = Some(format!("{},{}", fmt(dists[0]), fmt(dists[1])));
+            vec![t]
+        } else {
+            vec![OptionToken::number("Radius", Some(radius))]
+        }
+    };
     // The picks: preselected surfaces count in order (their middles as the kept sides).
     let pick_of = |s: &Selected| e.pick.unwrap_or_else(|| center(s));
     if st.first.is_none() {
@@ -2101,12 +2138,12 @@ fn fillet_srf(e: &Event) -> Reply {
             st.first = Some((s.id.clone(), at));
         }
     }
+    let first_prompt = format!("Select first surface to {noun}");
+    let second_prompt = format!("Select second surface to {noun}");
     let second = st.first.as_ref().and_then(|(id, _)| surfaces.iter().find(|s| &s.id != id).copied());
     let (Some((first_id, keep1)), Some(second)) = (st.first.clone(), second) else {
-        let prompt = if st.first.is_none() { "Select first surface to fillet" } else { "Select second surface to fillet" };
-        let r = Reply::ask(prompt, save(&st))
-            .want(Want::Objects)
-            .with_options(vec![OptionToken::number("Radius", Some(radius))]);
+        let prompt = if st.first.is_none() { first_prompt } else { second_prompt };
+        let r = Reply::ask(prompt, save(&st)).want(Want::Objects).with_options(options());
         return match error {
             Some(why) => r.refuse(why),
             None => r,
@@ -2114,19 +2151,23 @@ fn fillet_srf(e: &Event) -> Reply {
     };
     let keep2 = if matches!(e.input, Input::Start) { center(second) } else { pick_of(second) };
     let Some(first) = surfaces.iter().find(|s| s.id == first_id) else {
-        return Reply::ask("Select first surface to fillet", save(&FilletState::default())).want(Want::Objects);
+        return Reply::ask(first_prompt, save(&FilletState::default())).want(Want::Objects);
     };
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
-    match om9_addon_geom::fillet::fillet(first.exact.as_ref().unwrap(), second.exact.as_ref().unwrap(), radius, keep1, keep2, tol) {
-        Ok(f) => Reply::finish(vec![f.geo()]).say(format!("{label}: radius {} mm, within {} mm", fmt(radius), fmt(tol))),
+    let (g1, g2) = (first.exact.as_ref().unwrap(), second.exact.as_ref().unwrap());
+    let made = if chamfer {
+        om9_addon_geom::fillet::chamfer(g1, g2, dists[0], dists[1], keep1, keep2, tol)
+            .map(|f| (f.geo(), format!("distances {}, {} mm", fmt(dists[0]), fmt(dists[1]))))
+    } else {
+        om9_addon_geom::fillet::fillet(g1, g2, radius, keep1, keep2, tol).map(|f| (f.geo(), format!("radius {} mm, within {} mm", fmt(radius), fmt(tol))))
+    };
+    match made {
+        Ok((g, what)) => Reply::finish(vec![g]).say(format!("{label}: {what}")),
         Err(why) => {
             // Keep the first pick; ask for the second again.
             let mut again = st.clone();
             again.first = Some((first_id, keep1));
-            Reply::ask("Select second surface to fillet", save(&again))
-                .want(Want::Objects)
-                .with_options(vec![OptionToken::number("Radius", Some(radius))])
-                .refuse(format!("{label}: {why}"))
+            Reply::ask(second_prompt, save(&again)).want(Want::Objects).with_options(options()).refuse(format!("{label}: {why}"))
         }
     }
 }
