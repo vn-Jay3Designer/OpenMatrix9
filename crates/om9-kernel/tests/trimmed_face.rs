@@ -111,3 +111,50 @@ fn any_winding_of_the_outer_loop_and_of_several_holes_gives_the_same_face() {
     assert!((m.area_mm2 - want).abs() < 1e-6, "{} vs {want}", m.area_mm2);
     assert_eq!(m.faces, 1);
 }
+
+fn bezier2(a: [f64; 3], b: [f64; 3], c: [f64; 3]) -> NurbsCurve {
+    NurbsCurve {
+        degree: 2,
+        poles: vec![a, b, c],
+        weights: vec![1.0; 3],
+        knots: vec![0., 0., 0., 1., 1., 1.],
+        domain: [0., 1.],
+        periodic: false,
+        reversed: false,
+        seam: None,
+    }
+}
+
+#[test]
+fn a_curved_surface_trimmed_by_curves_on_it() {
+    // Parabolic sheet z = x²/10 (x −4..4, y 0..10); trimmed by the parabola at y = 2 and
+    // y = 8 (x −3..3) and the lines between them: the area is 6 × the parabola's length (as
+    // Patch trims a fitted surface by curves drawn on it).
+    let sheet = NurbsSurface {
+        degree: [2, 1],
+        size: [3, 2],
+        poles: vec![[-4., 0., 1.6], [-4., 10., 1.6], [0., 0., -1.6], [0., 10., -1.6], [4., 0., 1.6], [4., 10., 1.6]],
+        weights: vec![1.0; 6],
+        knots: [vec![0., 0., 0., 1., 1., 1.], vec![0., 0., 1., 1.]],
+        domain: [[0., 1.], [0., 1.]],
+        periodic: [false, false],
+        reversed: false,
+    };
+    let par = |y: f64, flip: bool| {
+        let (a, c) = if flip { ([3., y, 0.9], [-3., y, 0.9]) } else { ([-3., y, 0.9], [3., y, 0.9]) };
+        bezier2(a, [0., y, -0.9], c)
+    };
+    let outer = vec![
+        par(2.0, false),
+        line([3., 2., 0.9], [3., 8., 0.9]),
+        par(8.0, true),
+        line([-3., 8., 0.9], [-3., 2., 0.9]),
+    ];
+    let brep = creation::trimmed_face(&sheet, &[outer], DEFAULT_DEFLECTION_MM, &limits()).expect("curved trimmed face");
+    let m = creation::measure(&brep, &limits()).expect("measure");
+    let a = 5.0f64;
+    let prim = |x: f64| x / 2.0 * (1.0 + x * x / (a * a)).sqrt() + a / 2.0 * (x / a).asinh();
+    let want = 6.0 * (prim(3.0) - prim(-3.0));
+    assert!((m.area_mm2 - want).abs() < 1e-4 * want, "{} vs {want}", m.area_mm2);
+    assert_eq!(m.faces, 1);
+}

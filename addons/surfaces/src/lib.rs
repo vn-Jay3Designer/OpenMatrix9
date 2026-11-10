@@ -21,7 +21,7 @@ use om9_addon_geom::sweep;
 use om9_addon_geom::{interpolate, section, shapes};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::f64::consts::{FRAC_PI_2, PI, TAU};
+use std::f64::consts::{FRAC_PI_2, PI};
 
 pub const SWEEP1: &str = "SurfaceSweepSweep1Rail";
 pub const SWEEP2: &str = "SurfaceSweepSweep2Rails";
@@ -1162,6 +1162,8 @@ fn patch(e: &Event) -> Reply {
                 if let Some(g) = edge_srf_exact(&cs) {
                     return Ok((vec![g], format!("surface from {} edge curves", cs.len())));
                 }
+            } else {
+                return patch_fit(e, &cs);
             }
             let n = 24;
             let [b0, r0, t0, l0] = boundary(&cs, n)?;
@@ -1174,6 +1176,97 @@ fn patch(e: &Event) -> Reply {
     )
 }
 
+/// Rhino 5 Patch: fit through the selected curves and points (Sample point spacing, U/V
+/// spans, Stiffness), trimmed to the closed outer curve (Automatic trim).
+fn patch_fit(e: &Event, cs: &[&Selected]) -> Result<(Vec<Geo>, String), String> {
+    use om9_addon_geom::patch;
+    let ncs: Vec<Nc> = cs.iter().filter_map(|c| nc_of(c)).collect();
+    let points: Vec<Vec3> = e.selection.iter().filter(|s| s.kind == "point" && !s.points.is_empty()).map(|s| s.points[0]).collect();
+    if ncs.is_empty() && points.len() < 3 {
+        return Err("select curves or points".into());
+    }
+    let o = patch::Options {
+        spacing: e.number("patch_spacing", 1.0).max(1e-4),
+        u_spans: e.number("patch_u_spans", 10.0).round().clamp(1.0, 40.0) as usize,
+        v_spans: e.number("patch_v_spans", 10.0).round().clamp(1.0, 40.0) as usize,
+        stiffness: e.number("patch_stiffness", 1.0).max(0.0),
+    };
+    let fit = patch::patch(&ncs, &points, &o)?;
+    let sheet = exact::surface(&fit.rows, fit.degree, fit.knots.clone());
+    let what = format!("{} curves, {} points, {} mm from the input", ncs.len(), points.len(), fmt(fit.deviation));
+    if !e.flag("patch_auto_trim", true) {
+        return Ok((vec![sheet], what));
+    }
+    // The outer curve: a closed input curve, or the curves whose ends meet others' ends.
+    let tol = 1e-3;
+    let touches = |c: &Nc, p: Vec3| ncs.iter().any(|d| !std::ptr::eq(c, d) && (dist(d.start(), p) <= tol || dist(d.end(), p) <= tol));
+    let boundary: Vec<Nc> = ncs.iter().filter(|c| touches(c, c.start()) && touches(c, c.end())).cloned().collect();
+    let outer = ncs
+        .iter()
+        .filter(|c| c.closed(tol))
+        .max_by(|a, b| {
+            let span = |c: &Nc| {
+                let (lo, hi) = (0..=32).map(|i| fit.flat(c.eval(i as f64 / 32.0))).fold(([f64::MAX; 2], [f64::MIN; 2]), |(lo, hi), p| {
+                    ([lo[0].min(p[0]), lo[1].min(p[1])], [hi[0].max(p[0]), hi[1].max(p[1])])
+                });
+                (hi[0] - lo[0]) * (hi[1] - lo[1])
+            };
+            span(a).total_cmp(&span(b))
+        })
+        .map(|c| vec![c.clone()])
+        .or_else(|| (boundary.len() >= 2).then(|| patch::outer_loop(&boundary, tol)).flatten());
+    let Some(outer) = outer else {
+        return Ok((vec![sheet], what));
+    };
+    let on: Vec<Nc> = outer.iter().filter_map(|c| patch::on_patch(&fit, c)).collect();
+    if on.len() != outer.len() {
+        return Ok((vec![sheet], what));
+    }
+    // Display (where no B-Rep kernel runs): the patch's triangles inside the outer loop.
+    let poly: Vec<[f64; 2]> = outer.iter().flat_map(|c| (0..32).map(move |i| c.eval(i as f64 / 32.0))).map(|p| fit.flat(p)).collect();
+    let inside = |p: [f64; 2]| {
+        let mut c = false;
+        for i in 0..poly.len() {
+            let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+            if (a[1] > p[1]) != (b[1] > p[1]) && p[0] < a[0] + (b[0] - a[0]) * (p[1] - a[1]) / (b[1] - a[1]) {
+                c = !c;
+            }
+        }
+        c
+    };
+    let k = 48;
+    let (lo, hi) = fit.range();
+    let mut vertices = Vec::new();
+    for i in 0..=k {
+        for j in 0..=k {
+            vertices.push(fit.at(i as f64 / k as f64, j as f64 / k as f64));
+        }
+    }
+    let at = |i: usize, j: usize| (i * (k + 1) + j) as u32;
+    let mut triangles = Vec::new();
+    for i in 0..k {
+        for j in 0..k {
+            let mid = [
+                lo[0] + (i as f64 + 0.5) / k as f64 * (hi[0] - lo[0]),
+                lo[1] + (j as f64 + 0.5) / k as f64 * (hi[1] - lo[1]),
+            ];
+            if inside(mid) {
+                triangles.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
+                triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
+            }
+        }
+    }
+    let display = Mesh { vertices, triangles }.geo("Patch", None, None);
+    Ok((
+        vec![Geo::Trimmed {
+            surface: Box::new(sheet),
+            loops: vec![on.iter().map(Nc::to_geo).collect()],
+            display: Some(Box::new(display)),
+        }],
+        format!("{what}, trimmed"),
+    ))
+}
+
 fn network(e: &Event) -> Reply {
     built(
         e,
@@ -1183,6 +1276,20 @@ fn network(e: &Event) -> Reply {
             let cs = curves(e);
             if cs.len() < 3 {
                 return Err("select at least three curves".into());
+            }
+            // Open curves: an exact-curve Gordon surface through every curve (Rhino 5
+            // NetworkSrf); the edge / interior tolerance is how closely it follows them.
+            if cs.iter().all(|c| !c.closed) {
+                let ncs: Vec<Nc> = cs.iter().filter_map(|c| nc_of(c)).collect();
+                if ncs.len() == cs.len() {
+                    let tol = e.number("nw_edge_tolerance", 0.001).min(e.number("nw_interior_tolerance", 0.001)).max(1e-6);
+                    let gap = e.number("nw_cross_tolerance", 0.1).max(tol);
+                    let n = om9_addon_geom::network::network(&ncs, tol, gap)?;
+                    return Ok((
+                        vec![exact::surface(&n.rows, n.degree, n.knots)],
+                        format!("{} × {} curves, within {} mm", n.counts[0], n.counts[1], fmt(tol)),
+                    ));
+                }
             }
             // Split into two families by direction (end to end vectors).
             let dir = |c: &Selected| unit(sub(*c.points.last().unwrap(), c.points[0]));

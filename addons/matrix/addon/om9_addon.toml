@@ -810,8 +810,9 @@ label = "Curve Network"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["NetworkSrf"]
-summary = "Mặt từ lưới đường cong hai hướng."
-steps = ["Chọn các đường cong cả hai hướng.", "Enter."]
+summary = "Mặt từ lưới đường cong hai hướng (Rhino 5 NetworkSrf): mặt đi qua mọi đường trong dung sai."
+steps = ["Chọn các đường cong cả hai hướng (tự sắp xếp).", "Enter."]
+options = ["Dung sai cạnh / bên trong: mặt bám đường cong trong khoảng này.", "Khoảng hở giao: hai đường cách nhau hơn mức này coi như không cắt nhau."]
 
 [[commands]]
 id = "SurfaceSurfaceEditToolsShrinkTrimmedSurface"
@@ -829,8 +830,9 @@ label = "Patch"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["Patch"]
-summary = "Mặt vá qua đường biên (kín hoặc nhiều đoạn)."
-steps = ["Chọn đường biên.", "Enter."]
+summary = "Mặt vá khớp qua các đường và điểm như Rhino 5 Patch; tự cắt theo đường biên kín."
+steps = ["Chọn điểm, đường cong (biên và đường bên trong).", "Enter."]
+options = ["Khoảng cách điểm mẫu, số nhịp U/V, độ cứng (càng lớn càng phẳng).", "Tự cắt: cắt theo đường kín bên ngoài."]
 
 [[commands]]
 id = "SurfaceEdgeCurves"
@@ -1174,6 +1176,84 @@ option = "ScaleHeight"
 label = "Co giãn chiều cao (Rail Revolve)"
 default = false
 commands = ["SurfaceRailRevolve"]
+
+[[settings]]
+key = "nw_edge_tolerance"
+type = "length"
+option = "EdgeTolerance"
+label = "Dung sai cạnh (Curve Network, mm)"
+default = 0.001
+min = 0.00001
+max = 1.0
+commands = ["SurfaceCurveNetwork"]
+
+[[settings]]
+key = "nw_interior_tolerance"
+type = "length"
+option = "InteriorTolerance"
+label = "Dung sai bên trong (Curve Network, mm)"
+default = 0.001
+min = 0.00001
+max = 1.0
+commands = ["SurfaceCurveNetwork"]
+
+[[settings]]
+key = "nw_cross_tolerance"
+type = "length"
+option = "CrossingGap"
+label = "Khoảng hở tối đa tại giao điểm (mm)"
+default = 0.1
+min = 0.0001
+max = 10.0
+commands = ["SurfaceCurveNetwork"]
+
+[[settings]]
+key = "patch_spacing"
+type = "length"
+option = "SampleSpacing"
+label = "Khoảng cách điểm mẫu (Patch, mm)"
+default = 1.0
+min = 0.001
+max = 100.0
+commands = ["SurfacePatch"]
+
+[[settings]]
+key = "patch_u_spans"
+type = "int"
+option = "USpans"
+label = "Số nhịp U (Patch)"
+default = 10
+min = 1
+max = 40
+commands = ["SurfacePatch"]
+
+[[settings]]
+key = "patch_v_spans"
+type = "int"
+option = "VSpans"
+label = "Số nhịp V (Patch)"
+default = 10
+min = 1
+max = 40
+commands = ["SurfacePatch"]
+
+[[settings]]
+key = "patch_stiffness"
+type = "float"
+option = "Stiffness"
+label = "Độ cứng (Patch)"
+default = 1.0
+min = 0.0
+max = 100000.0
+commands = ["SurfacePatch"]
+
+[[settings]]
+key = "patch_auto_trim"
+type = "bool"
+option = "AutoTrim"
+label = "Tự cắt theo biên (Patch)"
+default = true
+commands = ["SurfacePatch"]
 
 [[settings]]
 key = "sw1_style"

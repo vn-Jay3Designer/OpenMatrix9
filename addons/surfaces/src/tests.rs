@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 use super::*;
+use std::f64::consts::TAU;
 use om9_addon_abi::session::Plane;
 use om9_addon_geom::mesh::cuboid;
 use serde_json::Value;
@@ -192,7 +193,10 @@ fn loft_patch_and_edge_curves() {
         json!({}),
         vec![Input::Enter],
     );
-    let s = Srf::of(&r.create[0]).unwrap();
+    // Rhino 5 Patch: a fitted surface trimmed to the closed curve.
+    let Geo::Trimmed { surface, loops, .. } = &r.create[0] else { panic!("trimmed patch") };
+    assert_eq!(loops.len(), 1);
+    let s = Srf::of(surface).unwrap();
     assert!(norm(s.at_st(0.5, 0.5)) < 0.3, "{:?}", s.at_st(0.5, 0.5));
 }
 
@@ -1068,4 +1072,85 @@ fn rail_revolve_follows_rhino5_and_is_exact() {
             assert!(((p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt() - 10.0).abs() < 1e-9, "hemisphere {p:?}");
         }
     }
+}
+
+/// Rhino 5 NetworkSrf: curves of both directions in any order; the surface holds them all.
+#[test]
+fn curve_network_runs_through_every_curve() {
+    let h = |x: f64, y: f64| 1.5 * (x * 0.4).sin() * (y * 0.3).cos();
+    let mut sel = Vec::new();
+    let mut k = 0;
+    let mut add = |pts: Vec<Vec3>| {
+        k += 1;
+        let g = om9_addon_geom::interpolate(&pts, 3, false).unwrap();
+        sel.push(exact_sel(&format!("c{k}"), g, false));
+    };
+    for x in [0.0, 4.0, 9.0] {
+        add((0..=8).map(|i| { let y = i as f64; [x, y, h(x, y)] }).collect());
+    }
+    for y in [0.0, 3.0, 8.0] {
+        add((0..=9).map(|i| { let x = i as f64; [x, y, h(x, y)] }).collect());
+    }
+    let r = run(NETWORK, sel.clone(), json!({}), vec![Input::Enter]);
+    assert!(r.done, "{:?}", r.error);
+    assert!(r.messages.iter().any(|m| m.contains("3 × 3")), "{:?}", r.messages);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for c in &sel {
+        for p in c.points.iter().step_by(8) {
+            let mut best = (f64::MAX, 0.0, 0.0);
+            for a in 0..=90 {
+                for b in 0..=90 {
+                    let (u, v) = (a as f64 / 90.0, b as f64 / 90.0);
+                    let d = dist(*p, s.at_st(u, v));
+                    if d < best.0 {
+                        best = (d, u, v);
+                    }
+                }
+            }
+            let mut d = best.0;
+            for a in -40..=40 {
+                for b in -40..=40 {
+                    let (u, v) = ((best.1 + a as f64 / 3600.0).clamp(0.0, 1.0), (best.2 + b as f64 / 3600.0).clamp(0.0, 1.0));
+                    d = d.min(dist(*p, s.at_st(u, v)));
+                }
+            }
+            assert!(d < 0.005, "{d}");
+        }
+    }
+}
+
+/// Rhino 5 Patch: a fit through boundary and interior curves, trimmed to the closed boundary.
+#[test]
+fn patch_fits_and_trims_like_rhino5() {
+    let h = |x: f64, y: f64| 0.4 * (x / 3.0).sin() * (y / 4.0).cos();
+    let mut sel = Vec::new();
+    let mut add = |id: &str, f: &dyn Fn(f64) -> (f64, f64)| {
+        let pts: Vec<Vec3> = (0..=12).map(|i| { let (x, y) = f(i as f64 / 12.0); [x, y, h(x, y)] }).collect();
+        sel.push(exact_sel(id, om9_addon_geom::interpolate(&pts, 3, false).unwrap(), false));
+    };
+    add("b", &|t| (10.0 * t, 0.0));
+    add("r", &|t| (10.0, 8.0 * t));
+    add("t", &|t| (10.0 * (1.0 - t), 8.0));
+    add("l", &|t| (0.0, 8.0 * (1.0 - t)));
+    add("mid", &|t| (2.0 + 6.0 * t, 4.0));
+    let r = run(PATCH, sel.clone(), json!({}), vec![Input::Enter]);
+    assert!(r.done, "{:?}", r.error);
+    let Geo::Trimmed { surface, loops, display } = &r.create[0] else { panic!("trimmed patch expected") };
+    assert_eq!(loops.len(), 1);
+    assert_eq!(loops[0].len(), 4, "the four boundary curves");
+    assert!(display.is_some());
+    let s = Srf::of(surface).unwrap();
+    // The interior curve lies on the patch.
+    for p in sel[4].points.iter().step_by(6) {
+        let mut best = f64::MAX;
+        for a in 0..=100 {
+            for b in 0..=100 {
+                best = best.min(dist(*p, s.at_st(a as f64 / 100.0, b as f64 / 100.0)));
+            }
+        }
+        assert!(best < 0.06, "{best}");
+    }
+    // Without automatic trim: the plain surface.
+    let r = run(PATCH, sel, json!({"patch_auto_trim": false}), vec![Input::Enter]);
+    assert!(matches!(r.create[0], Geo::Surface { .. }));
 }
