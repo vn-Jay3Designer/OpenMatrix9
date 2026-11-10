@@ -110,7 +110,7 @@ pub fn match_srf(g: &Geo, e: Edge, target: &Geo, te: Edge, c: Continuity, tol: f
     for _ in 0..8 {
         let p = r.degree[0];
         let first_inner = r.knots[0].iter().copied().find(|v| *v > 1e-12).unwrap_or(1.0);
-        if r.rows.len() >= k + p + 1 && first_inner < 1.0 {
+        if r.rows.len() > k + p && first_inner < 1.0 {
             break;
         }
         let t = r.flipped();
