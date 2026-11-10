@@ -128,7 +128,8 @@ impl Interactive for Surfaces {
             RAIL_REVOLVE => rail_revolve(e),
             TWEEN => tween(e),
             FILLET | VAR_FILLET | CHAMFER | VAR_CHAMFER => fillet(e),
-            OFFSET | VAR_OFFSET => offset(e),
+            OFFSET => offset_srf(e),
+            VAR_OFFSET => offset(e),
             MERGE => merge(e),
             MATCH => match_edge(e),
             DRAPE => drape(e),
@@ -2156,6 +2157,81 @@ fn fillet(e: &Event) -> Reply {
 }
 
 // ---- offsets, tween, merge, match ------------------------------------------------------------
+
+/// Rhino 5 OffsetSrf: Select surfaces to offset, Enter, Offset distance <d> (FlipAll Loose
+/// Tolerance BothSides DeleteInput). Planes, spheres and open cylinders offset exactly;
+/// free-form surfaces within the tolerance; meshes vertex by vertex.
+fn offset_srf(e: &Event) -> Reply {
+    let flow = Flow::new("Offset Surface")
+        .select_prompt("Select surfaces to offset")
+        .number("Offset distance", e.number("os_distance", 1.0))
+        .toggle("FlipAll", e.flag("os_flip", false))
+        .toggle("Loose", e.flag("os_loose", false))
+        .num("Tolerance", e.number("os_tolerance", 0.0))
+        .toggle("BothSides", e.flag("os_both_sides", false))
+        .toggle("DeleteInput", false);
+    let make = |c: &Collected| -> Result<(Vec<Geo>, Vec<String>, String), String> {
+        let d = c.n(0).unwrap_or(flow_default(&flow, "Offset distance", 1.0));
+        let d = if c.yes(&flow, "FlipAll") { -d } else { d };
+        let tol = match c.num(&flow, "Tolerance") {
+            t if t > 0.0 => t,
+            _ => e.number("sw_tolerance", 0.001).max(1e-6),
+        };
+        let loose = c.yes(&flow, "Loose");
+        let sides: Vec<f64> = if c.yes(&flow, "BothSides") { vec![d, -d] } else { vec![d] };
+        let mut out = Vec::new();
+        let mut used = Vec::new();
+        let (mut exact_n, mut worst) = (0, 0.0f64);
+        for s in e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))) {
+            for dd in &sides {
+                let o = om9_addon_geom::offset::offset(s.exact.as_ref().unwrap(), *dd, tol, loose)?;
+                exact_n += usize::from(o.exact);
+                worst = worst.max(o.deviation);
+                out.push(o.geo);
+            }
+            used.push(s.id.clone());
+        }
+        // Meshes: every vertex along its averaged normal.
+        let mesh_sel: Vec<&Selected> = meshes(e).into_iter().filter(|s| !used.contains(&s.id)).collect();
+        for s in mesh_sel {
+            let m = s.mesh.as_ref().unwrap();
+            let mut vn = vec![[0.0; 3]; m.vertices.len()];
+            for t in &m.triangles {
+                let [a, b, cc] = t.map(|i| m.vertices[i as usize]);
+                let n = cross(sub(b, a), sub(cc, a));
+                for &i in t {
+                    vn[i as usize] = add(vn[i as usize], n);
+                }
+            }
+            for dd in &sides {
+                let moved = Mesh {
+                    vertices: m.vertices.iter().zip(&vn).map(|(p, n)| add(*p, scale(unit(*n), *dd))).collect(),
+                    triangles: m.triangles.clone(),
+                };
+                out.push(moved.geo("Offset", None, None));
+            }
+            used.push(s.id.clone());
+        }
+        if out.is_empty() {
+            return Err("select surfaces or meshes".into());
+        }
+        let how = if exact_n == out.len() { "exact".to_owned() } else { format!("within {} mm", fmt(worst.max(1e-6).min(tol))) };
+        let what = format!("{} offsets {} mm, {how}", sides.len() * used.len(), fmt(d.abs()));
+        Ok((out, used, what))
+    };
+    flow.step(
+        e,
+        &|c, _| Show { geo: make(c).map(|m| m.0).unwrap_or_default(), ..Default::default() },
+        &|c| {
+            let (out, used, what) = make(c)?;
+            let mut r = Reply::finish(out).say(format!("Offset Surface: {what}"));
+            if c.yes(&flow, "DeleteInput") {
+                r.delete = used;
+            }
+            Ok(r)
+        },
+    )
+}
 
 fn offset(e: &Event) -> Reply {
     let var = e.command == VAR_OFFSET;

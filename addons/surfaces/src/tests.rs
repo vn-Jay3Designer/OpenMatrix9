@@ -1154,3 +1154,25 @@ fn patch_fits_and_trims_like_rhino5() {
     let r = run(PATCH, sel, json!({"patch_auto_trim": false}), vec![Input::Enter]);
     assert!(matches!(r.create[0], Geo::Surface { .. }));
 }
+
+/// Rhino 5 OffsetSrf: select, Enter, Offset distance <d> (FlipAll Loose Tolerance BothSides
+/// DeleteInput); a plane offsets exactly.
+#[test]
+fn offset_srf_follows_rhino5() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let r = feed(OFFSET, &Value::Null, Input::Start, vec![a.clone()], json!({}));
+    assert!(r.prompt.starts_with("Offset distance"), "{}", r.prompt);
+    for name in ["FlipAll", "Loose", "Tolerance", "BothSides", "DeleteInput"] {
+        assert!(r.options.iter().any(|o| o.name == name), "{name}");
+    }
+    assert!(!r.preview.is_empty(), "preview of the default distance");
+    let r = feed(OFFSET, &r.state, opt("BothSides", None), vec![a.clone()], json!({}));
+    let r = feed(OFFSET, &r.state, opt("DeleteInput", None), vec![a.clone()], json!({}));
+    let r = feed(OFFSET, &r.state, text("0.6"), vec![a.clone()], json!({}));
+    assert!(r.done, "{}", r.prompt);
+    assert_eq!(r.create.len(), 2);
+    assert_eq!(r.delete, vec!["a".to_string()]);
+    let zs: Vec<f64> = r.create.iter().map(|g| Srf::of(g).unwrap().at_st(0.3, 0.6)[2]).collect();
+    assert!(zs.iter().any(|z| (z - 0.6).abs() < 1e-12) && zs.iter().any(|z| (z + 0.6).abs() < 1e-12), "{zs:?}");
+    assert!(r.messages.iter().any(|m| m.contains("exact")), "{:?}", r.messages);
+}

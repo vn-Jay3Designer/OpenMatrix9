@@ -964,12 +964,11 @@ id = "SurfaceOffsetSurface"
 label = "Offset Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["OffsetSrf"]
-summary = "Mặt song song cách đều (mặt NURBS hoặc lưới)."
-steps = ["Chọn mặt.", "Chỉnh khoảng.", "Enter."]
-options = ["Flip: phía ngược."]
+summary = "Mặt song song cách đều như Rhino 5 OffsetSrf: mặt phẳng, cầu, trụ chính xác; mặt tự do trong dung sai."
+steps = ["Chọn mặt cần offset, Enter.", "Gõ khoảng offset (Enter: giữ mặc định)."]
+options = ["FlipAll: đổi phía.", "Loose: giữ nguyên cấu trúc điểm của mặt gốc.", "Tolerance: dung sai (0 = mặc định).", "BothSides: offset cả hai phía.", "DeleteInput: xoá mặt gốc."]
 
 [[commands]]
 id = "SurfaceVariableOffsetSurface"
@@ -1254,6 +1253,32 @@ option = "AutoTrim"
 label = "Tự cắt theo biên (Patch)"
 default = true
 commands = ["SurfacePatch"]
+
+[[settings]]
+key = "os_loose"
+type = "bool"
+option = "Loose"
+label = "Offset lỏng (giữ cấu trúc điểm)"
+default = false
+commands = ["SurfaceOffsetSurface"]
+
+[[settings]]
+key = "os_tolerance"
+type = "length"
+option = "Tolerance"
+label = "Dung sai offset (0 = mặc định, mm)"
+default = 0.0
+min = 0.0
+max = 1.0
+commands = ["SurfaceOffsetSurface"]
+
+[[settings]]
+key = "os_both_sides"
+type = "bool"
+option = "BothSides"
+label = "Offset cả hai phía"
+default = false
+commands = ["SurfaceOffsetSurface"]
 
 [[settings]]
 key = "sw1_style"
