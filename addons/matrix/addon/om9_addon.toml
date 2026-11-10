@@ -919,12 +919,11 @@ id = "SurfaceFilletSurfaces"
 label = "Fillet Surfaces"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["FilletSrf"]
-summary = "Bo cung giữa hai mặt cắt nhau (mặt gốc không bị cắt)."
-steps = ["Chọn hai mặt.", "Chỉnh bán kính, phía.", "Enter."]
-options = ["FlipFirst / FlipSecond: chọn phía."]
+summary = "Bo cung bán kính không đổi giữa hai mặt như Rhino 5 FilletSrf (bi lăn); mặt bo trong dung sai."
+steps = ["Chọn mặt thứ nhất: bấm vào phía muốn giữ.", "Chọn mặt thứ hai: bấm vào phía muốn giữ."]
+options = ["Radius: bán kính bo."]
 
 [[commands]]
 id = "SurfaceVariableFilletBlendChamferVariableFilletSurfaces"

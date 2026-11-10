@@ -26,6 +26,7 @@ pub mod sdf;
 pub mod section;
 pub mod shapes;
 pub mod subd;
+pub mod fillet;
 pub mod network;
 pub mod offset;
 pub mod patch;

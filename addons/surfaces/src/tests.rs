@@ -1176,3 +1176,54 @@ fn offset_srf_follows_rhino5() {
     assert!(zs.iter().any(|z| (z - 0.6).abs() < 1e-12) && zs.iter().any(|z| (z + 0.6).abs() < 1e-12), "{zs:?}");
     assert!(r.messages.iter().any(|m| m.contains("exact")), "{:?}", r.messages);
 }
+
+/// Rhino 5 FilletSrf: first surface (click on the side kept), second surface (click on the
+/// side kept); Radius on the command line. Two planes give an exact quarter cylinder in the
+/// corner between the kept sides.
+#[test]
+fn fillet_srf_follows_rhino5_picks() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        name: String::new(),
+        bbox: [[0.0; 3]; 2],
+        points: vec![],
+        closed: false,
+        gem: None,
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
+    let step = |state: &Value, input: Input, sel: Vec<Selected>, pick: Option<Vec3>| {
+        let mut e = event(FILLET, input, sel, json!({}));
+        e.state = state.clone();
+        e.pick = pick;
+        Surfaces::step(&e).unwrap()
+    };
+    let r = step(&Value::Null, Input::Start, vec![], None);
+    assert_eq!(r.prompt, "Select first surface to fillet");
+    assert!(r.options.iter().any(|o| o.name == "Radius"));
+    let r = step(&r.state, opt("Radius", None), vec![], None);
+    assert_eq!(r.want, Want::Number);
+    let r = step(&r.state, text("1.5"), vec![], None);
+    assert_eq!(r.prompt, "Select first surface to fillet");
+    let r = step(&r.state, Input::Selection, vec![floor.clone()], Some([6.0, 4.0, 0.0]));
+    assert_eq!(r.prompt, "Select second surface to fillet");
+    let r = step(&r.state, Input::Selection, vec![floor.clone(), wall.clone()], Some([0.0, 4.0, 4.0]));
+    assert!(r.done, "{:?} {}", r.error, r.prompt);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=10 {
+        for j in 0..=10 {
+            let p = s.at_st(i as f64 / 10.0, j as f64 / 10.0);
+            let d = (p[0] - 1.5).hypot(p[2] - 1.5);
+            assert!((d - 1.5).abs() < 1e-6 && p[0] <= 1.5 + 1e-9 && p[2] <= 1.5 + 1e-9, "{p:?}");
+        }
+    }
+}

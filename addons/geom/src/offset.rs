@@ -39,7 +39,7 @@ fn deriv(f: &dyn Fn(f64) -> Vec3, t: f64) -> Vec3 {
 }
 
 /// The unit normal at (a, b) (the side `Srf::normal_st` points to).
-fn normal(s: &Srf, a: f64, b: f64) -> Vec3 {
+pub(crate) fn normal(s: &Srf, a: f64, b: f64) -> Vec3 {
     let n = cross(deriv(&|t| s.at_st(t, b), a), deriv(&|t| s.at_st(a, t), b));
     if norm(n) > 1e-12 {
         let n = unit(n);

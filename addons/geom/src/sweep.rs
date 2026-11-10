@@ -505,7 +505,7 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
 /// Fit a surface through sections `placed(u)` (homogeneous poles over `sec_knots`, degree
 /// `p`) at stations along `[ua, ub]`, adding stations where the surface strays more than
 /// `tol` from `placed`; `wrap`: periodic across (the section at `ub` is the one at `ua`).
-fn fit_stations(
+pub(crate) fn fit_stations(
     placed: &dyn Fn(f64) -> Vec<H>,
     ua: f64,
     ub: f64,
