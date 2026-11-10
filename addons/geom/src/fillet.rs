@@ -257,7 +257,7 @@ fn trace(pair: &Pair, size: f64) -> Result<(Vec<Ball>, Vec<f64>), String> {
                     .unwrap();
                 let mut x = cur.x;
                 x[k] = if x[k] < 0.5 { 0.0 } else { 1.0 };
-                if let Some(x) = self_solve_edge(&pair, x, k) {
+                if let Some(x) = self_solve_edge(pair, x, k) {
                     let b = pair.ball(x);
                     if dot(sub(b.c, cur.c), t) > 1e-9 && dist(b.c, cur.c) < 2.0 * step {
                         if dir > 0.0 {
