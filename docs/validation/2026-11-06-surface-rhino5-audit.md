@@ -32,13 +32,15 @@ exact / within 0.001 mm; **Perf** = measured.
 | NetworkSrf | curves both directions (NoAutoSort); tolerances edge/interior/angle; edge matching Loose/Position/Tangency/Curvature | **done**: auto sort by crossings, Gordon surface through every curve on exact curves (edge/interior tolerance, crossing gap); 3×4 network ≈ 3 ms | NoAutoSort; closed curve networks; Tangency/Curvature edge matching (surface edges) |
 | Patch | points/curves/edges; sample spacing, spans U/V, stiffness, adjust tangency, auto trim, starting surface | **done**: fit through curves and points (Sample point spacing, U/V spans, Stiffness), Automatic trim to the closed outer curve (trimmed face, curves drawn on the surface; kernel test on a curved face) | Adjust tangency; Starting surface / pull / Preserve edges |
 | ExtrudeCrv (Extrude All) | curve, distance by two points; Direction, BothSides, Solid, ToBoundary, DeleteInput, SetBasePoint | **done**: select → Extrusion distance (typed, Enter, click), BothSides, DeleteInput; exact | Direction, Solid, ToBoundary, SetBasePoint (need B-Rep solids, round 3) |
-| FilletSrf | first surface (side), second surface (side); Radius, Extend, Trim, Split | **done**: Select first / second surface (the clicks pick the sides kept), Radius; rolling ball traced on the exact surfaces, exact arcs, stations to 0.001 mm (two planes: exact quarter cylinder) | Trim / Extend / Split |
-| ChamferSrf | as FilletSrf; Distances (two), Extend, Trim, Split | **done**: same picks, Distances (first, second) measured from the intersection; ruled, to 0.001 mm | Trim / Extend / Split |
+| FilletSrf | first surface (side), second surface (side); Radius, Extend, Trim, Split | **done**: Select first / second surface (the clicks pick the sides kept), Radius; rolling ball traced on the exact surfaces, exact arcs, stations to 0.001 mm (two planes: exact quarter cylinder); **Trim=Yes** trims both inputs along the fillet edges, the picked sides kept | Extend / Split |
+| ChamferSrf | as FilletSrf; Distances (two), Extend, Trim, Split | **done**: same picks, Distances (first, second) measured from the intersection; ruled, to 0.001 mm; **Trim=Yes** | Extend / Split |
 | BlendSrf | edge, adjacent, edges to blend to, adjacent, adjust; per-end continuity Position…G4, bulge sliders, Lock, AddShapes, Planar sections, Same height | **done**: a click near each edge (or the facing edges of two picked surfaces), Continuity1/2 Position/Tangency/Curvature, Bulge1/2, preview, Enter; quintic sections continuing the crossing curves | G3/G4; ChainEdges; AddShapes; Planar sections |
 | OffsetSrf | surface, distance (+/− by arrow, click to flip); Corner Sharp/Round, FlipAll, Solid, Loose, Tolerance (0), BothSides, DeleteInput | **done**: Select surfaces, Enter, Offset distance; FlipAll, Loose, Tolerance, BothSides, DeleteInput; planes, spheres, open cylinders exact, free form to the tolerance (edges too) | Corner; Solid (polysurfaces) |
 | MatchSrf | edge to change, target edge/curve; Continuity, Preserve other end, Average, closest points, Refine, isocurve direction, MultipleMatches | **done**: a click near the edge to change, then the target edge; Continuity Position/Tangency/Curvature with a preview; the far end kept | Average; closest points; Refine; isocurve direction; curve targets |
 | ExtendSrf | edge, distance; Type Smooth/Line | **done**: Select edge of surface to extend (Type Smooth/Line), Extension factor; Smooth exact (the surface's own polynomial continued) | trimmed edges |
-| Fin (Extrude normal) | curve on surface, surface, distance | height setting | check help |
+| Fin (Extrude normal) | curve on surface, surface, height point(s); Direction Normal/Tangent | **done**: curve → surface → height (typed / point / Enter, preview follows the pointer), Direction; exact stations to 0.001 mm (3 ms) | second height (variable) |
+| Split (Isocurve), SrfSeam | surface, isocurve location (Direction U/V/Both); closed surface, new seam (Direction) | **done**: exact by knot insertion / seam move, the isocurve follows the pointer | Shrink |
+| Rebuild | point count, degree U/V, max deviation | **done**: U/V points, degree U and V, maximum deviation reported | Retrim |
 | MergeSrf | Select a pair of surfaces to merge (Smooth, Tolerance, RoundnessFactor) | **done**: second pick merges; exact with Smooth=No (compatible + p-fold seam knot); Smooth lines up the seam poles by the roundness | – |
 | TweenSurfaces, Variable Fillet/Blend/Chamfer/Offset, Drape, Heightfield, SplitIsocurve, ShrinkTrimmedSrf, Untrim, Smash, UnrollSrf, SoftEditSrf, SrfSeam, SetSurfaceTangent, FitSrf, Rebuild, CutPlane | read the Rhino 5 page when each is worked | implemented, settings-driven | flow and options per page |
 
@@ -49,10 +51,10 @@ exact / within 0.001 mm; **Perf** = measured.
 2. **Done 2026-11-10.** Sweep1, Sweep2, Profile/Multi sweep, RailRevolve, NetworkSrf, Patch —
    Rhino prompts, options, exact sections.
 3. **Major tools done 2026-11-10**: OffsetSrf, FilletSrf, ChamferSrf, ExtendSrf, MergeSrf,
-   BlendSrf, MatchSrf — prompts and options per page. Left: Trim/Extend/Split for
-   Fillet/Chamfer, the remaining edit tools (Tween, variable fillet/blend/chamfer/offset,
-   Drape, Heightfield, SplitIsocurve, ShrinkTrimmedSrf, Untrim, Smash, UnrollSrf, SoftEditSrf,
-   SrfSeam, SetSurfaceTangent, FitSrf, Rebuild, CutPlane).
+   BlendSrf, MatchSrf — prompts and options per page. Done since: Trim for Fillet/Chamfer, Split
+   at Isocurve, SrfSeam, Rebuild report, Fin. Left: Extend/Split for Fillet/Chamfer, the remaining edit tools (Tween, variable fillet/blend/chamfer/offset,
+   Drape, Heightfield, ShrinkTrimmedSrf, Untrim, Smash, UnrollSrf, SoftEditSrf,
+   SetSurfaceTangent, FitSrf, CutPlane).
 
 Each round: speed of preview and result on empty and 5,000/20,000-object files, accuracy
 against exact references, Vietnamese strings, package tests.
