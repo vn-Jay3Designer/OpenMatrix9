@@ -2830,45 +2830,89 @@ fn split(e: &Event) -> Reply {
     })
 }
 
+/// ExtendSrf command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct ExtendState {
+    /// The surface and its edge (direction, at the far end).
+    edge: Option<(String, usize, bool)>,
+    smooth: Option<bool>,
+}
+
+/// Rhino 5 ExtendSrf: Select edge of surface to extend (Type=Smooth/Line), Extension factor
+/// <d> (typed, Enter for the default), with a preview. Smooth is exact (the same surface,
+/// longer); Line continues straight along the edge's tangents.
 fn extend(e: &Event) -> Reply {
-    let flow = Flow::new("Extend Surface")
-        .number("Length to extend", 2.0)
-        .point("Pick near the edge to extend");
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let len = c.n(0).unwrap();
-        let p = c.p(0).unwrap();
-        let ss = nurbs_surfaces(e);
-        let (sel, f) = ss.first().ok_or("select a NURBS surface")?;
-        let (dir, at) = nearest_edge(f, p);
-        let n = 20;
-        let g = grid(f, n, n);
-        let mut rows: Vec<Vec<Vec3>> = if dir == 0 {
-            g
-        } else {
-            (0..n).map(|j| g.iter().map(|r| r[j]).collect()).collect()
+    let label = "Extend Surface";
+    let mut st: ExtendState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = ExtendState::default();
+    }
+    let save = |st: &ExtendState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let smooth = st.smooth.unwrap_or_else(|| e.text("es_type", "smooth") != "line");
+    let length = e.number("es_length", 1.0);
+    if let Input::Option { name, value } = &e.input {
+        if name.eq_ignore_ascii_case("Type") {
+            let now = match value.as_deref() {
+                Some(v) => !v.eq_ignore_ascii_case("line"),
+                None => !smooth,
+            };
+            st.smooth = Some(now);
+        }
+    }
+    let smooth = st.smooth.unwrap_or(smooth);
+    let type_token = || OptionToken::choice("Type", if smooth { "Smooth" } else { "Line" }, &["Smooth", "Line"]);
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    // The edge: the one nearest the click (on the surface clicked, or the one preselected).
+    if st.edge.is_none() {
+        let at = match &e.input {
+            Input::Point { point } => Some(*point),
+            Input::Selection => e.pick,
+            _ => None,
         };
-        if at < 0.5 {
-            rows.reverse();
+        if let (Some(p), Some(s)) = (at, surfaces.last()) {
+            if let Some(f) = Srf::of(s.exact.as_ref().unwrap()) {
+                let (dir, at) = nearest_edge(&f, p);
+                st.edge = Some((s.id.clone(), dir, at > 0.5));
+            }
         }
-        // Continue straight along the surface's direction at the edge.
-        let last = rows[n - 1].clone();
-        let prev = rows[n - 2].clone();
-        let steps = 4;
-        for k in 1..=steps {
-            rows.push(
-                last.iter()
-                    .zip(&prev)
-                    .map(|(a, b)| add(*a, scale(unit(sub(*a, *b)), len * k as f64 / steps as f64)))
-                    .collect(),
-            );
+        if st.edge.is_none() {
+            // A surface already picked: click near its edge.
+            let want = if surfaces.is_empty() { Want::Objects } else { Want::Point };
+            return Reply::ask("Select edge of surface to extend", save(&st)).want(want).with_options(vec![type_token()]);
         }
-        let mut r = Reply::finish(Vec::new()).say(format!("Extend Surface: {} mm", fmt(len)));
-        r.replace.push(Replacement {
-            id: sel.id.clone(),
-            geo: surface(&rows)?,
-        });
-        Ok(r)
-    })
+    }
+    let (id, dir, at_end) = st.edge.clone().unwrap();
+    let Some(sel) = surfaces.iter().find(|s| s.id == id) else {
+        return Reply::ask("Select edge of surface to extend", save(&ExtendState::default())).want(Want::Objects);
+    };
+    let g = sel.exact.as_ref().unwrap();
+    let run = |len: f64| om9_addon_geom::extend::extend(g, dir, at_end, len, smooth);
+    let typed = match &e.input {
+        Input::Text { text } => Some(text.trim().replace(',', ".").parse::<f64>().map_err(|_| format!("{text}: type a number"))),
+        Input::Enter => Some(Ok(length)),
+        _ => None,
+    };
+    let ask = |st: &ExtendState| {
+        let mut r = Reply::ask(format!("Extension factor <{}>", fmt(length)), save(st))
+            .want(Want::Number)
+            .with_options(vec![type_token()]);
+        if let Ok(g) = run(length) {
+            r = r.preview(vec![g]);
+        }
+        r
+    };
+    match typed {
+        Some(Ok(len)) => match run(len) {
+            Ok(out) => {
+                let mut r = Reply::finish(Vec::new()).say(format!("{label}: {} mm, {}", fmt(len), if smooth { "smooth (exact)" } else { "line" }));
+                r.replace.push(Replacement { id: id.clone(), geo: out });
+                r
+            }
+            Err(why) => ask(&st).refuse(format!("{label}: {why}")),
+        },
+        Some(Err(why)) => ask(&st).refuse(why),
+        None => ask(&st),
+    }
 }
 
 fn extrude_normal(e: &Event) -> Reply {

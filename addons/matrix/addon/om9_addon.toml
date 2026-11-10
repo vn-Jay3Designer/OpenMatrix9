@@ -1037,8 +1037,9 @@ label = "Extend Surface"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["ExtendSrf"]
-summary = "Kéo dài một mép mặt."
-steps = ["Chọn mặt.", "Gõ độ dài.", "Bấm gần mép."]
+summary = "Kéo dài mặt qua một cạnh như Rhino 5 ExtendSrf: Smooth là chính mặt đó kéo dài (chính xác), Line kéo thẳng theo tiếp tuyến."
+steps = ["Chọn cạnh mặt cần kéo dài (bấm gần cạnh).", "Gõ độ dài (Enter: mặc định)."]
+options = ["Type: Smooth / Line."]
 
 [[commands]]
 id = "SurfaceExtrudeCurveNormalToSurface"
@@ -1298,6 +1299,26 @@ default = 1.0
 min = 0.0001
 max = 1000.0
 commands = ["SurfaceChamferSurfaces"]
+
+[[settings]]
+key = "es_type"
+type = "enum"
+option = "Type"
+label = "Kiểu kéo dài mặt"
+choices = ["smooth", "line"]
+choice_labels = ["Smooth", "Line"]
+default = "smooth"
+commands = ["SurfaceExtendSurface"]
+
+[[settings]]
+key = "es_length"
+type = "length"
+option = "ExtensionFactor"
+label = "Độ dài kéo dài mặt mặc định (mm)"
+default = 1.0
+min = 0.0001
+max = 1000.0
+commands = ["SurfaceExtendSurface"]
 
 [[settings]]
 key = "sw1_style"

@@ -307,11 +307,12 @@ fn offset_tween_rebuild_and_split() {
         (first.at_st(1.0, 0.5)[0] - 1.0).abs() < 0.01
             && (second.at_st(0.0, 0.5)[0] - 1.0).abs() < 0.01
     );
+    // Rhino 5 order: the edge (click near it), then the extension.
     let r = run(
         EXTEND,
         vec![a],
         json!({}),
-        vec![num(2.0), pt([4.0, 2.0, 0.0])],
+        vec![pt([4.0, 2.0, 0.0]), num(2.0)],
     );
     let ext = Srf::of(&r.replace[0].geo).unwrap();
     let xmax = (0..=10)
@@ -1276,4 +1277,24 @@ fn chamfer_srf_follows_rhino5() {
         assert!(ends.iter().any(|p| p[2].abs() < 1e-9 && (p[0] - 0.5).abs() < 1e-9), "{ends:?}");
         assert!(ends.iter().any(|p| p[0].abs() < 1e-9 && (p[2] - 2.0).abs() < 1e-9), "{ends:?}");
     }
+}
+
+/// Rhino 5 ExtendSrf: Select edge of surface to extend (Type), Extension factor <d> with a
+/// preview; Enter takes the default.
+#[test]
+fn extend_srf_follows_rhino5() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let r = feed(EXTEND, &Value::Null, Input::Start, vec![a.clone()], json!({"es_length": 1.5}));
+    assert_eq!(r.prompt, "Select edge of surface to extend");
+    assert!(r.options.iter().any(|o| o.name == "Type" && o.value.as_deref() == Some("Smooth")));
+    let r = feed(EXTEND, &r.state, opt("Type", None), vec![a.clone()], json!({"es_length": 1.5}));
+    assert!(r.options.iter().any(|o| o.name == "Type" && o.value.as_deref() == Some("Line")));
+    let r = feed(EXTEND, &r.state, pt([2.0, 4.1, 0.0]), vec![a.clone()], json!({"es_length": 1.5}));
+    assert!(r.prompt.starts_with("Extension factor <1.5>"), "{}", r.prompt);
+    assert!(!r.preview.is_empty());
+    let r = feed(EXTEND, &r.state, Input::Enter, vec![a], json!({"es_length": 1.5}));
+    assert!(r.done);
+    let s = Srf::of(&r.replace[0].geo).unwrap();
+    let ymax = (0..=4).flat_map(|i| [s.at_st(i as f64 / 4.0, 1.0)[1], s.at_st(1.0, i as f64 / 4.0)[1]]).fold(f64::MIN, f64::max);
+    assert!((ymax - 5.5).abs() < 1e-9, "{ymax}");
 }
