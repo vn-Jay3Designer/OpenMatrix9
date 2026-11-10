@@ -7,7 +7,7 @@
 //! a closed curve inside the surface is the whole boundary (the inside kept) or a hole (the
 //! outside kept). The result is a `Geo::Trimmed` (exact face in OM9's B-Rep kernel) with a
 //! display mesh for builds without it.
-#![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_range_loop, clippy::type_complexity)]
 use crate::exact::{Nc, clamp_to};
 use crate::mesh::Mesh;
 use crate::nurbs::Srf;
@@ -31,7 +31,7 @@ fn iso_edges(g: &Geo) -> Option<[Nc; 4]> {
         Nc { degree: degree[0], points: (0..nu).map(|i| h(i * nv)).collect(), knots: ku.clone() },
         Nc { degree: degree[1], points: (0..nv).map(|j| h((nu - 1) * nv + j)).collect(), knots: kv.clone() },
         Nc { degree: degree[0], points: (0..nu).map(|i| h(i * nv + nv - 1)).collect(), knots: ku },
-        Nc { degree: degree[1], points: (0..nv).map(|j| h(j)).collect(), knots: kv },
+        Nc { degree: degree[1], points: (0..nv).map(h).collect(), knots: kv },
     ])
 }
 
