@@ -35,6 +35,7 @@ pub mod network;
 pub mod offset;
 pub mod patch;
 pub mod sweep;
+pub mod trimsides;
 
 pub const EPS: f64 = 1e-9;
 

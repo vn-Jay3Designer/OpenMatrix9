@@ -750,7 +750,7 @@ pub fn chain(curves: &[Nc], tol: f64) -> Option<Vec<Nc>> {
 }
 
 /// The piece of an (unclamped) curve over `[a, b]`, clamped and normalised.
-fn clamp_to(c: &Nc, a: f64, b: f64) -> Option<Nc> {
+pub(crate) fn clamp_to(c: &Nc, a: f64, b: f64) -> Option<Nc> {
     let p = c.degree;
     let mut c = c.clone();
     for v in [a, b] {

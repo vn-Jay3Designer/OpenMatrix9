@@ -1227,6 +1227,16 @@ fn fillet_srf_follows_rhino5_picks() {
             assert!((d - 1.5).abs() < 1e-6 && p[0] <= 1.5 + 1e-9 && p[2] <= 1.5 + 1e-9, "{p:?}");
         }
     }
+    // Trim=Yes (Rhino's default): the floor keeps x ≥ 1.5, the wall z ≥ 1.5.
+    assert_eq!(r.replace.len(), 2, "{:?}", r.messages);
+    for rep in &r.replace {
+        let Geo::Trimmed { loops, .. } = &rep.geo else { panic!("trimmed input expected") };
+        let pts: Vec<Vec3> = loops[0].iter().flat_map(|c| om9_addon_geom::nurbs::samples(c, 8)).collect();
+        let (axis, lo, hi) = if rep.id == "floor" { (0, 1.5, 10.0) } else { (2, 1.5, 6.0) };
+        let min = pts.iter().map(|p| p[axis]).fold(f64::MAX, f64::min);
+        let max = pts.iter().map(|p| p[axis]).fold(f64::MIN, f64::max);
+        assert!((min - lo).abs() < 1e-6 && (max - hi).abs() < 1e-6, "{}: {min} {max}", rep.id);
+    }
 }
 
 /// Rhino 5 ChamferSrf: Distances (first, then second), then the two surfaces with the sides

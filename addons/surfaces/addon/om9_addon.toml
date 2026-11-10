@@ -221,7 +221,7 @@ mesh_data = true
 aliases = ["FilletSrf"]
 summary = "Bo cung bán kính không đổi giữa hai mặt như Rhino 5 FilletSrf (bi lăn); mặt bo trong dung sai."
 steps = ["Chọn mặt thứ nhất: bấm vào phía muốn giữ.", "Chọn mặt thứ hai: bấm vào phía muốn giữ."]
-options = ["Radius: bán kính bo."]
+options = ["Radius: bán kính bo.", "Trim: cắt hai mặt gốc theo mép bo, giữ phía đã bấm (mặc định Yes)."]
 
 [[commands]]
 id = "SurfaceVariableFilletBlendChamferVariableFilletSurfaces"
@@ -243,7 +243,7 @@ mesh_data = true
 aliases = ["ChamferSrf"]
 summary = "Vát phẳng giữa hai mặt cắt nhau như Rhino 5 ChamferSrf: hai khoảng vát tính từ giao tuyến."
 steps = ["Chọn mặt thứ nhất: bấm vào phía muốn giữ.", "Chọn mặt thứ hai: bấm vào phía muốn giữ."]
-options = ["Distances: khoảng vát trên mặt thứ nhất, rồi trên mặt thứ hai."]
+options = ["Distances: khoảng vát trên mặt thứ nhất, rồi trên mặt thứ hai.", "Trim: cắt hai mặt gốc theo mép vát, giữ phía đã bấm (mặc định Yes)."]
 
 [[commands]]
 id = "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"
@@ -665,6 +665,14 @@ choices = ["position", "tangency", "curvature"]
 choice_labels = ["Position", "Tangency", "Curvature"]
 default = "curvature"
 commands = ["SurfaceBlendSurface"]
+
+[[settings]]
+key = "fs_trim"
+type = "bool"
+option = "Trim"
+label = "Cắt mặt gốc (Fillet/Chamfer)"
+default = true
+commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
 
 [[settings]]
 key = "sw1_style"

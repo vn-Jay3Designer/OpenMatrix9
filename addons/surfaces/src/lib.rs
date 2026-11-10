@@ -2219,6 +2219,7 @@ struct FilletState {
     distances: Option<[f64; 2]>,
     /// Asking for: 1 the radius or first distance, 2 the second distance.
     want: u8,
+    trim: Option<bool>,
 }
 
 /// Rhino 5 FilletSrf (Radius) and ChamferSrf (Distances): Select first surface, Select second
@@ -2248,6 +2249,13 @@ fn fillet_srf(e: &Event) -> Reply {
             None => st.want = 1,
         },
         Input::Option { name, .. } if name.eq_ignore_ascii_case("Distances") && chamfer => st.want = 1,
+        Input::Option { name, value } if name.eq_ignore_ascii_case("Trim") => {
+            let now = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
+            st.trim = Some(match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("yes"),
+                None => !now,
+            });
+        }
         Input::Text { text } if st.want > 0 => match number(text) {
             Some(v) if chamfer => {
                 let mut d = dists;
@@ -2277,14 +2285,17 @@ fn fillet_srf(e: &Event) -> Reply {
             None => r,
         };
     }
+    let trim = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
     let options = || {
-        if chamfer {
+        let mut v = if chamfer {
             let mut t = OptionToken::action("Distances");
             t.value = Some(format!("{},{}", fmt(dists[0]), fmt(dists[1])));
             vec![t]
         } else {
             vec![OptionToken::number("Radius", Some(radius))]
-        }
+        };
+        v.push(OptionToken::toggle("Trim", trim));
+        v
     };
     // The picks: preselected surfaces count in order (their middles as the kept sides).
     let pick_of = |s: &Selected| e.pick.unwrap_or_else(|| center(s));
@@ -2313,12 +2324,34 @@ fn fillet_srf(e: &Event) -> Reply {
     let (g1, g2) = (first.exact.as_ref().unwrap(), second.exact.as_ref().unwrap());
     let made = if chamfer {
         om9_addon_geom::fillet::chamfer(g1, g2, dists[0], dists[1], keep1, keep2, tol)
-            .map(|f| (f.geo(), format!("distances {}, {} mm", fmt(dists[0]), fmt(dists[1]))))
+            .map(|f| (f, format!("distances {}, {} mm", fmt(dists[0]), fmt(dists[1]))))
     } else {
-        om9_addon_geom::fillet::fillet(g1, g2, radius, keep1, keep2, tol).map(|f| (f.geo(), format!("radius {} mm, within {} mm", fmt(radius), fmt(tol))))
+        om9_addon_geom::fillet::fillet(g1, g2, radius, keep1, keep2, tol).map(|f| (f, format!("radius {} mm, within {} mm", fmt(radius), fmt(tol))))
     };
     match made {
-        Ok((g, what)) => Reply::finish(vec![g]).say(format!("{label}: {what}")),
+        Ok((f, what)) => {
+            let mut r = Reply::finish(vec![f.geo()]).say(format!("{label}: {what}"));
+            if trim {
+                // Trim=Yes: each input trimmed along its edge of the new surface, the side
+                // picked kept.
+                let edge = |k: usize| Nc {
+                    degree: f.degree[0],
+                    points: f.rows.iter().map(|row| if k == 0 { row[0] } else { row[row.len() - 1] }).collect(),
+                    knots: f.knots[0].clone(),
+                };
+                let mut done = Vec::new();
+                for (sel, g, curve, keep) in [(*first, g1, edge(0), keep1), (second, g2, edge(1), keep2)] {
+                    match om9_addon_geom::trimsides::trim_keeping(g, &curve, keep) {
+                        Ok(t) => done.push(Replacement { id: sel.id.clone(), geo: t }),
+                        Err(why) => r = r.say(format!("{label}: not trimmed: {why}")),
+                    }
+                }
+                if done.len() == 2 {
+                    r.replace = done;
+                }
+            }
+            r
+        }
         Err(why) => {
             // Keep the first pick; ask for the second again.
             let mut again = st.clone();

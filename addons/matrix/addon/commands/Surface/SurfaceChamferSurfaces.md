@@ -16,11 +16,13 @@ Vát phẳng giữa hai mặt cắt nhau như Rhino 5 ChamferSrf: hai khoảng v
 ## Tuỳ chọn (lệnh phụ)
 
 - Distances: khoảng vát trên mặt thứ nhất, rồi trên mặt thứ hai.
+- Trim: cắt hai mặt gốc theo mép vát, giữ phía đã bấm (mặc định Yes).
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
 | `FirstDistance=` | Khoảng vát trên mặt thứ nhất (mm) | 1 | 0.0001 … 1000 |
 | `SecondDistance=` | Khoảng vát trên mặt thứ hai (mm) | 1 | 0.0001 … 1000 |
+| `Trim=` | Cắt mặt gốc (Fillet/Chamfer) | Yes |  |
 | `Radius=` | Bán kính / khoảng | 1 | 0.01 … 50 |
 | `FlipFirst=` | Đổi phía mặt 1 | No |  |
 | `FlipSecond=` | Đổi phía mặt 2 | No |  |
