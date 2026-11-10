@@ -76,10 +76,10 @@ id = "SurfaceBlendSurface"
 label = "Blend Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 aliases = ["BlendSrf"]
-summary = "Mặt chuyển tiếp tiếp tuyến giữa hai mép mặt gần nhau."
-steps = ["Chọn hai mặt.", "Chỉnh độ phình.", "Enter."]
+summary = "Mặt chuyển tiếp giữa hai cạnh mặt như Rhino 5 BlendSrf: Position / Tangency / Curvature mỗi đầu, độ phồng mỗi đầu."
+steps = ["Bấm gần cạnh thứ nhất.", "Bấm gần cạnh thứ hai.", "Chỉnh liên tục và độ phồng khi xem trước, Enter."]
+options = ["Continuity1 / Continuity2: Position, Tangency, Curvature.", "Bulge1 / Bulge2: độ phồng mỗi đầu."]
 
 [[commands]]
 id = "SurfaceVariableFilletBlendChamferVariableBlendSurfaces"
@@ -646,6 +646,26 @@ default = 1.0
 min = 0.0
 max = 1.0
 commands = ["SurfaceSurfaceEditToolsMerge"]
+
+[[settings]]
+key = "bl_continuity1"
+type = "enum"
+option = "Continuity1"
+label = "Liên tục đầu 1 (Blend)"
+choices = ["position", "tangency", "curvature"]
+choice_labels = ["Position", "Tangency", "Curvature"]
+default = "curvature"
+commands = ["SurfaceBlendSurface"]
+
+[[settings]]
+key = "bl_continuity2"
+type = "enum"
+option = "Continuity2"
+label = "Liên tục đầu 2 (Blend)"
+choices = ["position", "tangency", "curvature"]
+choice_labels = ["Position", "Tangency", "Curvature"]
+default = "curvature"
+commands = ["SurfaceBlendSurface"]
 
 [[settings]]
 key = "sw1_style"

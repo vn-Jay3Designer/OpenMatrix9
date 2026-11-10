@@ -117,7 +117,8 @@ impl Interactive for Surfaces {
             PLANAR => planar(e),
             PLANE => plane(e),
             REBUILD => rebuild(e),
-            BLEND | VAR_BLEND => blend(e),
+            BLEND => blend_srf(e),
+            VAR_BLEND => blend(e),
             LOFT => loft(e),
             NETWORK => network(e),
             SHRINK => shrink(e),
@@ -1961,6 +1962,149 @@ fn edge_rows(s: &Srf, dir: usize, at: f64, n: usize) -> (Vec<Vec3>, Vec<Vec3>) {
             (p, unit(sub(p, q)))
         })
         .unzip()
+}
+
+/// BlendSrf command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct BlendState {
+    /// Surface id, edge direction, at the far end.
+    edges: Vec<(String, usize, bool)>,
+    flow: Value,
+}
+
+/// Rhino 5 BlendSrf: Select segment for first edge, Select segment for second edge (a click
+/// near each), then the continuity at each end (Position / Tangency / Curvature) and the
+/// bulges with a preview; Enter creates.
+fn blend_srf(e: &Event) -> Reply {
+    use om9_addon_geom::blendsrf::{self, Continuity, Edge};
+    let label = "Blend Surface";
+    let mut st: BlendState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = BlendState::default();
+    }
+    let save = |st: &BlendState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    let mut entering = false;
+    // Two surfaces picked before the command: their facing edges (nearest edge middles).
+    if (matches!(e.input, Input::Start) || e.state.is_null()) && surfaces.len() == 2 {
+        let fa = Srf::of(surfaces[0].exact.as_ref().unwrap());
+        let fb = Srf::of(surfaces[1].exact.as_ref().unwrap());
+        if let (Some(fa), Some(fb)) = (fa, fb) {
+            let mid = |f: &Srf, dir: usize, at: f64| if dir == 0 { f.at_st(at, 0.5) } else { f.at_st(0.5, at) };
+            let mut best = (f64::MAX, (0, 0.0), (0, 0.0));
+            for ea in [(0, 0.0), (0, 1.0), (1, 0.0), (1, 1.0)] {
+                for eb in [(0, 0.0), (0, 1.0), (1, 0.0), (1, 1.0)] {
+                    let d = dist(mid(&fa, ea.0, ea.1), mid(&fb, eb.0, eb.1));
+                    if d < best.0 {
+                        best = (d, ea, eb);
+                    }
+                }
+            }
+            st.edges = vec![
+                (surfaces[0].id.clone(), best.1.0, best.1.1 > 0.5),
+                (surfaces[1].id.clone(), best.2.0, best.2.1 > 0.5),
+            ];
+        }
+    }
+    if st.edges.len() < 2 {
+        // The edge nearest the click: on the surface just picked, or on any selected one.
+        let at = match &e.input {
+            Input::Point { point } => Some((*point, None)),
+            Input::Selection => e.pick.map(|p| (p, surfaces.last().map(|s| s.id.clone()))),
+            _ => None,
+        };
+        if let Some((p, only)) = at {
+            let mut best: Option<(f64, String, usize, bool)> = None;
+            for s in &surfaces {
+                if only.as_ref().is_some_and(|id| id != &s.id) {
+                    continue;
+                }
+                let Some(f) = Srf::of(s.exact.as_ref().unwrap()) else { continue };
+                let (dir, at) = nearest_edge(&f, p);
+                let q = if dir == 0 { f.closest_st(p) } else { f.closest_st(p) };
+                let d = dist(p, f.at_st(if dir == 0 { at } else { q.0 }, if dir == 0 { q.1 } else { at }));
+                if best.as_ref().is_none_or(|b| d < b.0) {
+                    best = Some((d, s.id.clone(), dir, at > 0.5));
+                }
+            }
+            if let Some((_, id, dir, end)) = best {
+                st.edges.push((id, dir, end));
+                entering = st.edges.len() == 2;
+            }
+        }
+        if st.edges.len() < 2 {
+            let prompt = if st.edges.is_empty() { "Select segment for first edge" } else { "Select segment for second edge" };
+            let want = if surfaces.is_empty() { Want::Objects } else { Want::Point };
+            return Reply::ask(prompt, save(&st)).want(want);
+        }
+    }
+    let find = |id: &str| surfaces.iter().find(|s| s.id == id).copied();
+    let (Some(a), Some(b)) = (find(&st.edges[0].0), find(&st.edges[1].0)) else {
+        return Reply::ask("Select segment for first edge", save(&BlendState::default())).want(Want::Objects);
+    };
+    let cont = |k: &str| match e.text(k, "curvature") {
+        "position" => "Position",
+        "tangency" => "Tangency",
+        _ => "Curvature",
+    };
+    let flow = Flow::new(label)
+        .no_selection()
+        .plain()
+        .confirm("Press Enter to create the blend, or change an option")
+        .choice("Continuity1", &["Position", "Tangency", "Curvature"], cont("bl_continuity1"))
+        .choice("Continuity2", &["Position", "Tangency", "Curvature"], cont("bl_continuity2"))
+        .num("Bulge1", e.number("bl_bulge", 1.0))
+        .num("Bulge2", e.number("bl_bulge", 1.0));
+    let to_c = |v: &str| match v {
+        "Position" => Continuity::Position,
+        "Tangency" => Continuity::Tangency,
+        _ => Continuity::Curvature,
+    };
+    let (ea, eb) = (&st.edges[0], &st.edges[1]);
+    let tol = e.number("sw_tolerance", 0.001).max(1e-6);
+    let make = |c: &Collected| -> Result<Geo, String> {
+        Ok(blendsrf::blend(
+            a.exact.as_ref().unwrap(),
+            Edge { dir: ea.1, at_end: ea.2 },
+            to_c(c.opt(&flow, "Continuity1")),
+            c.num(&flow, "Bulge1").max(0.01),
+            b.exact.as_ref().unwrap(),
+            Edge { dir: eb.1, at_end: eb.2 },
+            to_c(c.opt(&flow, "Continuity2")),
+            c.num(&flow, "Bulge2").max(0.01),
+            tol,
+        )?
+        .geo())
+    };
+    let mut sub = e.clone();
+    sub.state = st.flow.clone();
+    if entering || matches!(sub.input, Input::Selection | Input::Point { .. }) {
+        sub.input = Input::Hover { point: [0.0; 3] };
+    }
+    let failed = std::cell::RefCell::new(None);
+    let mut r = flow.step(
+        &sub,
+        &|c, _| match make(c) {
+            Ok(g) => Show { geo: vec![g], ..Default::default() },
+            Err(why) => {
+                *failed.borrow_mut() = Some(why);
+                Show::default()
+            }
+        },
+        &|c| {
+            let g = make(c)?;
+            Ok(Reply::finish(vec![g]).say(format!("{label}: {} / {}, within {} mm", c.opt(&flow, "Continuity1"), c.opt(&flow, "Continuity2"), fmt(tol))))
+        },
+    );
+    if !r.done {
+        st.flow = r.state.clone();
+        r.state = save(&st);
+        let why = failed.borrow_mut().take();
+        if let (None, Some(why)) = (&r.error, why) {
+            r = r.refuse(format!("{label}: {why}"));
+        }
+    }
+    r
 }
 
 fn blend(e: &Event) -> Reply {

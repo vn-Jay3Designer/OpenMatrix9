@@ -341,7 +341,7 @@ fn blend_merge_and_match_edges() {
         vec![Input::Enter],
     );
     let s = Srf::of(&r.create[0]).unwrap();
-    let ends = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5)];
+    let ends = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5), s.at_st(0.5, 0.0), s.at_st(0.5, 1.0)];
     assert!(
         ends.iter().any(|p| (p[0] - 4.0).abs() < 1e-6)
             && ends.iter().any(|p| (p[0] - 6.0).abs() < 1e-6),
@@ -1297,4 +1297,36 @@ fn extend_srf_follows_rhino5() {
     let s = Srf::of(&r.replace[0].geo).unwrap();
     let ymax = (0..=4).flat_map(|i| [s.at_st(i as f64 / 4.0, 1.0)[1], s.at_st(1.0, i as f64 / 4.0)[1]]).fold(f64::MIN, f64::max);
     assert!((ymax - 5.5).abs() < 1e-9, "{ymax}");
+}
+
+/// Rhino 5 BlendSrf: a click near each edge, then Continuity1/2 and Bulge1/2 with a preview;
+/// Enter creates a blend meeting both edges tangentially.
+#[test]
+fn blend_srf_follows_rhino5() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let b = flat("b", 6.0, 10.0, 0.0, 4.0, 1.0);
+    let sel = || vec![a.clone(), b.clone()];
+    let mut e = event(BLEND, Input::Start, vec![], json!({}));
+    e.state = Value::Null;
+    let r = Surfaces::step(&e).unwrap();
+    assert_eq!(r.prompt, "Select segment for first edge");
+    // Both surfaces selected: clicks near the edges x = 4 and x = 6.
+    let mut e = event(BLEND, pt([4.05, 2.0, 0.0]), sel(), json!({}));
+    e.state = r.state.clone();
+    let r = Surfaces::step(&e).unwrap();
+    assert_eq!(r.prompt, "Select segment for second edge");
+    let r = feed(BLEND, &r.state, pt([5.95, 2.0, 1.0]), sel(), json!({}));
+    assert!(!r.done && !r.preview.is_empty(), "{:?}", r.error);
+    for name in ["Continuity1", "Continuity2", "Bulge1", "Bulge2"] {
+        assert!(r.options.iter().any(|o| o.name == name), "{name}");
+    }
+    let r = feed(BLEND, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=8 {
+        let t = i as f64 / 8.0;
+        let ends = [s.at_st(t, 0.0), s.at_st(t, 1.0), s.at_st(0.0, t), s.at_st(1.0, t)];
+        assert!(ends.iter().any(|p| (p[0] - 4.0).abs() < 1e-6 && p[2].abs() < 1e-6), "{ends:?}");
+        assert!(ends.iter().any(|p| (p[0] - 6.0).abs() < 1e-6 && (p[2] - 1.0).abs() < 1e-6), "{ends:?}");
+    }
 }

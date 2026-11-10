@@ -26,6 +26,7 @@ pub mod sdf;
 pub mod section;
 pub mod shapes;
 pub mod subd;
+pub mod blendsrf;
 pub mod extend;
 pub mod fillet;
 pub mod merge;
