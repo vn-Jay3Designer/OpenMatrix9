@@ -2921,18 +2921,25 @@ fn rebuild(e: &Event) -> Reply {
     let nu = e.number("sr_u_points", 10.0).round().clamp(2.0, 200.0) as usize;
     let nv = e.number("sr_v_points", 10.0).round().clamp(2.0, 200.0) as usize;
     let deg = e.number("sr_degree", 3.0).round().clamp(1.0, 7.0) as usize;
+    let deg_v = e.number("sr_degree_v", deg as f64).round().clamp(1.0, 7.0) as usize;
     replaced(e, "Rebuild Surface", "select NURBS surfaces, Enter", || {
+        // Rhino's dialog reports the maximum deviation from the original.
+        let mut worst = 0.0f64;
         let items: Vec<(String, Geo)> = nurbs_surfaces(e)
             .iter()
             .filter_map(|(s, f)| {
-                surface_through(&grid(f, nu, nv), [deg, deg]).map(|g| (s.id.clone(), g))
+                let g = surface_through(&grid(f, nu, nv), [deg.min(nu - 1), deg_v.min(nv - 1)])?;
+                if let Some(r) = Srf::of(&g) {
+                    worst = worst.max(deviation(f, &r));
+                }
+                Some((s.id.clone(), g))
             })
             .collect();
         let k = items.len();
         Ok((
             items,
             Vec::new(),
-            format!("{k} surfaces, {nu} × {nv} points, degree {deg}"),
+            format!("{k} surfaces, {nu} × {nv} points, degree {deg} × {deg_v}, maximum deviation {} mm", fmt(worst)),
         ))
     })
 }

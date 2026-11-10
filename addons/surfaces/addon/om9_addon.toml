@@ -676,6 +676,16 @@ default = true
 commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
 
 [[settings]]
+key = "sr_degree_v"
+type = "int"
+option = "DegreeV"
+label = "Bậc V (Rebuild)"
+default = 3
+min = 1
+max = 7
+commands = ["OthersSurfaceRebuild"]
+
+[[settings]]
 key = "sw1_style"
 type = "enum"
 option = "Style"
@@ -1059,8 +1069,8 @@ commands = ["OthersSurfaceRebuild"]
 [[settings]]
 key = "sr_degree"
 type = "int"
-option = "Degree"
-label = "Bậc"
+option = "DegreeU"
+label = "Bậc U"
 default = 3
 min = 1
 max = 7

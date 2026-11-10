@@ -648,6 +648,8 @@ SecondDistance = "Khoảng vát thứ hai"
 ExtensionFactor = "Độ dài kéo dài"
 Smooth = "Mượt"
 RoundnessFactor = "Độ tròn"
+DegreeU = "Bậc U"
+DegreeV = "Bậc V"
 
 [values]
 Automatic = "Tự động"
@@ -1221,3 +1223,4 @@ Both = "Cả hai"
 "pick the new seam location" = "hãy bấm vị trí đường nối mới"
 "{} surfaces (exact)" = "{} mặt (chính xác)"
 "moved (exact)" = "đã dời (chính xác)"
+"{} surfaces, {} × {} points, degree {} × {}, maximum deviation {} mm" = "{} mặt, {} × {} điểm, bậc {} × {}, sai lệch lớn nhất {} mm"
