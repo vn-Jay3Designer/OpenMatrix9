@@ -995,11 +995,10 @@ id = "SurfaceSurfaceEditToolsMatch"
 label = "Match Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 aliases = ["MatchSrf"]
-summary = "Khớp mép mặt thứ nhất vào mép mặt thứ hai (vị trí / tiếp tuyến)."
-steps = ["Chọn mặt cần sửa rồi mặt đích.", "Enter."]
-options = ["Continuity: Position/Tangency."]
+summary = "Sửa mặt để cạnh của nó khớp cạnh mặt đích như Rhino 5 MatchSrf (Position / Tangency / Curvature), giữ đầu kia."
+steps = ["Bấm gần cạnh mặt cần sửa.", "Bấm gần cạnh mặt đích.", "Chọn Continuity khi xem trước, Enter."]
+options = ["Continuity: Position / Tangency / Curvature."]
 
 [[commands]]
 id = "SurfaceDrape"
@@ -1667,8 +1666,8 @@ key = "sm_continuity"
 type = "enum"
 option = "Continuity"
 label = "Liên tục"
-choices = ["position", "tangency"]
-choice_labels = ["Vị trí", "Tiếp tuyến"]
+choices = ["position", "tangency", "curvature"]
+choice_labels = ["Vị trí", "Tiếp tuyến", "Độ cong"]
 default = "tangency"
 commands = ["SurfaceSurfaceEditToolsMatch"]
 

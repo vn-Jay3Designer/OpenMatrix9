@@ -1330,3 +1330,25 @@ fn blend_srf_follows_rhino5() {
         assert!(ends.iter().any(|p| (p[0] - 6.0).abs() < 1e-6 && (p[2] - 1.0).abs() < 1e-6), "{ends:?}");
     }
 }
+
+/// Rhino 5 MatchSrf: a click near the edge to change, a click near the target edge, then
+/// Continuity with a preview; Enter changes the first surface so its edge lies on the target.
+#[test]
+fn match_srf_follows_rhino5() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let b = flat("b", 4.5, 8.0, 0.0, 4.0, 1.0);
+    let sel = || vec![a.clone(), b.clone()];
+    let mut e = event(MATCH, pt([4.6, 2.0, 1.0]), sel(), json!({}));
+    e.state = json!({"edges": [], "flow": null});
+    let r = Surfaces::step(&e).unwrap();
+    assert_eq!(r.prompt, "Select target surface edge");
+    let r = feed(MATCH, &r.state, pt([3.9, 2.0, 0.0]), sel(), json!({}));
+    assert!(!r.done && !r.preview.is_empty(), "{:?}", r.error);
+    assert!(r.options.iter().any(|o| o.name == "Continuity"));
+    let r = feed(MATCH, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done);
+    assert_eq!(r.replace[0].id, "b");
+    let s = Srf::of(&r.replace[0].geo).unwrap();
+    let pts = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5), s.at_st(0.5, 0.0), s.at_st(0.5, 1.0)];
+    assert!(pts.iter().any(|p| (p[0] - 4.0).abs() < 1e-6 && p[2].abs() < 1e-6), "the edge moved onto x = 4, z = 0: {pts:?}");
+}

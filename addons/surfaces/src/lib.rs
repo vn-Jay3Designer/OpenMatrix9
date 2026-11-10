@@ -133,7 +133,7 @@ impl Interactive for Surfaces {
             OFFSET => offset_srf(e),
             VAR_OFFSET => offset(e),
             MERGE => merge(e),
-            MATCH => match_edge(e),
+            MATCH => match_srf(e),
             DRAPE => drape(e),
             HEIGHTFIELD => heightfield(e),
             SPLIT_ISO => split(e),
@@ -1964,25 +1964,10 @@ fn edge_rows(s: &Srf, dir: usize, at: f64, n: usize) -> (Vec<Vec3>, Vec<Vec3>) {
         .unzip()
 }
 
-/// BlendSrf command state.
-#[derive(Serialize, Deserialize, Default, Clone)]
-struct BlendState {
-    /// Surface id, edge direction, at the far end.
-    edges: Vec<(String, usize, bool)>,
-    flow: Value,
-}
-
-/// Rhino 5 BlendSrf: Select segment for first edge, Select segment for second edge (a click
-/// near each), then the continuity at each end (Position / Tangency / Curvature) and the
-/// bulges with a preview; Enter creates.
-fn blend_srf(e: &Event) -> Reply {
-    use om9_addon_geom::blendsrf::{self, Continuity, Edge};
-    let label = "Blend Surface";
-    let mut st: BlendState = serde_json::from_value(e.state.clone()).unwrap_or_default();
-    if matches!(e.input, Input::Start) {
-        st = BlendState::default();
-    }
-    let save = |st: &BlendState| serde_json::to_value(st).unwrap_or(Value::Null);
+/// Two surface edges picked by clicks near them (Rhino's edge picks): surfaces picked before
+/// the command give their facing edges. `Err` is the prompt to show; `Ok(true)` when the
+/// second edge was picked by this very input.
+fn pick_two_edges(e: &Event, edges: &mut Vec<(String, usize, bool)>, prompts: [&str; 2]) -> Result<bool, (String, Want)> {
     let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
     let mut entering = false;
     // Two surfaces picked before the command: their facing edges (nearest edge middles).
@@ -2000,13 +1985,13 @@ fn blend_srf(e: &Event) -> Reply {
                     }
                 }
             }
-            st.edges = vec![
+            *edges = vec![
                 (surfaces[0].id.clone(), best.1.0, best.1.1 > 0.5),
                 (surfaces[1].id.clone(), best.2.0, best.2.1 > 0.5),
             ];
         }
     }
-    if st.edges.len() < 2 {
+    if edges.len() < 2 {
         // The edge nearest the click: on the surface just picked, or on any selected one.
         let at = match &e.input {
             Input::Point { point } => Some((*point, None)),
@@ -2028,16 +2013,43 @@ fn blend_srf(e: &Event) -> Reply {
                 }
             }
             if let Some((_, id, dir, end)) = best {
-                st.edges.push((id, dir, end));
-                entering = st.edges.len() == 2;
+                edges.push((id, dir, end));
+                entering = edges.len() == 2;
             }
         }
-        if st.edges.len() < 2 {
-            let prompt = if st.edges.is_empty() { "Select segment for first edge" } else { "Select segment for second edge" };
+        if edges.len() < 2 {
+            let prompt = if edges.is_empty() { prompts[0] } else { prompts[1] };
             let want = if surfaces.is_empty() { Want::Objects } else { Want::Point };
-            return Reply::ask(prompt, save(&st)).want(want);
+            return Err((prompt.to_owned(), want));
         }
     }
+    Ok(entering)
+}
+
+/// BlendSrf command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct BlendState {
+    /// Surface id, edge direction, at the far end.
+    edges: Vec<(String, usize, bool)>,
+    flow: Value,
+}
+
+/// Rhino 5 BlendSrf: Select segment for first edge, Select segment for second edge (a click
+/// near each), then the continuity at each end (Position / Tangency / Curvature) and the
+/// bulges with a preview; Enter creates.
+fn blend_srf(e: &Event) -> Reply {
+    use om9_addon_geom::blendsrf::{self, Continuity, Edge};
+    let label = "Blend Surface";
+    let mut st: BlendState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = BlendState::default();
+    }
+    let save = |st: &BlendState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    let entering = match pick_two_edges(e, &mut st.edges, ["Select segment for first edge", "Select segment for second edge"]) {
+        Ok(entering) => entering,
+        Err((prompt, want)) => return Reply::ask(prompt, save(&st)).want(want),
+    };
     let find = |id: &str| surfaces.iter().find(|s| s.id == id).copied();
     let (Some(a), Some(b)) = (find(&st.edges[0].0), find(&st.edges[1].0)) else {
         return Reply::ask("Select segment for first edge", save(&BlendState::default())).want(Want::Objects);
@@ -2700,58 +2712,81 @@ fn merge(e: &Event) -> Reply {
     }
 }
 
-fn match_edge(e: &Event) -> Reply {
-    let tangent = e.text("sm_continuity", "tangency") == "tangency";
-    replaced(
-        e,
-        "Match Surface",
-        "select the surface to change, then the target surface, Enter",
-        || {
-            let ss = nurbs_surfaces(e);
-            if ss.len() != 2 {
-                return Err("select two NURBS surfaces".into());
+/// Rhino 5 MatchSrf: Select untrimmed surface edge to change, Select target surface edge
+/// (a click near each), then Continuity (Position / Tangency / Curvature) with a preview;
+/// Enter changes the first surface.
+fn match_srf(e: &Event) -> Reply {
+    use om9_addon_geom::matchsrf::{self, Continuity, Edge};
+    let label = "Match Surface";
+    let mut st: BlendState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = BlendState::default();
+    }
+    let save = |st: &BlendState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let entering = match pick_two_edges(e, &mut st.edges, ["Select untrimmed surface edge to change", "Select target surface edge"]) {
+        Ok(entering) => entering,
+        Err((prompt, want)) => return Reply::ask(prompt, save(&st)).want(want),
+    };
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    let find = |id: &str| surfaces.iter().find(|s| s.id == id).copied();
+    let (Some(a), Some(b)) = (find(&st.edges[0].0), find(&st.edges[1].0)) else {
+        return Reply::ask("Select untrimmed surface edge to change", save(&BlendState::default())).want(Want::Objects);
+    };
+    let flow = Flow::new(label)
+        .no_selection()
+        .plain()
+        .confirm("Press Enter to match, or change an option")
+        .choice(
+            "Continuity",
+            &["Position", "Tangency", "Curvature"],
+            match e.text("sm_continuity", "tangency") {
+                "position" => "Position",
+                "curvature" => "Curvature",
+                _ => "Tangency",
+            },
+        );
+    let (ea, eb) = (st.edges[0].clone(), st.edges[1].clone());
+    let tol = e.number("sw_tolerance", 0.001).max(1e-6);
+    let make = |c: &Collected| -> Result<Geo, String> {
+        let cont = match c.opt(&flow, "Continuity") {
+            "Position" => Continuity::Position,
+            "Curvature" => Continuity::Curvature,
+            _ => Continuity::Tangency,
+        };
+        matchsrf::match_srf(a.exact.as_ref().unwrap(), Edge { dir: ea.1, at_end: ea.2 }, b.exact.as_ref().unwrap(), Edge { dir: eb.1, at_end: eb.2 }, cont, tol)
+    };
+    let mut sub = e.clone();
+    sub.state = st.flow.clone();
+    if entering || matches!(sub.input, Input::Selection | Input::Point { .. }) {
+        sub.input = Input::Hover { point: [0.0; 3] };
+    }
+    let failed = std::cell::RefCell::new(None);
+    let mut r = flow.step(
+        &sub,
+        &|c, _| match make(c) {
+            Ok(g) => Show { geo: vec![g], ..Default::default() },
+            Err(why) => {
+                *failed.borrow_mut() = Some(why);
+                Show::default()
             }
-            let (a, b) = (&ss[0].1, &ss[1].1);
-            let n = 24;
-            let (dir, at) = nearest_edge(a, b.at_st(0.5, 0.5));
-            let g = grid(a, n, n);
-            let mut rows: Vec<Vec<Vec3>> = if dir == 0 {
-                g
-            } else {
-                (0..n).map(|j| g.iter().map(|r| r[j]).collect()).collect()
-            };
-            if at < 0.5 {
-                rows.reverse();
-            }
-            // The target edge (nearest to a's edge), oriented like it.
-            let (db, tb) = nearest_edge(b, rows[n - 1][n / 2]);
-            let (mut pb, mut nb) = edge_rows(b, db, tb, n);
-            if dist(rows[n - 1][0], pb[0]) > dist(rows[n - 1][0], pb[n - 1]) {
-                pb.reverse();
-                nb.reverse();
-            }
-            for j in 0..n {
-                rows[n - 1][j] = pb[j];
-                if tangent {
-                    let h = dist(rows[n - 2][j], rows[n - 3][j]);
-                    rows[n - 2][j] = sub(pb[j], scale(nb[j], h));
-                }
-            }
-            let g = surface(&rows)?;
-            Ok((
-                vec![(ss[0].0.id.clone(), g)],
-                Vec::new(),
-                if tangent {
-                    "edge matched with tangency".into()
-                } else {
-                    "edge matched".into()
-                },
-            ))
         },
-    )
+        &|c| {
+            let g = make(c)?;
+            let mut r = Reply::finish(Vec::new()).say(format!("{label}: {}", c.opt(&flow, "Continuity")));
+            r.replace.push(Replacement { id: a.id.clone(), geo: g });
+            Ok(r)
+        },
+    );
+    if !r.done {
+        st.flow = r.state.clone();
+        r.state = save(&st);
+        let why = failed.borrow_mut().take();
+        if let (None, Some(why)) = (&r.error, why) {
+            r = r.refuse(format!("{label}: {why}"));
+        }
+    }
+    r
 }
-
-// ---- drape, heightfield ----------------------------------------------------------------------
 
 fn drape(e: &Event) -> Reply {
     let density = e.number("dr_density", 30.0).round().clamp(4.0, 200.0) as usize;

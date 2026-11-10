@@ -29,6 +29,7 @@ pub mod subd;
 pub mod blendsrf;
 pub mod extend;
 pub mod fillet;
+pub mod matchsrf;
 pub mod merge;
 pub mod network;
 pub mod offset;
