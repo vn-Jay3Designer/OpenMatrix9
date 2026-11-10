@@ -2021,7 +2021,7 @@ fn blend_srf(e: &Event) -> Reply {
                 }
                 let Some(f) = Srf::of(s.exact.as_ref().unwrap()) else { continue };
                 let (dir, at) = nearest_edge(&f, p);
-                let q = if dir == 0 { f.closest_st(p) } else { f.closest_st(p) };
+                let q = f.closest_st(p);
                 let d = dist(p, f.at_st(if dir == 0 { at } else { q.0 }, if dir == 0 { q.1 } else { at }));
                 if best.as_ref().is_none_or(|b| d < b.0) {
                     best = Some((d, s.id.clone(), dir, at > 0.5));
