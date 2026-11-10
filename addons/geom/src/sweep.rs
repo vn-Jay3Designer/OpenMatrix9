@@ -13,7 +13,7 @@
 //!   everywhere between them; the surface interpolates every station exactly.
 //! - A straight rail gives an exact extrusion (degree 1 along the rail); a circular rail with
 //!   one shape gives an exact rational surface of revolution.
-#![allow(clippy::needless_range_loop, clippy::collapsible_if)]
+#![allow(clippy::needless_range_loop, clippy::collapsible_if, clippy::too_many_arguments)]
 use crate::exact::{self, H, Nc, euclid};
 use om9_addon_abi::session::{Vec3, add, cross, dist, dot, norm, scale, sub, unit};
 use std::f64::consts::TAU;
@@ -497,13 +497,27 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
     }
 
     // General case: stations refined until within tolerance.
+    let mut initial: Vec<f64> = at.clone();
+    initial.extend(rail.knots.iter().copied());
+    fit_stations(&placed, ua, ub, wrap, initial, p, &sec_knots, o.tol, o.max_stations)
+}
+
+/// Fit a surface through sections `placed(u)` (homogeneous poles over `sec_knots`, degree
+/// `p`) at stations along `[ua, ub]`, adding stations where the surface strays more than
+/// `tol` from `placed`; `wrap`: periodic across (the section at `ub` is the one at `ua`).
+fn fit_stations(
+    placed: &dyn Fn(f64) -> Vec<H>,
+    ua: f64,
+    ub: f64,
+    wrap: bool,
+    initial: Vec<f64>,
+    p: usize,
+    sec_knots: &[f64],
+    tol: f64,
+    max_stations: usize,
+) -> Result<Swept, String> {
     let mut stations: Vec<f64> = vec![ua, ub];
-    stations.extend(at.iter().copied().filter(|u| *u > ua && *u < ub));
-    for k in &rail.knots {
-        if *k > ua && *k < ub {
-            stations.push(*k);
-        }
-    }
+    stations.extend(initial.into_iter().filter(|u| *u > ua && *u < ub));
     let base = if wrap { 12 } else { 8 };
     stations.extend((1..base).map(|i| ua + (ub - ua) * i as f64 / base as f64));
     let tidy = |v: &mut Vec<f64>| {
@@ -511,13 +525,14 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
         v.dedup_by(|a, b| (*a - *b).abs() < 1e-7 * (ub - ua));
     };
     tidy(&mut stations);
-    let width_samples = (4 * locals[0].points.len()).clamp(16, 96);
+    let width = placed(ua).len();
+    let width_samples = (4 * width).clamp(16, 96);
     let mut best: Option<Swept> = None;
     loop {
         let used: Vec<f64> = if wrap { stations[..stations.len() - 1].to_vec() } else { stations.clone() };
         let secs: Vec<Nc> = used
             .iter()
-            .map(|u| Nc { degree: p, points: placed(*u), knots: sec_knots.clone() })
+            .map(|u| Nc { degree: p, points: placed(*u), knots: sec_knots.to_vec() })
             .collect();
         let ts: Vec<f64> = stations.iter().map(|u| (u - ua) / (ub - ua)).collect();
         let Some((rows, ku)) = exact::interpolate_across(&secs, &ts, 3, wrap) else {
@@ -530,8 +545,8 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
         for w in stations.windows(2) {
             let u = (w[0] + w[1]) / 2.0;
             let t = (u - ua) / (ub - ua);
-            let got = Nc { degree: p, points: iso(&rows, q, &ku, t), knots: sec_knots.clone() };
-            let want = Nc { degree: p, points: placed(u), knots: sec_knots.clone() };
+            let got = Nc { degree: p, points: iso(&rows, q, &ku, t), knots: sec_knots.to_vec() };
+            let want = Nc { degree: p, points: placed(u), knots: sec_knots.to_vec() };
             let d = (0..=width_samples)
                 .map(|i| {
                     let v = i as f64 / width_samples as f64;
@@ -539,7 +554,7 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
                 })
                 .fold(0.0, f64::max);
             worst = worst.max(d);
-            if d > o.tol {
+            if d > tol {
                 split.push(u);
             }
         }
@@ -547,17 +562,297 @@ pub fn sweep1(rail: &Nc, sections: &[Nc], o: &Options) -> Result<Swept, String> 
             stations: stations.len(),
             rows,
             degree: [q, p],
-            knots: [ku, sec_knots.clone()],
+            knots: [ku, sec_knots.to_vec()],
             deviation: worst,
             exact: false,
         };
-        if split.is_empty() || stations.len() + split.len() > o.max_stations {
+        if split.is_empty() || stations.len() + split.len() > max_stations {
             return Ok(done);
         }
         best = Some(done);
         stations.extend(split);
         tidy(&mut stations);
     }
+}
+
+
+/// Rhino 5 Sweep2 options.
+#[derive(Debug, Clone)]
+pub struct Options2 {
+    /// Closed sweep (both rails closed, two or more sections).
+    pub closed: bool,
+    /// Rhino's *Maintain height*: sections scale across (rail to rail) but not in height.
+    pub maintain_height: bool,
+    pub tol: f64,
+    pub max_stations: usize,
+}
+
+impl Default for Options2 {
+    fn default() -> Self {
+        Options2 { closed: false, maintain_height: false, tol: 0.001, max_stations: 400 }
+    }
+}
+
+/// Arc length table of a curve: `(u, s)` with `s` normalised to `[0, 1]`.
+struct Arc {
+    u: Vec<f64>,
+    s: Vec<f64>,
+}
+
+impl Arc {
+    fn of(c: &Nc) -> Arc {
+        let n = 1024;
+        let mut u = Vec::with_capacity(n + 1);
+        let mut s = Vec::with_capacity(n + 1);
+        let mut prev = c.eval(0.0);
+        let mut run = 0.0;
+        for i in 0..=n {
+            let t = i as f64 / n as f64;
+            let p = c.eval(t);
+            run += dist(p, prev);
+            prev = p;
+            u.push(t);
+            s.push(run);
+        }
+        let total = run.max(1e-300);
+        s.iter_mut().for_each(|v| *v /= total);
+        Arc { u, s }
+    }
+    fn s_of(&self, u: f64) -> f64 {
+        lookup(&self.u, &self.s, u)
+    }
+    fn u_of(&self, s: f64) -> f64 {
+        lookup(&self.s, &self.u, s)
+    }
+}
+
+/// Piecewise-linear lookup of `x` in increasing `xs`.
+fn lookup(xs: &[f64], ys: &[f64], x: f64) -> f64 {
+    if x <= xs[0] {
+        return ys[0];
+    }
+    let n = xs.len();
+    if x >= xs[n - 1] {
+        return ys[n - 1];
+    }
+    let i = xs.partition_point(|v| *v <= x).max(1) - 1;
+    let span = (xs[i + 1] - xs[i]).max(1e-300);
+    ys[i] + (ys[i + 1] - ys[i]) * (x - xs[i]) / span
+}
+
+/// Where a section comes nearest a rail: (rail parameter, distance).
+fn touch(rail: &Nc, s: &Nc) -> (f64, f64) {
+    let mut best = (0.0, f64::MAX);
+    for i in 0..=48 {
+        let p = s.eval(i as f64 / 48.0);
+        let u = rail.closest(p);
+        let d = dist(rail.eval(u), p);
+        if d < best.1 {
+            best = (u, d);
+        }
+    }
+    best
+}
+
+/// Rhino 5 Sweep2: sections (picked order) between two rails. The sections stretch from rail
+/// to rail (scaled by the distance between the rails; height too unless `maintain_height`),
+/// so the surface's two edges run on the rails.
+pub fn sweep2(rail_a: &Nc, rail_b: &Nc, sections: &[Nc], o: &Options2) -> Result<Swept, String> {
+    if sections.is_empty() {
+        return Err("select the cross section curves".into());
+    }
+    let closed_a = rail_a.closed(1e-6);
+    if closed_a != rail_b.closed(1e-6) {
+        return Err("the rails must be both closed or both open".into());
+    }
+    let is_point = |c: &Nc| c.points.iter().all(|p| dist(euclid(*p), euclid(c.points[0])) < 1e-12);
+    let (mut a, mut b) = (rail_a.clone(), rail_b.clone());
+    let mut secs: Vec<Nc> = sections.to_vec();
+    // Open sections run from rail A to rail B.
+    for c in &mut secs {
+        if !is_point(c) && !c.closed(1e-6) {
+            let (s, e) = (c.start(), c.end());
+            let da = |p: Vec3| dist(a.eval(a.closest(p)), p);
+            if da(e) < da(s) {
+                *c = c.reversed();
+            }
+        }
+    }
+    let wrap = closed_a && (secs.len() == 1 || o.closed);
+    if o.closed && !closed_a {
+        return Err("a closed sweep needs closed rails".into());
+    }
+    if closed_a {
+        // Seams at the first section; rail B the same way round as rail A.
+        a = a.with_seam(touch(&a, &secs[0]).0);
+        b = b.with_seam(touch(&b, &secs[0]).0);
+        let probe = a.eval(0.05);
+        if dist(b.eval(b.closest(probe)), b.eval(0.95)) < dist(b.eval(b.closest(probe)), b.eval(0.05)) {
+            b = b.reversed().with_seam(touch(&b.reversed(), &secs[0]).0);
+        }
+        if secs.len() >= 2 {
+            let ps: Vec<f64> = secs.iter().map(|c| touch(&a, c).0).collect();
+            if ps[1] > 0.5 && ps.windows(2).skip(1).all(|w| w[1] <= w[0] + 1e-9) {
+                a = a.reversed().with_seam(touch(&a.reversed(), &secs[0]).0);
+                b = b.reversed().with_seam(touch(&b.reversed(), &secs[0]).0);
+            }
+        }
+    } else if dist(a.start(), b.start()) + dist(a.end(), b.end()) > dist(a.start(), b.end()) + dist(a.end(), b.start()) {
+        b = b.reversed();
+    }
+    let (arc_a, arc_b) = (Arc::of(&a), Arc::of(&b));
+    // Each section's place on both rails, as arc length fractions.
+    let mut placed_on: Vec<(f64, f64, usize)> = secs
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (arc_a.s_of(touch(&a, c).0), arc_b.s_of(touch(&b, c).0), i))
+        .collect();
+    if closed_a {
+        placed_on[0].0 = 0.0;
+        placed_on[0].1 = 0.0;
+        for p in placed_on.iter_mut().skip(1) {
+            if p.0 < 1e-9 {
+                p.0 = 1.0;
+            }
+            if p.1 < 1e-9 {
+                p.1 = 1.0;
+            }
+        }
+    }
+    placed_on.sort_by(|x, y| x.0.total_cmp(&y.0));
+    for (k, p) in placed_on.iter().enumerate() {
+        if is_point(&secs[p.2]) && k != 0 && k + 1 != placed_on.len() {
+            return Err("a point can only start or end the sweep".into());
+        }
+    }
+    // Matched places along the rails (both increasing).
+    let mut ta: Vec<f64> = Vec::new();
+    let mut tb: Vec<f64> = Vec::new();
+    if !closed_a {
+        ta.push(0.0);
+        tb.push(0.0);
+    }
+    for p in &placed_on {
+        if ta.last().is_some_and(|l| p.0 <= *l + 1e-9) {
+            continue;
+        }
+        ta.push(p.0);
+        tb.push(p.1);
+    }
+    if !closed_a || wrap {
+        if ta.last().is_none_or(|l| *l < 1.0 - 1e-9) {
+            ta.push(1.0);
+            tb.push(1.0);
+        }
+    }
+    if tb.windows(2).any(|w| w[1] < w[0] - 1e-9) {
+        return Err("the cross sections cross each other between the rails".into());
+    }
+    let (ua, ub) = (0.0, if wrap || !closed_a { 1.0 } else { placed_on.last().unwrap().0 });
+    if ub - ua < 1e-9 {
+        return Err("the sections are all at the same place on the rails".into());
+    }
+    // The frame at driving place t (arc length fraction on rail A): origin on rail A, x to
+    // rail B (scaled by the gap), y across, z along.
+    let frame = |t: f64| -> (Frame, f64) {
+        let tb_ = lookup(&ta, &tb, t);
+        let (u_a, u_b) = (arc_a.u_of(t), arc_b.u_of(tb_));
+        let (pa, pb) = (a.eval(u_a), b.eval(u_b));
+        let tan = unit(add(tangent(&a, u_a), tangent(&b, u_b)));
+        let chord = sub(pb, pa);
+        let w = norm(chord);
+        let x = if w > 1e-12 { scale(chord, 1.0 / w) } else { perpendicular(tan) };
+        let y0 = cross(tan, x);
+        let y = if norm(y0) > 1e-12 { unit(y0) } else { perpendicular(x) };
+        (Frame { o: pa, x, y, z: cross(x, y) }, w)
+    };
+    let to_local = |t: f64, c: &Nc| -> Nc {
+        let (f, w) = frame(t);
+        let (sx, sh) = (w.max(1e-12), if o.maintain_height { 1.0 } else { w.max(1e-12) });
+        Nc {
+            degree: c.degree,
+            points: c
+                .points
+                .iter()
+                .map(|p| {
+                    let l = f.local(*p);
+                    let q = euclid(l);
+                    let wt = l[3];
+                    [q[0] / sx * wt, q[1] / sh * wt, q[2] / sh * wt, wt]
+                })
+                .collect(),
+            knots: c.knots.clone(),
+        }
+    };
+    let at: Vec<f64> = placed_on.iter().map(|p| p.0).collect();
+    let mut locals: Vec<Nc> = placed_on.iter().map(|p| to_local(p.0, &secs[p.2])).collect();
+    let curve_closed: Vec<bool> = locals.iter().map(|c| !is_point(c) && c.closed(1e-6)).collect();
+    let any_closed = curve_closed.iter().any(|c| *c);
+    if any_closed && !curve_closed.iter().zip(&locals).all(|(c, l)| *c || is_point(l)) {
+        return Err("the cross sections must be all closed or all open".into());
+    }
+    if any_closed {
+        exact::align_sections(&mut locals, true);
+    }
+    exact::make_compatible(&mut locals);
+    for k in 0..locals.len() {
+        if is_point(&locals[k]) && locals.len() > 1 {
+            let other = if k == 0 { 1 } else { k - 1 };
+            let ws: Vec<f64> = locals[other].points.iter().map(|q| q[3]).collect();
+            let pt = euclid(locals[k].points[0]);
+            for (q, w) in locals[k].points.iter_mut().zip(ws) {
+                *q = [pt[0] * w, pt[1] * w, pt[2] * w, w];
+            }
+        }
+    }
+    let (p, sec_knots) = (locals[0].degree, locals[0].knots.clone());
+    let m = locals.len();
+    let shape = |t: f64| -> Vec<H> {
+        let blend = |i: usize, j: usize, f: f64| -> Vec<H> {
+            let f = smooth(f.clamp(0.0, 1.0));
+            locals[i]
+                .points
+                .iter()
+                .zip(&locals[j].points)
+                .map(|(x, y)| {
+                    let (pp, qq) = (euclid(*x), euclid(*y));
+                    let w = x[3] + (y[3] - x[3]) * f;
+                    let e = add(pp, scale(sub(qq, pp), f));
+                    [e[0] * w, e[1] * w, e[2] * w, w]
+                })
+                .collect()
+        };
+        if m == 1 {
+            return locals[0].points.clone();
+        }
+        for k in 0..m - 1 {
+            if t >= at[k] && t <= at[k + 1] {
+                return blend(k, k + 1, (t - at[k]) / (at[k + 1] - at[k]).max(1e-12));
+            }
+        }
+        if wrap {
+            let tt = if t < at[0] { t + 1.0 } else { t };
+            return blend(m - 1, 0, (tt - at[m - 1]) / (at[0] + 1.0 - at[m - 1]).max(1e-12));
+        }
+        if t < at[0] { locals[0].points.clone() } else { locals[m - 1].points.clone() }
+    };
+    let placed = |t: f64| -> Vec<H> {
+        let (f, w) = frame(t);
+        let (sx, sh) = (w, if o.maintain_height { 1.0 } else { w });
+        shape(t)
+            .iter()
+            .map(|l| {
+                let q = euclid(*l);
+                f.world([q[0] * sx * l[3], q[1] * sh * l[3], q[2] * sh * l[3], l[3]])
+            })
+            .collect()
+    };
+    let mut initial = at.clone();
+    initial.extend(ta.iter().copied());
+    for k in a.knots.iter() {
+        initial.push(arc_a.s_of(*k));
+    }
+    fit_stations(&placed, ua, ub, wrap, initial, p, &sec_knots, o.tol, o.max_stations)
 }
 
 #[cfg(test)]
@@ -637,7 +932,7 @@ mod tests {
             let s = sweep1(&rail, &[a.clone(), b.clone()], &o).unwrap();
             assert!(s.deviation <= o.tol, "{}", s.deviation);
             // Both sections lie on the surface.
-            for (sec, r) in [(&a, 1.0), (&b, 2.0)] {
+            for sec in [&a, &b] {
                 for j in 0..=20 {
                     let p = sec.eval(j as f64 / 20.0);
                     let mut best = f64::MAX;
@@ -695,6 +990,69 @@ mod tests {
         for i in 0..=20 {
             let fr = f.frame(i as f64 / 20.0);
             assert!(fr.x[2].abs() < 1e-9, "x must stay horizontal");
+        }
+    }
+
+    #[test]
+    fn sweep2_edges_run_on_the_rails_and_height_scales() {
+        // Two rails: straight lines 4 apart (x = 0 and x = 4), rising along y; one half circle
+        // from rail to rail (radius 2, standing up in z).
+        let ra = Nc::from_geo(&Geo::Line { start: [0.0; 3], end: [0.0, 10.0, 0.0] }).unwrap();
+        // Rail B widens: x from 4 to 8.
+        let rb = Nc::from_geo(&Geo::Line { start: [4.0, 0.0, 0.0], end: [8.0, 10.0, 0.0] }).unwrap();
+        let half = exact::arc([2.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 2.0, std::f64::consts::PI);
+        for keep in [false, true] {
+            let o = Options2 { maintain_height: keep, ..Default::default() };
+            let s = sweep2(&ra, &rb, &[half.clone()], &o).unwrap();
+            assert!(s.deviation <= o.tol, "{}", s.deviation);
+            for i in 0..=20 {
+                let u = i as f64 / 20.0;
+                let (e0, e1) = (srf_eval(&s, u, 0.0), srf_eval(&s, u, 1.0));
+                assert!(dist(e0, ra.eval(ra.closest(e0))) < 1e-9, "edge on rail A");
+                assert!(dist(e1, rb.eval(rb.closest(e1))) < o.tol, "edge on rail B");
+                // Top of the arch: half the gap high (scaled) or 2 (maintain height).
+                let top = srf_eval(&s, u, 0.5);
+                let gap = dist(e0, e1);
+                let want = if keep { 2.0 } else { gap / 2.0 };
+                assert!((top[2] - want).abs() < 2.0 * o.tol, "{keep}: {} vs {want}", top[2]);
+            }
+        }
+    }
+
+    #[test]
+    fn sweep2_ring_band_between_two_closed_rails() {
+        // Inner rail R10, outer rail R12 (a flat band); arch sections from rail to rail.
+        let ra = circle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 10.0);
+        let rb = circle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 12.0);
+        let s1 = exact::arc([11.0, 0.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 1.0, std::f64::consts::PI);
+        // A taller arch opposite (maintain height off: scales with the same gap → same arch;
+        // so use a flatter section there: a straight line).
+        let s2 = Nc::from_geo(&Geo::Line { start: [-10.0, 0.0, 0.0], end: [-12.0, 0.0, 0.0] }).unwrap();
+        // One section: all the way round.
+        let s = sweep2(&ra, &rb, &[s1.clone()], &Options2::default()).unwrap();
+        assert!(s.deviation <= 0.001);
+        assert!(dist(srf_eval(&s, 0.0, 0.5), srf_eval(&s, 1.0, 0.5)) < 1e-9, "closed");
+        for i in 0..=40 {
+            let p = srf_eval(&s, i as f64 / 40.0, 0.5);
+            assert!((p[2] - 1.0).abs() < 0.002 && (p[0].hypot(p[1]) - 11.0).abs() < 0.002, "{p:?}");
+        }
+        // Two sections, closed sweep: back to the first; open: from the first to the second.
+        for closed in [true, false] {
+            let o = Options2 { closed, ..Default::default() };
+            let s = sweep2(&ra, &rb, &[s1.clone(), s2.clone()], &o).unwrap();
+            assert!(s.deviation <= o.tol, "{}", s.deviation);
+            let (first, last) = (srf_eval(&s, 0.0, 0.5), srf_eval(&s, 1.0, 0.5));
+            assert!((first[2] - 1.0).abs() < 1e-6, "first section on the surface: {first:?}");
+            if closed {
+                assert!(dist(first, last) < 1e-9);
+            } else {
+                assert!(last[2].abs() < 1e-6 && (last[0] + 11.0).abs() < 1e-6, "{last:?}");
+            }
+            for i in 0..=40 {
+                let u = i as f64 / 40.0;
+                let (e0, e1) = (srf_eval(&s, u, 0.0), srf_eval(&s, u, 1.0));
+                assert!((e0[0].hypot(e0[1]) - 10.0).abs() < 0.002 && (e1[0].hypot(e1[1]) - 12.0).abs() < 0.002);
+            }
         }
     }
 }

@@ -28,11 +28,10 @@ id = "SurfaceSweepSweep2Rails"
 label = "Sweep 2 Rails"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 aliases = ["Sweep2"]
-summary = "Quét profile giữa hai đường ray, profile co giãn theo khoảng cách hai ray."
-steps = ["Chọn hai ray và các profile.", "Enter."]
-options = ["MaintainHeight: giữ chiều cao profile."]
+summary = "Quét mặt cắt giữa hai đường ray như Rhino 5; hai cạnh mặt nằm đúng trên hai ray."
+steps = ["Chọn ray thứ nhất.", "Chọn ray thứ hai.", "Chọn các mặt cắt theo thứ tự (Point: bắt đầu/kết thúc tại một điểm), Enter.", "Chỉnh tuỳ chọn khi xem trước, Enter để tạo."]
+options = ["MaintainHeight: mặt cắt co giãn theo bề ngang nhưng giữ chiều cao.", "Closed: quét kín quay về mặt cắt đầu (hai ray kín, từ hai mặt cắt).", "Simplify: None / Rebuild (số điểm) / Refit (dung sai) cho mặt cắt."]
 
 [[commands]]
 id = "SurfaceSweepProfileSweep"
@@ -424,7 +423,7 @@ label = "Số trạm dọc ray"
 default = 48
 min = 4
 max = 400
-commands = ["SurfaceSweepSweep2Rails", "SurfaceSweepSweepMultiRail"]
+commands = ["SurfaceSweepSweepMultiRail"]
 
 [[settings]]
 key = "sw_tolerance"
@@ -435,7 +434,45 @@ default = 0.001
 min = 0.00001
 max = 1.0
 step = 0.001
-commands = ["SurfaceSweepSweep1Rail", "SurfaceSweepProfileSweep", "BuilderFourProfileSweep"]
+commands = ["SurfaceSweepSweep1Rail", "SurfaceSweepSweep2Rails", "SurfaceSweepProfileSweep", "BuilderFourProfileSweep"]
+
+[[settings]]
+key = "sw2_closed"
+type = "bool"
+option = "Closed"
+label = "Quét kín (2 ray)"
+default = false
+commands = ["SurfaceSweepSweep2Rails"]
+
+[[settings]]
+key = "sw2_simplify"
+type = "enum"
+option = "Simplify"
+label = "Đơn giản mặt cắt (2 ray)"
+choices = ["none", "rebuild", "refit"]
+choice_labels = ["None", "Rebuild", "Refit"]
+default = "none"
+commands = ["SurfaceSweepSweep2Rails"]
+
+[[settings]]
+key = "sw2_rebuild_points"
+type = "int"
+option = "RebuildPoints"
+label = "Số điểm dựng lại mặt cắt (2 ray)"
+default = 10
+min = 4
+max = 1000
+commands = ["SurfaceSweepSweep2Rails"]
+
+[[settings]]
+key = "sw2_refit_tolerance"
+type = "length"
+option = "RefitTolerance"
+label = "Dung sai khớp lại mặt cắt (2 ray, mm)"
+default = 0.01
+min = 0.0001
+max = 10.0
+commands = ["SurfaceSweepSweep2Rails"]
 
 [[settings]]
 key = "sw1_style"

@@ -1010,3 +1010,37 @@ fn sweep1_ring_is_exact_like_rhino5() {
         }
     }
 }
+
+/// Rhino 5 Sweep2: first rail, second rail, cross sections, Enter, options (MaintainHeight,
+/// Simplify …), Enter. The surface's edges run on the rails.
+#[test]
+fn sweep2_follows_rhino5_prompts_and_runs_on_the_rails() {
+    let ra = || exact_sel("a", Geo::Line { start: [0.0; 3], end: [0.0, 10.0, 0.0] }, false);
+    let rb = || exact_sel("b", Geo::Line { start: [4.0, 0.0, 0.0], end: [8.0, 10.0, 0.0] }, false);
+    let arch = || exact_sel("s", Geo::Arc { center: [2.0, 0.0, 0.0], x: [-1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], radius: 2.0, angle: PI }, false);
+    let r = feed(SWEEP2, &Value::Null, Input::Start, vec![], json!({}));
+    assert_eq!(r.prompt, "Select first rail");
+    let r = feed(SWEEP2, &r.state, Input::Selection, vec![ra()], json!({}));
+    assert_eq!(r.prompt, "Select second rail");
+    let r = feed(SWEEP2, &r.state, Input::Selection, vec![ra(), rb()], json!({}));
+    assert!(r.prompt.starts_with("Select cross section curves"), "{}", r.prompt);
+    let r = feed(SWEEP2, &r.state, Input::Selection, vec![ra(), rb(), arch()], json!({}));
+    let r = feed(SWEEP2, &r.state, Input::Enter, vec![ra(), rb(), arch()], json!({}));
+    assert!(!r.done && !r.preview.is_empty(), "{:?}", r.error);
+    assert!(r.options.iter().any(|o| o.name == "MaintainHeight"));
+    assert!(!r.options.iter().any(|o| o.name == "Style"));
+    let r = feed(SWEEP2, &r.state, opt("MaintainHeight", None), vec![ra(), rb(), arch()], json!({}));
+    let r = feed(SWEEP2, &r.state, Input::Enter, vec![ra(), rb(), arch()], json!({}));
+    assert!(r.done, "{}", r.prompt);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=20 {
+        let u = i as f64 / 20.0;
+        let (e0, e1, top) = (s.at_st(u, 0.0), s.at_st(u, 1.0), s.at_st(u, 0.5));
+        assert!(e0[0].abs() < 1e-6, "edge on rail A {e0:?}");
+        assert!((e1[0] - (4.0 + 0.4 * e1[1])).abs() < 2e-3, "edge on rail B {e1:?}");
+        assert!((top[2] - 2.0).abs() < 2e-3, "maintain height: {top:?}");
+    }
+    // Preselected (Matrix way): the two longest curves are the rails.
+    let r = run(SWEEP2, vec![ra(), rb(), arch()], json!({}), vec![Input::Enter]);
+    assert!(r.done);
+}

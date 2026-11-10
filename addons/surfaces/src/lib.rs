@@ -495,12 +495,13 @@ fn sweep_style(name: &str) -> sweep::Style {
     }
 }
 
-/// Sweep1 command state: the rail, then the sections, then the options (Rhino 5 order).
+/// Sweep1 / Sweep2 command state: the rail(s), then the sections, then the options (Rhino 5
+/// order).
 #[derive(Serialize, Deserialize, Default, Clone)]
-struct Sweep1State {
-    /// 0: select the rail; 1: select the sections; 2: options and preview.
+struct SweepState {
+    /// 0: select the rail(s); 1: select the sections; 2: options and preview.
     stage: u8,
-    rail: Option<String>,
+    rails: Vec<String>,
     /// Section ids in pick order (curves and point objects).
     sections: Vec<String>,
     /// Point option: a point typed or clicked to start / end the sweep.
@@ -546,52 +547,114 @@ fn sweep1_surface(
     Ok((s.geo(), how))
 }
 
+/// Sweep2 between two rails.
+fn sweep2_surface(
+    e: &Event,
+    rails: [&Selected; 2],
+    sections: &[Nc],
+    closed: bool,
+    maintain_height: bool,
+    simplify: (&str, usize, f64),
+) -> Result<(Geo, String), String> {
+    let ra = nc_of(rails[0]).ok_or("the rail has no curve")?;
+    let rb = nc_of(rails[1]).ok_or("the rail has no curve")?;
+    let secs: Vec<Nc> = sections
+        .iter()
+        .map(|c| {
+            let point = c.points.iter().all(|p| dist(exact::euclid(*p), exact::euclid(c.points[0])) < 1e-12);
+            if point { c.clone() } else { simplify_section(c.clone(), simplify.0, simplify.1, simplify.2) }
+        })
+        .collect();
+    let o = sweep::Options2 {
+        closed,
+        maintain_height,
+        tol: e.number("sw_tolerance", 0.001).max(1e-6),
+        ..Default::default()
+    };
+    let s = sweep::sweep2(&ra, &rb, &secs, &o)?;
+    Ok((s.geo(), format!("within {} mm", fmt(o.tol))))
+}
+
 fn sweep1(e: &Event) -> Reply {
     if e.command != SWEEP1 {
         return profile_sweep(e);
     }
-    let label = "Sweep 1 Rail";
-    let mut st: Sweep1State = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    sweep_command(e, false)
+}
+
+fn sweep2(e: &Event) -> Reply {
+    sweep_command(e, true)
+}
+
+/// Rhino 5 Sweep1 (`two` = false) and Sweep2: rail(s), cross sections (Point), Enter, options
+/// with a preview, Enter.
+fn sweep_command(e: &Event, two: bool) -> Reply {
+    let label = if two { "Sweep 2 Rails" } else { "Sweep 1 Rail" };
+    let need = if two { 2 } else { 1 };
+    let mut st: SweepState = serde_json::from_value(e.state.clone()).unwrap_or_default();
     let by_id = |id: &str| e.selection.iter().find(|s| s.id == id);
     let is_section = |s: &Selected| (s.kind == "curve" && s.points.len() >= 2) || (s.kind == "point" && !s.points.is_empty());
-    let save = |st: &Sweep1State| serde_json::to_value(st).unwrap_or(Value::Null);
-    // Start with curves already selected: the rail is the longest, the rest are sections
-    // in the order picked (as Matrix users window-select a ring rail and its profiles).
+    let save = |st: &SweepState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let rail_prompt = |have: usize| match (two, have) {
+        (false, _) => "Select rail",
+        (true, 0) => "Select first rail",
+        (true, _) => "Select second rail",
+    };
+    // Start with curves already selected (Matrix users window-select the rails and the
+    // profiles): the longest curve(s) are the rails, the rest the sections in pick order.
     // (A one-shot call - Enter with no state, as SubD's sweep makes - works the same.)
     if matches!(e.input, Input::Start) || e.state.is_null() {
-        st = Sweep1State::default();
+        st = SweepState::default();
         let cs = curves(e);
-        if cs.len() >= 2 {
-            if let Ok((rail, profiles)) = rail_and_profiles(e) {
-                st.rail = Some(rail.id.clone());
-                st.sections = profiles.iter().map(|p| p.id.clone()).collect();
+        if cs.len() > need {
+            let rails: Vec<&Selected> = if two {
+                let len = |s: &Selected| Path::new(&s.points, s.closed).map_or(0.0, |p| p.length());
+                let mut by_len = cs.clone();
+                by_len.sort_by(|a, b| len(b).total_cmp(&len(a)));
+                by_len[..2].to_vec()
+            } else {
+                rail_and_profiles(e).map(|(r, _)| vec![r]).unwrap_or_default()
+            };
+            if rails.len() == need {
+                st.rails = rails.iter().map(|r| r.id.clone()).collect();
+                let profiles: Vec<String> = if two {
+                    cs.iter().filter(|c| !st.rails.contains(&c.id)).map(|c| c.id.clone()).collect()
+                } else {
+                    rail_and_profiles(e).map(|(_, p)| p.iter().map(|c| c.id.clone()).collect()).unwrap_or_default()
+                };
+                st.sections = profiles;
                 // Points selected too are point sections.
                 st.sections.extend(e.selection.iter().filter(|s| s.kind == "point").map(|s| s.id.clone()));
                 st.stage = 2;
             }
-        } else if cs.len() == 1 {
-            st.rail = Some(cs[0].id.clone());
-            st.stage = 1;
+        } else {
+            st.rails = cs.iter().map(|c| c.id.clone()).collect();
+            st.stage = u8::from(st.rails.len() == need);
         }
     }
     if st.stage == 0 {
-        if let Some(c) = curves(e).first() {
-            st.rail = Some(c.id.clone());
+        for c in curves(e) {
+            if st.rails.len() < need && !st.rails.contains(&c.id) {
+                st.rails.push(c.id.clone());
+            }
+        }
+        if st.rails.len() == need {
             st.stage = 1;
         } else {
-            let r = Reply::ask("Select rail", save(&st)).want(Want::Objects);
+            let r = Reply::ask(rail_prompt(st.rails.len()), save(&st)).want(Want::Objects);
             return if matches!(e.input, Input::Enter) { r.refuse(format!("{label}: select the rail")) } else { r };
         }
     }
-    let Some(rail) = st.rail.clone().and_then(|id| by_id(&id).cloned()) else {
-        return Reply::ask("Select rail", save(&Sweep1State::default()))
+    let rails: Vec<Selected> = st.rails.iter().filter_map(|id| by_id(id).cloned()).collect();
+    if rails.len() != need {
+        return Reply::ask(rail_prompt(0), save(&SweepState::default()))
             .want(Want::Objects)
             .refuse(format!("{label}: the rail is no longer selected"));
-    };
+    }
     let mut entering = false;
     if st.stage == 1 {
         // Sections: everything picked after the rail, in order.
-        for s in e.selection.iter().filter(|s| s.id != rail.id && is_section(s)) {
+        for s in e.selection.iter().filter(|s| !st.rails.contains(&s.id) && is_section(s)) {
             if !st.sections.contains(&s.id) {
                 st.sections.push(s.id.clone());
             }
@@ -666,12 +729,16 @@ fn sweep1(e: &Event) -> Reply {
     if let Some(p) = st.point_end {
         picked.push(exact::point_curve(p));
     }
-    let rail_closed = rail.closed;
+    let rails_closed = rails.iter().all(|r| r.closed);
+    let simplify_key = if two { "sw2" } else { "sw1" };
     let mut flow = Flow::new(label)
         .no_selection()
         .plain()
-        .confirm("Press Enter to create the sweep, or change an option")
-        .choice(
+        .confirm("Press Enter to create the sweep, or change an option");
+    if two {
+        flow = flow.toggle("MaintainHeight", e.flag("sw2_maintain_height", false));
+    } else {
+        flow = flow.choice(
             "Style",
             &["Freeform", "RoadlikeTop", "RoadlikeRight", "RoadlikeFront"],
             match e.text("sw1_style", "freeform") {
@@ -681,33 +748,34 @@ fn sweep1(e: &Event) -> Reply {
                 _ => "Freeform",
             },
         );
-    if rail_closed && picked.len() >= 2 {
-        flow = flow.toggle("Closed", e.flag("sw1_closed", false));
+    }
+    if rails_closed && picked.len() >= 2 {
+        flow = flow.toggle("Closed", e.flag(&format!("{simplify_key}_closed"), false));
+    }
+    if !two {
+        flow = flow.toggle("GlobalBlend", e.flag("sw1_global_blend", false));
     }
     let flow = flow
-        .toggle("GlobalBlend", e.flag("sw1_global_blend", false))
         .choice(
             "Simplify",
             &["None", "Rebuild", "Refit"],
-            match e.text("sw1_simplify", "none") {
+            match e.text(&format!("{simplify_key}_simplify"), "none") {
                 "rebuild" => "Rebuild",
                 "refit" => "Refit",
                 _ => "None",
             },
         )
-        .num("RebuildPoints", e.number("sw1_rebuild_points", 10.0))
-        .num("RefitTolerance", e.number("sw1_refit_tolerance", 0.01));
+        .num("RebuildPoints", e.number(&format!("{simplify_key}_rebuild_points"), 10.0))
+        .num("RefitTolerance", e.number(&format!("{simplify_key}_refit_tolerance"), 0.01));
     let make = |c: &Collected| -> Result<(Geo, String), String> {
         let simplify = c.opt(&flow, "Simplify").to_ascii_lowercase();
-        sweep1_surface(
-            e,
-            &rail,
-            &picked,
-            c.opt(&flow, "Style"),
-            rail_closed && picked.len() >= 2 && c.yes(&flow, "Closed"),
-            c.yes(&flow, "GlobalBlend"),
-            (&simplify, c.num(&flow, "RebuildPoints").round().max(4.0) as usize, c.num(&flow, "RefitTolerance").max(1e-6)),
-        )
+        let simplify = (simplify.as_str(), c.num(&flow, "RebuildPoints").round().max(4.0) as usize, c.num(&flow, "RefitTolerance").max(1e-6));
+        let closed = rails_closed && picked.len() >= 2 && c.yes(&flow, "Closed");
+        if two {
+            sweep2_surface(e, [&rails[0], &rails[1]], &picked, closed, c.yes(&flow, "MaintainHeight"), simplify)
+        } else {
+            sweep1_surface(e, &rails[0], &picked, c.opt(&flow, "Style"), closed, c.yes(&flow, "GlobalBlend"), simplify)
+        }
     };
     let mut sub = e.clone();
     sub.state = st.flow.clone();
@@ -767,106 +835,6 @@ fn profile_sweep(e: &Event) -> Reply {
         )?;
         Ok((vec![g], format!("{} profiles along the rail, {what}", secs.len())))
     })
-}
-
-fn sweep2(e: &Event) -> Reply {
-    let stations = e.number("sw_stations", 48.0).round().clamp(4.0, 400.0) as usize;
-    let keep_height = e.flag("sw2_maintain_height", false);
-    built(
-        e,
-        "Sweep 2 Rails",
-        "select two rails and the profiles, Enter",
-        || {
-            let cs = curves(e);
-            if cs.len() < 3 {
-                return Err("select two rails and at least one profile".into());
-            }
-            // The two longest curves are the rails.
-            let len = |s: &Selected| Path::new(&s.points, s.closed).map_or(0.0, |p| p.length());
-            let mut by_len = cs.clone();
-            by_len.sort_by(|a, b| len(b).total_cmp(&len(a)));
-            let (ra, rb) = (by_len[0], by_len[1]);
-            let profiles: Vec<&Selected> = cs
-                .iter()
-                .copied()
-                .filter(|c| c.id != ra.id && c.id != rb.id)
-                .collect();
-            let closed = ra.closed && rb.closed;
-            let a = Path::new(&dense(ra), ra.closed).ok_or("rail")?;
-            let mut bpts = dense(rb);
-            if !closed && dist(a.at(0.0), bpts[0]) > dist(a.at(0.0), *bpts.last().unwrap()) {
-                bpts.reverse();
-            }
-            let b = Path::new(&bpts, rb.closed).ok_or("rail")?;
-            let frame_at = |t: f64| -> (Frame, f64) {
-                let (pa, pb) = (a.at(t * a.length()), b.at(t * b.length()));
-                let tan = unit(add(a.tangent(t * a.length()), b.tangent(t * b.length())));
-                let x = sub(pb, pa);
-                let w = norm(x).max(1e-9);
-                // x along the chord, y across (up), z along the rails.
-                let y = unit(cross(tan, x));
-                (
-                    Frame {
-                        origin: pa,
-                        x: unit(x),
-                        y,
-                        z: unit(cross(unit(x), y)),
-                    },
-                    w,
-                )
-            };
-            let n = 24;
-            let mut locals = Vec::new();
-            let mut at = Vec::new();
-            for p in &profiles {
-                let pts = dense(p);
-                let c = scale(
-                    pts.iter().fold([0.0; 3], |s, &q| add(s, q)),
-                    1.0 / pts.len() as f64,
-                );
-                let t = a.closest(c) / a.length();
-                let (f, w) = frame_at(t);
-                let mut l: Vec<Vec3> = resample(&pts, p.closed, n)
-                    .iter()
-                    .map(|&q| f.local(q))
-                    .collect();
-                if !p.closed && l[0][0] > l[n - 1][0] {
-                    l.reverse();
-                }
-                // In chord units across, mm (or chord units) up.
-                for q in &mut l {
-                    q[0] /= w;
-                    if !keep_height {
-                        q[1] /= w;
-                    }
-                    q[2] = 0.0;
-                }
-                locals.push(l);
-                at.push(t);
-            }
-            let count = if closed { stations } else { stations + 1 };
-            let mut rows: Vec<Vec<Vec3>> = (0..count)
-                .map(|i| {
-                    let t = i as f64 / stations as f64;
-                    let (f, w) = frame_at(t);
-                    profile_at(&locals, &at, t, closed.then_some(1.0))
-                        .iter()
-                        .map(|q| {
-                            f.point([q[0] * w, if keep_height { q[1] } else { q[1] * w }, 0.0])
-                        })
-                        .collect()
-                })
-                .collect();
-            if closed {
-                rows.push(rows[0].clone());
-            }
-            let rows = closed_rows(rows, profiles.iter().all(|p| p.closed));
-            Ok((
-                vec![surface(&rows)?],
-                format!("{} profiles between two rails", profiles.len()),
-            ))
-        },
-    )
 }
 
 fn multi_rail(e: &Event) -> Reply {
