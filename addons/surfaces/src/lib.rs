@@ -3034,33 +3034,56 @@ fn untrim(e: &Event) -> Reply {
     })
 }
 
+/// Rhino 5 Split (Isocurve): Select surface to split, Select isocurve location (Direction
+/// U / V / Both, the isocurve follows the pointer); exact pieces (knot insertion).
 fn split(e: &Event) -> Reply {
     let flow = Flow::new("Split at Isocurve")
-        .choice("Direction", &["U", "V"], "U")
-        .point("Point on the surface where to split");
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let p = c.p(0).unwrap();
-        let ss = nurbs_surfaces(e);
-        let (sel, f) = ss.first().ok_or("select a NURBS surface")?;
-        let (a, b) = f.closest_st(p);
-        let (first, second) = if c.opt(&flow, "Direction") == "U" {
-            (
-                sub_grid(f, [0.0, a], [0.0, 1.0], 16, 16),
-                sub_grid(f, [a, 1.0], [0.0, 1.0], 16, 16),
-            )
-        } else {
-            (
-                sub_grid(f, [0.0, 1.0], [0.0, b], 16, 16),
-                sub_grid(f, [0.0, 1.0], [b, 1.0], 16, 16),
-            )
-        };
-        let mut r = Reply::finish(vec![surface(&second)?]).say("Split at Isocurve: two surfaces");
-        r.replace.push(Replacement {
-            id: sel.id.clone(),
-            geo: surface(&first)?,
-        });
-        Ok(r)
-    })
+        .select_prompt("Select surface to split")
+        .point("Select isocurve location")
+        .choice("Direction", &["U", "V", "Both"], "U");
+    let target = || nurbs_surfaces(e).into_iter().next();
+    let iso = |c: &Collected, at: Vec3| -> Vec<Geo> {
+        let Some((_, f)) = target() else { return vec![] };
+        let (a, b) = f.closest_st(at);
+        match c.opt(&flow, "Direction") {
+            "U" => vec![f.isocurve(0, a)],
+            "V" => vec![f.isocurve(1, b)],
+            _ => vec![f.isocurve(0, a), f.isocurve(1, b)],
+        }
+    };
+    flow.step(
+        e,
+        &|c, h| Show { geo: h.map(|p| iso(c, p)).unwrap_or_default(), ..Default::default() },
+        &|c| {
+            let p = c.p(0).ok_or("pick the isocurve location")?;
+            let (sel, f) = target().ok_or("select a NURBS surface")?;
+            let g = sel.exact.as_ref().unwrap();
+            let (a, b) = f.closest_st(p);
+            let split = om9_addon_geom::surfedit::split_at;
+            let pieces: Vec<Geo> = match c.opt(&flow, "Direction") {
+                "U" => {
+                    let (x, y) = split(g, 0, a)?;
+                    vec![x, y]
+                }
+                "V" => {
+                    let (x, y) = split(g, 1, b)?;
+                    vec![x, y]
+                }
+                _ => {
+                    let (x, y) = split(g, 0, a)?;
+                    let (x1, x2) = split(&x, 1, b)?;
+                    let (y1, y2) = split(&y, 1, b)?;
+                    vec![x1, x2, y1, y2]
+                }
+            };
+            let n = pieces.len();
+            let mut it = pieces.into_iter();
+            let first = it.next().unwrap();
+            let mut r = Reply::finish(it.collect()).say(format!("Split at Isocurve: {n} surfaces (exact)"));
+            r.replace.push(Replacement { id: sel.id.clone(), geo: first });
+            Ok(r)
+        },
+    )
 }
 
 /// ExtendSrf command state.
@@ -3417,44 +3440,43 @@ fn cutting_plane(e: &Event) -> Reply {
     )
 }
 
+/// Rhino 5 SrfSeam: Select closed surface to adjust seam, New seam location (Direction U / V,
+/// the isocurve follows the pointer); exact (the closed direction's seam moved).
 fn seam(e: &Event) -> Reply {
-    let flow =
-        Flow::new("Adjust Closed Surface Seam").point("Point on the surface for the new seam");
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let p = c.p(0).unwrap();
-        let ss = nurbs_surfaces(e);
-        let (sel, f) = ss.first().ok_or("select a closed NURBS surface")?;
-        let closed_u = dist(f.at_st(0.0, 0.5), f.at_st(1.0, 0.5)) < 1e-6;
-        let closed_v = dist(f.at_st(0.5, 0.0), f.at_st(0.5, 1.0)) < 1e-6;
-        if !closed_u && !closed_v {
-            return Err("the surface is not closed".into());
-        }
-        let (a, b) = f.closest_st(p);
-        let n = 32;
-        let rows: Vec<Vec<Vec3>> = (0..=n)
-            .map(|i| {
-                (0..=n)
-                    .map(|j| {
-                        let (mut s, mut t) = (i as f64 / n as f64, j as f64 / n as f64);
-                        if closed_u {
-                            s = (s + a).rem_euclid(1.0);
-                        } else {
-                            t = (t + b).rem_euclid(1.0);
-                        }
-                        f.at_st(s, t)
-                    })
-                    .collect()
-            })
-            .collect();
-        let mut r = Reply::finish(Vec::new()).say("Adjust Closed Surface Seam: moved");
-        r.replace.push(Replacement {
-            id: sel.id.clone(),
-            geo: surface(&rows)?,
-        });
-        Ok(r)
-    })
+    let target = || nurbs_surfaces(e).into_iter().next();
+    let closed_dir = target().map_or(0, |(_, f)| {
+        if dist(f.at_st(0.0, 0.5), f.at_st(1.0, 0.5)) < 1e-6 { 0 } else { 1 }
+    });
+    let flow = Flow::new("Adjust Closed Surface Seam")
+        .select_prompt("Select closed surface to adjust seam")
+        .point("New seam location")
+        .choice("Direction", &["U", "V"], if closed_dir == 0 { "U" } else { "V" });
+    let dir_of = |c: &Collected| usize::from(c.opt(&flow, "Direction") == "V");
+    flow.step(
+        e,
+        &|c, h| Show {
+            geo: match (target(), h) {
+                (Some((_, f)), Some(p)) => {
+                    let (a, b) = f.closest_st(p);
+                    let d = dir_of(c);
+                    vec![f.isocurve(d, if d == 0 { a } else { b })]
+                }
+                _ => vec![],
+            },
+            ..Default::default()
+        },
+        &|c| {
+            let p = c.p(0).ok_or("pick the new seam location")?;
+            let (sel, f) = target().ok_or("select a closed NURBS surface")?;
+            let (a, b) = f.closest_st(p);
+            let d = dir_of(c);
+            let g = om9_addon_geom::surfedit::move_seam(sel.exact.as_ref().unwrap(), d, if d == 0 { a } else { b })?;
+            let mut r = Reply::finish(Vec::new()).say("Adjust Closed Surface Seam: moved (exact)");
+            r.replace.push(Replacement { id: sel.id.clone(), geo: g });
+            Ok(r)
+        },
+    )
 }
-
 fn set_tangent(e: &Event) -> Reply {
     let flow = Flow::new("Set Surface Tangent")
         .point("Pick near the edge")

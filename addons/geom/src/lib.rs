@@ -34,6 +34,7 @@ pub mod merge;
 pub mod network;
 pub mod offset;
 pub mod patch;
+pub mod surfedit;
 pub mod sweep;
 pub mod trimsides;
 

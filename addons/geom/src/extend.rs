@@ -12,7 +12,7 @@ use om9_addon_abi::session::{Geo, Vec3, dist, norm, scale, sub, unit};
 
 /// The curves of a surface running in direction `dir` (0: along u), one per pole of the
 /// other direction.
-fn lines(g: &Geo, dir: usize) -> Option<(Vec<Nc>, [usize; 2], [usize; 2], [Vec<f64>; 2])> {
+pub(crate) fn lines(g: &Geo, dir: usize) -> Option<(Vec<Nc>, [usize; 2], [usize; 2], [Vec<f64>; 2])> {
     let Geo::Surface { degree, size, points, weights, knots } = g else { return None };
     let w = |i: usize| weights.get(i).copied().unwrap_or(1.0);
     let at = |i: usize, j: usize| {
@@ -28,7 +28,7 @@ fn lines(g: &Geo, dir: usize) -> Option<(Vec<Nc>, [usize; 2], [usize; 2], [Vec<f
     Some((curves, *degree, *size, knots.clone()))
 }
 
-fn assemble(curves: &[Nc], dir: usize, degree: [usize; 2], knots: [Vec<f64>; 2]) -> Geo {
+pub(crate) fn assemble(curves: &[Nc], dir: usize, degree: [usize; 2], knots: [Vec<f64>; 2]) -> Geo {
     let n_along = curves[0].points.len();
     let n_across = curves.len();
     let (size, at): ([usize; 2], Box<dyn Fn(usize, usize) -> H>) = if dir == 0 {

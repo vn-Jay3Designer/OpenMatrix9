@@ -1027,9 +1027,9 @@ label = "Split at Isocurve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["SplitSrf"]
-summary = "Cắt mặt thành hai theo đường đẳng tham số qua điểm bấm."
-steps = ["Chọn mặt.", "Direction=U/V.", "Bấm điểm trên mặt."]
-options = ["Direction."]
+summary = "Cắt mặt theo đường đẳng tham số như Rhino 5 Split (Isocurve): các mảnh chính xác."
+steps = ["Chọn mặt.", "Bấm vị trí đường đẳng tham số (đường đi theo chuột)."]
+options = ["Direction: U / V / Both."]
 
 [[commands]]
 id = "SurfaceExtendSurface"
@@ -1097,8 +1097,9 @@ label = "Adjust Closed Surface Seam"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["SrfSeam"]
-summary = "Dời đường nối (seam) của mặt kín."
-steps = ["Chọn mặt kín.", "Bấm vị trí seam mới."]
+summary = "Dời đường nối (seam) của mặt kín như Rhino 5 SrfSeam; hình giữ nguyên chính xác."
+steps = ["Chọn mặt kín.", "Bấm vị trí seam mới (đường đi theo chuột)."]
+options = ["Direction: U / V."]
 
 [[commands]]
 id = "SurfaceSurfaceEditToolsSetSurfaceTangent"

@@ -1362,3 +1362,29 @@ fn match_srf_follows_rhino5() {
     let pts = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5), s.at_st(0.5, 0.0), s.at_st(0.5, 1.0)];
     assert!(pts.iter().any(|p| (p[0] - 4.0).abs() < 1e-6 && p[2].abs() < 1e-6), "the edge moved onto x = 4, z = 0: {pts:?}");
 }
+
+/// Rhino 5 Split (Isocurve) and SrfSeam: exact pieces and seam, the isocurve following the
+/// pointer.
+#[test]
+fn split_isocurve_and_seam_are_exact() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let r = feed(SPLIT_ISO, &Value::Null, Input::Start, vec![a.clone()], json!({}));
+    assert_eq!(r.prompt, "Select isocurve location");
+    let r = feed(SPLIT_ISO, &r.state, opt("Direction", Some("Both")), vec![a.clone()], json!({}));
+    let h = feed(SPLIT_ISO, &r.state, Input::Hover { point: [1.0, 3.0, 0.0] }, vec![a.clone()], json!({}));
+    assert_eq!(h.preview.len(), 2, "both isocurves follow the pointer");
+    let r = feed(SPLIT_ISO, &r.state, pt([1.0, 3.0, 0.0]), vec![a.clone()], json!({}));
+    assert!(r.done);
+    assert_eq!(r.create.len() + r.replace.len(), 4);
+    let area: f64 = r
+        .create
+        .iter()
+        .chain(r.replace.iter().map(|x| &x.geo))
+        .map(|g| {
+            let s = Srf::of(g).unwrap();
+            let (p, q) = (s.at_st(0.0, 0.0), s.at_st(1.0, 1.0));
+            ((q[0] - p[0]) * (q[1] - p[1])).abs()
+        })
+        .sum();
+    assert!((area - 16.0).abs() < 1e-9, "{area}");
+}
