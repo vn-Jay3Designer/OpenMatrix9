@@ -509,3 +509,94 @@ mod tests {
         }
     }
 }
+
+/// Rhino 5 Fin: the curve (on `g`) extruded along the surface normal (or tangent to the
+/// surface, across the curve) by `height`: a ruled surface whose stations are exact, refined
+/// to the tolerance.
+pub fn fin(curve: &crate::exact::Nc, g: &Geo, height: f64, tangent: bool, tol: f64) -> Result<Swept, String> {
+    let s = Srf::of(g).ok_or("not a NURBS surface")?;
+    let orient = orientation(&s);
+    let wrap = curve.closed(1e-6);
+    // Parameters on the surface along the curve, found once on a fine table and then
+    // polished locally (closest points are the slow part).
+    let n = 256;
+    // Local projection (Newton on the surface) from a starting parameter.
+    let project = |p: Vec3, start: (f64, f64)| -> (f64, f64) {
+        let (mut a, mut b) = start;
+        for _ in 0..8 {
+            let (su, sv) = derivs(&s, a, b);
+            let r = sub(p, s.at_st(a, b));
+            let m = [[dot(su, su), dot(su, sv)], [dot(su, sv), dot(sv, sv)]];
+            let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+            if det.abs() < 1e-300 {
+                break;
+            }
+            let (ra, rb) = (dot(su, r), dot(sv, r));
+            let (da, db) = ((m[1][1] * ra - m[0][1] * rb) / det, (m[0][0] * rb - m[1][0] * ra) / det);
+            a = (a + da).clamp(0.0, 1.0);
+            b = (b + db).clamp(0.0, 1.0);
+            if da.abs() + db.abs() < 1e-14 {
+                break;
+            }
+        }
+        (a, b)
+    };
+    // The table along the curve: one global closest point, then step by step.
+    let mut table: Vec<(f64, f64)> = Vec::with_capacity(n + 1);
+    let mut prev = s.closest_st(curve.eval(0.0));
+    for i in 0..=n {
+        prev = project(curve.eval(i as f64 / n as f64), prev);
+        table.push(prev);
+    }
+    let placed = |t: f64| -> Vec<H> {
+        let i = ((t * n as f64).floor() as usize).min(n - 1);
+        let f = t * n as f64 - i as f64;
+        let (a0, b0) = (table[i], table[i + 1]);
+        let p = curve.eval(t);
+        let (a, b) = project(p, (a0.0 + (b0.0 - a0.0) * f, a0.1 + (b0.1 - a0.1) * f));
+        let nrm = quick_normal(&s, a, b, orient);
+        let dir = if tangent {
+            let h = 1e-6;
+            let tan = unit(sub(curve.eval((t + h).min(1.0)), curve.eval((t - h).max(0.0))));
+            unit(cross(nrm, tan))
+        } else {
+            nrm
+        };
+        let q = add(p, scale(dir, height));
+        vec![[p[0], p[1], p[2], 1.0], [q[0], q[1], q[2], 1.0]]
+    };
+    if height.abs() < 1e-12 {
+        return Err("the height must not be 0".into());
+    }
+    fit_stations(&placed, 0.0, 1.0, wrap, curve.knots.clone(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)
+}
+
+#[cfg(test)]
+mod fin_tests {
+    use super::*;
+    use crate::exact::{self, Nc};
+
+    #[test]
+    fn a_fin_on_a_cylinder_stands_along_its_normals() {
+        // A circle round a cylinder r 3 at height 2: the fin (height 1) is the flat ring
+        // between r 3 and r 4.
+        let ring = exact::arc([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 3.0, std::f64::consts::TAU);
+        let rows: Vec<Vec<H>> = ring.points.iter().map(|c| vec![*c, [c[0], c[1], 5.0 * c[3], c[3]]]).collect();
+        let cyl = exact::surface(&rows, [2, 1], [ring.knots.clone(), vec![0.0, 0.0, 1.0, 1.0]]);
+        let c = exact::arc([0.0, 0.0, 2.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 3.0, std::f64::consts::TAU);
+        let t0 = std::time::Instant::now();
+        let f = fin(&c, &cyl, 1.0, false, 0.001).unwrap();
+        eprintln!("fin: {:?}, {} stations", t0.elapsed(), f.stations);
+        let eval = |u: f64, v: f64| {
+            let row: Vec<H> = (0..2).map(|j| Nc { degree: f.degree[0], points: f.rows.iter().map(|r| r[j]).collect(), knots: f.knots[0].clone() }.eval_h(u)).collect();
+            Nc { degree: 1, points: row, knots: f.knots[1].clone() }.eval(v)
+        };
+        for i in 0..=40 {
+            let u = i as f64 / 40.0;
+            let (a, b) = (eval(u, 0.0), eval(u, 1.0));
+            assert!((a[0].hypot(a[1]) - 3.0).abs() < 2e-3 && (a[2] - 2.0).abs() < 1e-9, "{a:?}");
+            let rb = b[0].hypot(b[1]);
+            assert!((rb - 4.0).abs() < 2e-3 || (rb - 2.0).abs() < 2e-3, "{rb}");
+        }
+    }
+}

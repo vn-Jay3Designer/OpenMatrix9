@@ -1388,3 +1388,24 @@ fn split_isocurve_and_seam_are_exact() {
         .sum();
     assert!((area - 16.0).abs() < 1e-9, "{area}");
 }
+
+/// Rhino 5 Fin: curve on the surface, the surface, the height (typed, clicked, or Enter);
+/// Direction Normal / Tangent. On a plane the fin stands straight up exactly.
+#[test]
+fn fin_follows_rhino5() {
+    let a = flat("a", 0.0, 10.0, 0.0, 10.0, 0.0);
+    let c = exact_sel("c", Geo::Line { start: [2.0, 5.0, 0.0], end: [8.0, 5.0, 0.0] }, false);
+    let r = feed(EXTRUDE_NORMAL, &Value::Null, Input::Start, vec![], json!({}));
+    assert_eq!(r.prompt, "Select curve on surface");
+    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Selection, vec![c.clone()], json!({}));
+    assert_eq!(r.prompt, "Select surface");
+    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Selection, vec![c.clone(), a.clone()], json!({}));
+    assert!(r.prompt.starts_with("Height"), "{}", r.prompt);
+    let h = feed(EXTRUDE_NORMAL, &r.state, Input::Hover { point: [5.0, 5.0, 2.0] }, vec![c.clone(), a.clone()], json!({}));
+    assert!(!h.preview.is_empty());
+    let r = feed(EXTRUDE_NORMAL, &r.state, pt([5.0, 5.0, 2.5]), vec![c, a], json!({}));
+    assert!(r.done);
+    let s = Srf::of(&r.create[0]).unwrap();
+    let zs: Vec<f64> = [s.at_st(0.5, 0.0), s.at_st(0.5, 1.0), s.at_st(0.0, 0.5), s.at_st(1.0, 0.5)].iter().map(|p| p[2].abs()).collect();
+    assert!(zs.iter().any(|z| (z - 2.5).abs() < 1e-9) && zs.iter().any(|z| *z < 1e-9), "{zs:?}");
+}

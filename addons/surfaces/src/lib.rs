@@ -138,7 +138,17 @@ impl Interactive for Surfaces {
             HEIGHTFIELD => heightfield(e),
             SPLIT_ISO => split(e),
             EXTEND => extend(e),
-            EXTRUDE_NORMAL => extrude_normal(e),
+            EXTRUDE_NORMAL => {
+                // The Fin state names its curve / surface; the mesh path's state is empty.
+                let fin_state = e.state.get("curve").is_some() || e.state.get("surface").is_some();
+                let started = e.state.is_null() || matches!(e.input, Input::Start);
+                let exact = e.selection.iter().any(|s| matches!(s.exact, Some(Geo::Surface { .. })));
+                if fin_state || (started && (exact || e.selection.is_empty())) {
+                    fin_cmd(e)
+                } else {
+                    extrude_normal(e)
+                }
+            }
             UNROLL | SMASH => unroll(e),
             SOFT_EDIT => soft_edit(e),
             CUTTING_PLANE => cutting_plane(e),
@@ -3176,6 +3186,88 @@ fn extend(e: &Event) -> Reply {
         Some(Err(why)) => ask(&st).refuse(why),
         None => ask(&st),
     }
+}
+
+/// Fin command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct FinState {
+    curve: Option<String>,
+    surface: Option<String>,
+    tangent: Option<bool>,
+}
+
+/// Rhino 5 Fin: Select curve on surface, Select surface, the height (typed, or a point: its
+/// distance off the surface; the fin follows the pointer), Direction Normal / Tangent.
+fn fin_cmd(e: &Event) -> Reply {
+    let label = "Extrude Curve Normal to Surface";
+    let mut st: FinState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = FinState::default();
+    }
+    let save = |st: &FinState| serde_json::to_value(st).unwrap_or(Value::Null);
+    if let Input::Option { name, value } = &e.input {
+        if name.eq_ignore_ascii_case("Direction") {
+            let now = st.tangent.unwrap_or(false);
+            st.tangent = Some(match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("tangent"),
+                None => !now,
+            });
+        }
+    }
+    let tangent = st.tangent.unwrap_or(false);
+    let options = vec![OptionToken::choice("Direction", if tangent { "Tangent" } else { "Normal" }, &["Normal", "Tangent"])];
+    let flip = e.flag("en_flip", false);
+    let height0 = e.number("en_height", 1.0) * if flip { -1.0 } else { 1.0 };
+    if st.curve.is_none() {
+        st.curve = curves(e).first().map(|c| c.id.clone());
+    }
+    if st.surface.is_none() {
+        st.surface = e.selection.iter().find(|s| matches!(s.exact, Some(Geo::Surface { .. }))).map(|s| s.id.clone());
+    }
+    let by_id = |id: &Option<String>| id.as_ref().and_then(|id| e.selection.iter().find(|s| &s.id == id));
+    let (Some(curve), Some(srf)) = (by_id(&st.curve), by_id(&st.surface)) else {
+        let prompt = if st.curve.is_none() { "Select curve on surface" } else { "Select surface" };
+        return Reply::ask(prompt, save(&st)).want(Want::Objects).with_options(options);
+    };
+    let Some(c) = nc_of(curve) else {
+        return Reply::ask("Select curve on surface", save(&FinState::default())).want(Want::Objects).refuse(format!("{label}: the curve has no curve data"));
+    };
+    let g = srf.exact.as_ref().unwrap();
+    let tol = e.number("sw_tolerance", 0.001).max(1e-6);
+    // A point gives the height: its distance off the surface (signed by the normal).
+    let height_of = |p: Vec3| -> Option<f64> {
+        let f = Srf::of(g)?;
+        let t = c.closest(p);
+        let q = c.eval(t);
+        let (a, b) = f.closest_st(q);
+        let n = f.normal_st(a, b);
+        Some(dot(sub(p, q), n))
+    };
+    let make = |h: f64| om9_addon_geom::fillet::fin(&c, g, h, tangent, tol).map(|f| f.geo());
+    let height = match &e.input {
+        Input::Text { text } => match text.trim().replace(',', ".").parse::<f64>() {
+            Ok(v) => Some(v),
+            Err(_) => return Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{text}: type a number")),
+        },
+        Input::Point { point } => height_of(*point),
+        Input::Enter => Some(height0),
+        _ => None,
+    };
+    if let Some(h) = height {
+        return match make(h) {
+            Ok(g) => Reply::finish(vec![g]).say(format!("{label}: height {} mm, within {} mm", fmt(h), fmt(tol))),
+            Err(why) => Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{label}: {why}")),
+        };
+    }
+    let mut r = Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options);
+    let preview_h = match &e.input {
+        Input::Hover { point } => height_of(*point),
+        _ => Some(height0),
+    };
+    if let Some(Ok(g)) = preview_h.map(make) {
+        r = r.preview(vec![g]);
+    }
+    r
 }
 
 fn extrude_normal(e: &Event) -> Reply {

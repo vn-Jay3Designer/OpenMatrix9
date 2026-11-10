@@ -344,12 +344,11 @@ id = "SurfaceExtrudeCurveNormalToSurface"
 label = "Extrude Curve Normal to Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["ExtrudeCrvNormal"]
-summary = "Dựng dải mặt từ đường cong trên mặt, theo pháp tuyến mặt."
-steps = ["Chọn đường cong và mặt.", "Chỉnh cao.", "Enter."]
-options = ["Flip."]
+summary = "Dựng dải mặt (fin) từ đường cong trên mặt theo pháp tuyến hoặc tiếp tuyến mặt như Rhino 5 Fin."
+steps = ["Chọn đường cong trên mặt.", "Chọn mặt.", "Gõ chiều cao hoặc bấm điểm (Enter: mặc định)."]
+options = ["Direction: Normal / Tangent."]
 
 [[commands]]
 id = "SurfaceUnrollDevelopableSrf"
