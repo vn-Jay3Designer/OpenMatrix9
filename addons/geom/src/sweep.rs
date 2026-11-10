@@ -855,6 +855,145 @@ pub fn sweep2(rail_a: &Nc, rail_b: &Nc, sections: &[Nc], o: &Options2) -> Result
     fit_stations(&placed, ua, ub, wrap, initial, p, &sec_knots, o.tol, o.max_stations)
 }
 
+
+/// Rhino 5 RailRevolve, exact: the profile turns about the axis and scales out from it so
+/// the point where it meets the rail follows the rail; along the axis it moves with the rail
+/// (or, with `scale_height`, scales from the axis origin). Around the axis this is the
+/// complex product rail × profile / (meeting point), and along it a sum (or product), so the
+/// surface is the tensor product of the two curves' poles: no sampling.
+pub fn rail_revolve(profile: &Nc, rail: &Nc, origin: Vec3, axis_end: Vec3, scale_height: bool) -> Result<Swept, String> {
+    let ax = sub(axis_end, origin);
+    if norm(ax) < 1e-9 {
+        return Err("the axis has no length".into());
+    }
+    let ax = unit(ax);
+    // Where the profile meets the rail (nearest points).
+    let mut best = (f64::MAX, profile.start(), 0.0);
+    for i in 0..=96 {
+        let p = profile.eval(i as f64 / 96.0);
+        let u = rail.closest(p);
+        let d = dist(rail.eval(u), p);
+        if d < best.0 {
+            best = (d, p, u);
+        }
+    }
+    let (_, meet, rail_u) = best;
+    let rel = sub(meet, origin);
+    let h0 = dot(rel, ax);
+    let r0 = sub(rel, scale(ax, h0));
+    let rho0 = norm(r0);
+    if rho0 < 1e-9 {
+        return Err("the profile meets the rail on the axis".into());
+    }
+    if scale_height && h0.abs() < 1e-9 {
+        return Err("ScaleHeight: the axis origin is level with the rail; pick it lower or higher".into());
+    }
+    let e1 = scale(r0, 1.0 / rho0);
+    let e2 = cross(ax, e1);
+    let coords = |p: Vec3| {
+        let d = sub(p, origin);
+        (dot(d, e1), dot(d, e2), dot(d, ax))
+    };
+    // Closed rail: its seam where the profile meets it (Rhino's advice, done for the user).
+    let rail = if rail.closed(1e-6) { rail.with_seam(rail_u) } else { rail.clone() };
+    let rows: Vec<Vec<H>> = rail
+        .points
+        .iter()
+        .map(|rh| {
+            let (ra, rb, rz) = coords(euclid(*rh));
+            profile
+                .points
+                .iter()
+                .map(|ph| {
+                    let (pa, pb, pz) = coords(euclid(*ph));
+                    let x = (ra * pa - rb * pb) / rho0;
+                    let y = (ra * pb + rb * pa) / rho0;
+                    let z = if scale_height { pz * rz / h0 } else { pz + rz - h0 };
+                    let q = add(origin, add(scale(e1, x), add(scale(e2, y), scale(ax, z))));
+                    let w = rh[3] * ph[3];
+                    [q[0] * w, q[1] * w, q[2] * w, w]
+                })
+                .collect()
+        })
+        .collect();
+    Ok(Swept {
+        stations: rows.len(),
+        rows,
+        degree: [rail.degree, profile.degree],
+        knots: [rail.knots.clone(), profile.knots.clone()],
+        deviation: 0.0,
+        exact: true,
+    })
+}
+
+
+/// Matrix Sweep Multi Rail: a cross section through three or more rails (picked in order
+/// round the section), matched along the rails by arc length. The surface runs through every
+/// rail at its stations and stays within `tol` of the construction between them.
+pub fn multi_rail(rails: &[Nc], closed_profile: bool, tol: f64) -> Result<Swept, String> {
+    if rails.len() < 3 {
+        return Err("select three or more rails".into());
+    }
+    let wrap = rails.iter().all(|r| r.closed(1e-6));
+    if !wrap && rails.iter().any(|r| r.closed(1e-6)) {
+        return Err("the rails must be all closed or all open".into());
+    }
+    let mut rs: Vec<Nc> = rails.to_vec();
+    let first = rs[0].clone();
+    for r in rs.iter_mut().skip(1) {
+        if wrap {
+            // Seam opposite the first rail's start, the same way round.
+            let mut c = r.with_seam(r.closest(first.start()));
+            let probe = first.eval(0.05);
+            if dist(c.eval(c.closest(probe)), c.eval(0.95)) < dist(c.eval(c.closest(probe)), c.eval(0.05)) {
+                c = c.reversed();
+                c = c.with_seam(c.closest(first.start()));
+            }
+            *r = c;
+        } else if dist(first.start(), r.start()) > dist(first.start(), r.end()) {
+            *r = r.reversed();
+        }
+    }
+    let arcs: Vec<Arc> = rs.iter().map(Arc::of).collect();
+    let points_at = |t: f64| -> Vec<Vec3> { rs.iter().zip(&arcs).map(|(r, a)| r.eval(a.u_of(t))).collect() };
+    // Section parameters: chord lengths, averaged along the rails, fixed for all stations
+    // (so every station's section has the same knots).
+    let n = rs.len();
+    let mut chords = vec![0.0; if closed_profile { n } else { n - 1 }];
+    for i in 0..=8 {
+        let p = points_at(i as f64 / 8.0);
+        for (k, c) in chords.iter_mut().enumerate() {
+            *c += dist(p[k], p[(k + 1) % n]).max(1e-9);
+        }
+    }
+    let total: f64 = chords.iter().sum();
+    let mut params = vec![0.0];
+    let mut run = 0.0;
+    for c in &chords[..n - 1] {
+        run += c / total;
+        params.push(run);
+    }
+    if closed_profile {
+        // Periodic: the parameters run on to where the first point comes round again.
+        params.push(1.0);
+    } else {
+        *params.last_mut().unwrap() = 1.0;
+    }
+    let section = |t: f64| -> Option<(Vec<H>, Vec<f64>)> {
+        let pcs: Vec<Nc> = points_at(t).into_iter().map(exact::point_curve).collect();
+        let (rows, knots) = exact::interpolate_across(&pcs, &params, 3, closed_profile)?;
+        Some((rows.iter().map(|r| r[0]).collect(), knots))
+    };
+    let (_, sec_knots) = section(0.0).ok_or("could not fit the cross section")?;
+    let p = sec_knots.iter().take_while(|k| **k == sec_knots[0]).count() - 1;
+    let placed = |t: f64| section(t).map(|s| s.0).unwrap_or_default();
+    let mut initial = Vec::new();
+    for (r, a) in rs.iter().zip(&arcs) {
+        initial.extend(r.knots.iter().map(|k| a.s_of(*k)));
+    }
+    fit_stations(&placed, 0.0, 1.0, wrap, initial, p, &sec_knots, tol, 400)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1054,5 +1193,86 @@ mod tests {
                 assert!((e0[0].hypot(e0[1]) - 10.0).abs() < 0.002 && (e1[0].hypot(e1[1]) - 12.0).abs() < 0.002);
             }
         }
+    }
+
+    #[test]
+    fn rail_revolve_is_exact() {
+        // A quarter circle R10 (XZ plane) round a circular rail R10: a hemisphere.
+        let rail = circle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 10.0);
+        let prof = exact::arc([0.0; 3], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0], 10.0, std::f64::consts::FRAC_PI_2);
+        let s = rail_revolve(&prof, &rail, [0.0; 3], [0.0, 0.0, 1.0], false).unwrap();
+        for i in 0..=40 {
+            for j in 0..=20 {
+                let p = srf_eval(&s, i as f64 / 40.0, j as f64 / 20.0);
+                assert!((norm(p) - 10.0).abs() < 1e-9, "{p:?}");
+            }
+        }
+        // A wall round an ellipse rail (10 × 5): the profile's foot follows the rail exactly.
+        let ellipse = Nc {
+            degree: 2,
+            points: circle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 1.0)
+                .points
+                .iter()
+                .map(|h| [h[0] * 10.0, h[1] * 5.0, h[2], h[3]])
+                .collect(),
+            knots: circle([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 1.0).knots,
+        };
+        let wall = Nc::from_geo(&Geo::Line { start: [10.0, 0.0, 0.0], end: [10.0, 0.0, 3.0] }).unwrap();
+        let s = rail_revolve(&wall, &ellipse, [0.0; 3], [0.0, 0.0, 1.0], false).unwrap();
+        for i in 0..=40 {
+            for j in 0..=6 {
+                let p = srf_eval(&s, i as f64 / 40.0, j as f64 / 6.0);
+                let e = (p[0] / 10.0).powi(2) + (p[1] / 5.0).powi(2);
+                assert!((e - 1.0).abs() < 1e-9 && (p[2] - 3.0 * j as f64 / 6.0).abs() < 1e-9, "{p:?}");
+            }
+        }
+        // ScaleHeight: a rail that rises takes the profile's height with it, from the origin.
+        let tilted = Nc {
+            degree: 2,
+            points: ellipse.points.iter().map(|h| [h[0], h[1], (4.0 + 0.1 * h[0] / h[3]) * h[3], h[3]]).collect(),
+            knots: ellipse.knots.clone(),
+        };
+        let wall2 = Nc::from_geo(&Geo::Line { start: [10.0, 0.0, 5.0], end: [10.0, 0.0, 0.0] }).unwrap();
+        let s = rail_revolve(&wall2, &tilted, [0.0; 3], [0.0, 0.0, 1.0], true).unwrap();
+        for i in 0..=40 {
+            let top = srf_eval(&s, i as f64 / 40.0, 0.0);
+            let foot = srf_eval(&s, i as f64 / 40.0, 1.0);
+            assert!(dist(top, tilted.eval(tilted.closest(top))) < 1e-9, "the meeting point follows the rail");
+            assert!(foot[2].abs() < 1e-9, "the profile's foot at the origin's height stays there");
+        }
+    }
+
+    #[test]
+    fn multi_rail_runs_through_every_rail() {
+        // Four rails along a tube of radius 2 that widens to 3: the section is a circle
+        // through them; the surface must hold every rail.
+        let rails: Vec<Nc> = (0..4)
+            .map(|k| {
+                let a = k as f64 * std::f64::consts::FRAC_PI_2;
+                let (c, s_) = (a.cos(), a.sin());
+                let pts: Vec<Vec3> = (0..6).map(|i| {
+                    let z = i as f64 * 2.0;
+                    let r = 2.0 + z / 10.0;
+                    [r * c, r * s_, z]
+                }).collect();
+                Nc::from_geo(&crate::interpolate(&pts, 3, false).unwrap()).unwrap()
+            })
+            .collect();
+        let s = multi_rail(&rails, true, 0.001).unwrap();
+        assert!(s.deviation <= 0.001, "{}", s.deviation);
+        for r in &rails {
+            for i in 0..=20 {
+                let p = r.eval(i as f64 / 20.0);
+                let mut best = f64::MAX;
+                for a in 0..=200 {
+                    for b in 0..=64 {
+                        best = best.min(dist(p, srf_eval(&s, a as f64 / 200.0, b as f64 / 64.0)));
+                    }
+                }
+                assert!(best < 0.05, "{best}");
+            }
+        }
+        // The section closes on itself.
+        assert!(dist(srf_eval(&s, 0.5, 0.0), srf_eval(&s, 0.5, 1.0)) < 1e-9);
     }
 }

@@ -1044,3 +1044,28 @@ fn sweep2_follows_rhino5_prompts_and_runs_on_the_rails() {
     let r = run(SWEEP2, vec![ra(), rb(), arch()], json!({}), vec![Input::Enter]);
     assert!(r.done);
 }
+
+/// Rhino 5 RailRevolve: profile, rail, axis start, axis end (ScaleHeight); exact.
+#[test]
+fn rail_revolve_follows_rhino5_and_is_exact() {
+    let prof = || exact_sel("p", Geo::Arc { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 0.0, 1.0], radius: 10.0, angle: PI / 2.0 }, false);
+    let rail = || exact_circle("r", [0.0; 3], 10.0, [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]);
+    let r = feed(RAIL_REVOLVE, &Value::Null, Input::Start, vec![], json!({}));
+    assert_eq!(r.prompt, "Select profile curve");
+    assert!(r.options.iter().any(|o| o.name == "ScaleHeight"));
+    let r = feed(RAIL_REVOLVE, &r.state, Input::Selection, vec![prof()], json!({}));
+    assert_eq!(r.prompt, "Select rail curve");
+    let r = feed(RAIL_REVOLVE, &r.state, Input::Selection, vec![prof(), rail()], json!({}));
+    assert!(r.prompt.starts_with("Start of RailRevolve axis"), "{}", r.prompt);
+    let r = feed(RAIL_REVOLVE, &r.state, pt([0.0; 3]), vec![prof(), rail()], json!({}));
+    assert!(r.prompt.starts_with("End of RailRevolve axis"), "{}", r.prompt);
+    let r = feed(RAIL_REVOLVE, &r.state, pt([0.0, 0.0, 5.0]), vec![prof(), rail()], json!({}));
+    assert!(r.done, "{} {:?} {:?}", r.prompt, r.error, r.state);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=30 {
+        for j in 0..=10 {
+            let p = s.at_st(i as f64 / 30.0, j as f64 / 10.0);
+            assert!(((p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt() - 10.0).abs() < 1e-9, "hemisphere {p:?}");
+        }
+    }
+}

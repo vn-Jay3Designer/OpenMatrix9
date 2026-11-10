@@ -838,7 +838,6 @@ fn profile_sweep(e: &Event) -> Reply {
 }
 
 fn multi_rail(e: &Event) -> Reply {
-    let stations = e.number("sw_stations", 48.0).round().clamp(4.0, 400.0) as usize;
     let closed_profile = e.flag("smr_closed", true);
     built(
         e,
@@ -849,39 +848,15 @@ fn multi_rail(e: &Event) -> Reply {
             if cs.len() < 3 {
                 return Err("select three or more rails".into());
             }
-            let first = Path::new(&dense(cs[0]), cs[0].closed).ok_or("rail")?;
-            let paths: Vec<Path> = cs
-                .iter()
-                .map(|c| {
-                    let mut p = dense(c);
-                    if !c.closed
-                        && dist(first.at(0.0), p[0]) > dist(first.at(0.0), *p.last().unwrap())
-                    {
-                        p.reverse();
-                    }
-                    Path::new(&p, c.closed).unwrap()
-                })
-                .collect();
-            let closed = cs.iter().all(|c| c.closed);
-            let count = if closed { stations } else { stations + 1 };
-            let mut rows: Vec<Vec<Vec3>> = Vec::new();
-            for i in 0..count {
-                let t = i as f64 / stations as f64;
-                let pts: Vec<Vec3> = paths.iter().map(|p| p.at(t * p.length())).collect();
-                let g = interpolate(&pts, 3, closed_profile).ok_or("profile")?;
-                let mut row = nurbs::samples(&g, 32);
-                if closed_profile {
-                    row.pop();
-                    row.push(row[0]);
-                }
-                rows.push(row);
+            let rails: Vec<Nc> = cs.iter().filter_map(|c| nc_of(c)).collect();
+            if rails.len() != cs.len() {
+                return Err("a rail has no curve".into());
             }
-            if closed {
-                rows.push(rows[0].clone());
-            }
+            let tol = e.number("sw_tolerance", 0.001).max(1e-6);
+            let s = sweep::multi_rail(&rails, closed_profile, tol)?;
             Ok((
-                vec![surface(&rows)?],
-                format!("profile through {} rails", cs.len()),
+                vec![s.geo()],
+                format!("profile through {} rails, within {} mm", cs.len(), fmt(tol)),
             ))
         },
     )
@@ -1727,67 +1702,33 @@ fn flow_default(flow: &Flow, prompt: &str, fallback: f64) -> f64 {
         .unwrap_or(fallback)
 }
 
+fn curve_nc(c: &om9_addon_geom::pick::CurveRef) -> Option<Nc> {
+    if let Some(g) = &c.exact
+        && let Some(n) = Nc::from_geo(g)
+    {
+        return Some(n);
+    }
+    Nc::from_geo(&interpolate(&c.pts, 3, c.closed)?)
+}
+
+/// Rhino 5 RailRevolve: profile, rail, axis start, axis end; ScaleHeight. Exact.
 fn rail_revolve(e: &Event) -> Reply {
     let flow = Flow::new("Rail Revolve")
-        .point("Start of the axis")
-        .point("End of the axis");
+        .curve("Select profile curve")
+        .curve("Select rail curve")
+        .point("Start of RailRevolve axis")
+        .point("End of RailRevolve axis")
+        .toggle("ScaleHeight", e.flag("rr_scale_height", false));
     let make = |c: &Collected, end: Option<Vec3>| -> Result<Geo, String> {
+        let (Some((prof, _)), Some((rail, _))) = (c.curve(0), c.curve(1)) else {
+            return Err("select the profile, then the rail".into());
+        };
         let (Some(o), Some(b)) = (c.p(0), c.p(1).or(end)) else {
             return Err("pick the axis".into());
         };
-        let cs = curves(e);
-        if cs.len() != 2 {
-            return Err("select the profile, then the rail".into());
-        }
-        let ax = unit(sub(b, o));
-        let radial = |p: Vec3| {
-            let c = add(o, scale(ax, dot(sub(p, o), ax)));
-            sub(p, c)
-        };
-        let (profile, rail) = (cs[0], cs[1]);
-        let prof = resample(&dense(profile), profile.closed, 24);
-        let rail_pts = dense(rail);
-        // The rail's radius around the axis by angle (from the profile's plane).
-        let r0 = unit(radial(
-            prof.iter()
-                .copied()
-                .max_by(|p, q| norm(radial(*p)).total_cmp(&norm(radial(*q))))
-                .unwrap(),
-        ));
-        let y0 = cross(ax, r0);
-        let ang = |p: Vec3| {
-            let r = radial(p);
-            dot(r, y0).atan2(dot(r, r0)).rem_euclid(TAU)
-        };
-        let rail_r = |th: f64| -> f64 {
-            let mut best = (f64::MAX, 0.0);
-            for &p in &rail_pts {
-                let d = (ang(p) - th).abs();
-                let d = d.min(TAU - d);
-                if d < best.0 {
-                    best = (d, norm(radial(p)));
-                }
-            }
-            best.1
-        };
-        let base = rail_r(0.0).max(1e-9);
-        let k = 48;
-        let mut rows: Vec<Vec<Vec3>> = (0..k)
-            .map(|i| {
-                let th = TAU * i as f64 / k as f64;
-                let s = rail_r(th) / base;
-                prof.iter()
-                    .map(|&p| {
-                        let c = add(o, scale(ax, dot(sub(p, o), ax)));
-                        let r = sub(p, c);
-                        let y = cross(ax, r);
-                        add(c, scale(add(scale(r, th.cos()), scale(y, th.sin())), s))
-                    })
-                    .collect()
-            })
-            .collect();
-        rows.push(rows[0].clone());
-        surface(&closed_rows(rows, profile.closed))
+        let prof = curve_nc(prof).ok_or("the profile has no curve")?;
+        let rail = curve_nc(rail).ok_or("the rail has no curve")?;
+        Ok(sweep::rail_revolve(&prof, &rail, o, b, c.yes(&flow, "ScaleHeight"))?.geo())
     };
     flow.step(
         e,
@@ -1795,7 +1736,7 @@ fn rail_revolve(e: &Event) -> Reply {
             geo: make(c, h).into_iter().collect(),
             ..Default::default()
         },
-        &|c| Ok(Reply::finish(vec![make(c, None)?]).say("Rail Revolve: done")),
+        &|c| Ok(Reply::finish(vec![make(c, None)?]).say("Rail Revolve: exact")),
     )
 }
 

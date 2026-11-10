@@ -877,8 +877,9 @@ label = "Rail Revolve"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["RailRevolve"]
-summary = "Xoay profile quanh trục, bán kính theo đường ray."
-steps = ["Chọn profile rồi ray.", "Bấm hai điểm trục."]
+summary = "Xoay profile quanh trục, chân profile chạy theo đường ray (Rhino 5); mặt chính xác."
+steps = ["Chọn đường profile.", "Chọn đường ray.", "Điểm đầu trục.", "Điểm cuối trục."]
+options = ["ScaleHeight: co giãn profile theo chiều trục từ gốc trục (ray không phẳng)."]
 
 [[commands]]
 id = "BuilderFourProfileSweep"
@@ -1118,16 +1119,6 @@ summary = "Làm lại mặt ít điểm nhất trong dung sai."
 steps = ["Chọn mặt.", "Chỉnh dung sai.", "Enter."]
 
 [[settings]]
-key = "sw_stations"
-type = "int"
-option = "Stations"
-label = "Số trạm dọc ray"
-default = 48
-min = 4
-max = 400
-commands = ["SurfaceSweepSweepMultiRail"]
-
-[[settings]]
 key = "sw_tolerance"
 type = "length"
 option = "SweepTolerance"
@@ -1136,7 +1127,7 @@ default = 0.001
 min = 0.00001
 max = 1.0
 step = 0.001
-commands = ["SurfaceSweepSweep1Rail", "SurfaceSweepSweep2Rails", "SurfaceSweepProfileSweep", "BuilderFourProfileSweep"]
+commands = ["SurfaceSweepSweep1Rail", "SurfaceSweepSweep2Rails", "SurfaceSweepProfileSweep", "BuilderFourProfileSweep", "SurfaceSweepSweepMultiRail"]
 
 [[settings]]
 key = "sw2_closed"
@@ -1175,6 +1166,14 @@ default = 0.01
 min = 0.0001
 max = 10.0
 commands = ["SurfaceSweepSweep2Rails"]
+
+[[settings]]
+key = "rr_scale_height"
+type = "bool"
+option = "ScaleHeight"
+label = "Co giãn chiều cao (Rail Revolve)"
+default = false
+commands = ["SurfaceRailRevolve"]
 
 [[settings]]
 key = "sw1_style"
