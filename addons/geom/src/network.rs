@@ -167,17 +167,17 @@ fn transpose(rows: &[Vec<H>]) -> Vec<Vec<H>> {
 
 /// A surface: rows along u, each row a curve along v.
 #[derive(Clone)]
-struct Srf {
-    rows: Vec<Vec<H>>,
-    degree: [usize; 2],
-    knots: [Vec<f64>; 2],
+pub(crate) struct Srf {
+    pub(crate) rows: Vec<Vec<H>>,
+    pub(crate) degree: [usize; 2],
+    pub(crate) knots: [Vec<f64>; 2],
 }
 
 impl Srf {
-    fn row(&self, i: usize) -> Nc {
+    pub(crate) fn row(&self, i: usize) -> Nc {
         Nc { degree: self.degree[1], points: self.rows[i].clone(), knots: self.knots[1].clone() }
     }
-    fn flipped(&self) -> Srf {
+    pub(crate) fn flipped(&self) -> Srf {
         Srf {
             rows: transpose(&self.rows),
             degree: [self.degree[1], self.degree[0]],
@@ -187,7 +187,7 @@ impl Srf {
 }
 
 /// Bring every surface to the same degree and knots along v (rows), shapes unchanged.
-fn conform_v(srfs: &mut [Srf]) {
+pub(crate) fn conform_v(srfs: &mut [Srf]) {
     let reps: Vec<Nc> = srfs.iter().map(|s| s.row(0)).collect();
     for s in srfs.iter_mut() {
         let mut out = Vec::with_capacity(s.rows.len());

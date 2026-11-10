@@ -28,6 +28,7 @@ pub mod shapes;
 pub mod subd;
 pub mod extend;
 pub mod fillet;
+pub mod merge;
 pub mod network;
 pub mod offset;
 pub mod patch;

@@ -284,8 +284,9 @@ label = "Merge Surfaces"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["MergeSrf"]
-summary = "Gộp hai mặt chung mép thành một mặt."
-steps = ["Chọn hai mặt.", "Enter."]
+summary = "Gộp hai mặt chung một cạnh thành một mặt như Rhino 5 MergeSrf (Smooth=No: chính xác)."
+steps = ["Chọn mặt thứ nhất.", "Chọn mặt thứ hai: gộp ngay."]
+options = ["Smooth: nối mượt (đổi hình gần đường nối).", "Tolerance: hai cạnh phải trùng trong dung sai này.", "RoundnessFactor: 0 sắc … 1 mượt."]
 
 [[commands]]
 id = "SurfaceSurfaceEditToolsMatch"
@@ -617,6 +618,34 @@ default = 1.0
 min = 0.0001
 max = 1000.0
 commands = ["SurfaceExtendSurface"]
+
+[[settings]]
+key = "ms_smooth"
+type = "bool"
+option = "Smooth"
+label = "Gộp mượt (Merge)"
+default = true
+commands = ["SurfaceSurfaceEditToolsMerge"]
+
+[[settings]]
+key = "ms_tolerance"
+type = "length"
+option = "Tolerance"
+label = "Dung sai gộp mặt (mm)"
+default = 0.001
+min = 0.00001
+max = 1.0
+commands = ["SurfaceSurfaceEditToolsMerge"]
+
+[[settings]]
+key = "ms_roundness"
+type = "float"
+option = "RoundnessFactor"
+label = "Độ tròn khi gộp (0–1)"
+default = 1.0
+min = 0.0
+max = 1.0
+commands = ["SurfaceSurfaceEditToolsMerge"]
 
 [[settings]]
 key = "sw1_style"

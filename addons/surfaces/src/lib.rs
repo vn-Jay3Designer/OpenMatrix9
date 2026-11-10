@@ -2465,73 +2465,94 @@ fn tween(e: &Event) -> Reply {
     })
 }
 
+/// MergeSrf command state: the options typed on the command line.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct MergeState {
+    smooth: Option<bool>,
+    tolerance: Option<f64>,
+    roundness: Option<f64>,
+    /// Waiting for a number: "Tolerance" or "RoundnessFactor".
+    want: Option<String>,
+}
+
+/// Rhino 5 MergeSrf: Select a pair of surfaces to merge (Smooth Tolerance RoundnessFactor);
+/// the second pick merges. Smooth=No is exact.
 fn merge(e: &Event) -> Reply {
-    replaced(
-        e,
-        "Merge Surfaces",
-        "select two surfaces sharing an edge, Enter",
-        || {
-            let ss = nurbs_surfaces(e);
-            if ss.len() != 2 {
-                return Err("select two NURBS surfaces".into());
+    let label = "Merge Surfaces";
+    let mut st: MergeState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = MergeState::default();
+    }
+    let save = |st: &MergeState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let mut error = None;
+    match &e.input {
+        Input::Option { name, value } => {
+            let parsed = value.as_deref().and_then(|v| v.trim().replace(',', ".").parse::<f64>().ok());
+            if name.eq_ignore_ascii_case("Smooth") {
+                let now = st.smooth.unwrap_or_else(|| e.flag("ms_smooth", true));
+                st.smooth = Some(match value.as_deref() {
+                    Some(v) => v.eq_ignore_ascii_case("yes"),
+                    None => !now,
+                });
+            } else if name.eq_ignore_ascii_case("Tolerance") || name.eq_ignore_ascii_case("RoundnessFactor") {
+                match parsed {
+                    Some(v) if name.eq_ignore_ascii_case("Tolerance") => st.tolerance = Some(v),
+                    Some(v) => st.roundness = Some(v),
+                    None => st.want = Some(name.clone()),
+                }
             }
-            let (a, b) = (&ss[0].1, &ss[1].1);
-            // Orient both so a's s = 1 edge meets b's s = 0 edge.
-            let n = 24;
-            let orient = |s: &Srf, other: &Srf| -> Vec<Vec<Vec3>> {
-                let (dir, at) = nearest_edge(s, other.at_st(0.5, 0.5));
-                let g = grid(s, n, n);
-                let mut rows: Vec<Vec<Vec3>> = if dir == 0 {
-                    g
+        }
+        Input::Text { text } if st.want.is_some() => match text.trim().replace(',', ".").parse::<f64>() {
+            Ok(v) => {
+                if st.want.as_deref().is_some_and(|w| w.eq_ignore_ascii_case("Tolerance")) {
+                    st.tolerance = Some(v);
                 } else {
-                    (0..n).map(|j| g.iter().map(|r| r[j]).collect()).collect()
-                };
-                if at < 0.5 {
-                    rows.reverse();
+                    st.roundness = Some(v);
                 }
-                rows
-            };
-            let ra = orient(a, b);
-            let mut rb = orient(b, a);
-            rb.reverse();
-            // Match the shared edge's direction.
-            if dist(ra[n - 1][0], rb[0][0]) > dist(ra[n - 1][0], rb[0][n - 1]) {
-                for r in &mut rb {
-                    r.reverse();
-                }
+                st.want = None;
             }
-            if dist(ra[n - 1][0], rb[0][0]) > 0.01 * dist(ra[0][0], ra[n - 1][n - 1]).max(1.0) {
-                return Err("the surfaces do not share an edge".into());
-            }
-            let mut rows = ra;
-            rows.extend(rb.into_iter().skip(1));
-            let g = surface(&rows)?;
-            let mut r_items = vec![(ss[0].0.id.clone(), g)];
-            let _ = &mut r_items;
-            Ok((r_items, Vec::new(), "one surface".into()))
+            Err(_) => error = Some(format!("{text}: type a number")),
         },
-    )
-    .with_delete(
-        |r, e| {
-            if r.done {
-                r.delete = nurbs_surfaces(e)
-                    .get(1)
-                    .map(|s| vec![s.0.id.clone()])
-                    .unwrap_or_default()
-            }
-        },
-        e,
-    )
-}
-
-trait AfterFinish {
-    fn with_delete(self, f: impl FnOnce(&mut Reply, &Event), e: &Event) -> Self;
-}
-
-impl AfterFinish for Reply {
-    fn with_delete(mut self, f: impl FnOnce(&mut Reply, &Event), e: &Event) -> Self {
-        f(&mut self, e);
-        self
+        Input::Enter if st.want.is_some() => st.want = None,
+        _ => {}
+    }
+    let smooth = st.smooth.unwrap_or_else(|| e.flag("ms_smooth", true));
+    let tol = st.tolerance.unwrap_or_else(|| e.number("ms_tolerance", 0.001));
+    let roundness = st.roundness.unwrap_or_else(|| e.number("ms_roundness", 1.0));
+    if let Some(w) = &st.want {
+        let now = if w.eq_ignore_ascii_case("Tolerance") { tol } else { roundness };
+        let r = Reply::ask(format!("{w} <{}>", fmt(now)), save(&st)).want(Want::Number);
+        return match error {
+            Some(why) => r.refuse(why),
+            None => r,
+        };
+    }
+    let options = vec![
+        OptionToken::toggle("Smooth", smooth),
+        OptionToken::number("Tolerance", Some(tol)),
+        OptionToken::number("RoundnessFactor", Some(roundness)),
+    ];
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    let ask = |st: &MergeState| Reply::ask("Select a pair of surfaces to merge", save(st)).want(Want::Objects).with_options(options.clone());
+    if surfaces.len() < 2 {
+        let r = ask(&st);
+        return match error {
+            Some(why) => r.refuse(why),
+            None => r,
+        };
+    }
+    if tol <= 0.0 {
+        return ask(&st).refuse(format!("{label}: the tolerance must be more than 0"));
+    }
+    let (a, b) = (surfaces[0], surfaces[1]);
+    match om9_addon_geom::merge::merge(a.exact.as_ref().unwrap(), b.exact.as_ref().unwrap(), smooth, roundness, tol) {
+        Ok(g) => {
+            let mut r = Reply::finish(Vec::new()).say(format!("{label}: {}", if smooth { "smooth" } else { "exact" }));
+            r.replace.push(Replacement { id: a.id.clone(), geo: g });
+            r.delete = vec![b.id.clone()];
+            r
+        }
+        Err(why) => ask(&st).refuse(format!("{label}: {why}")),
     }
 }
 
