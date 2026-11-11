@@ -228,11 +228,11 @@ id = "SurfaceVariableFilletBlendChamferVariableFilletSurfaces"
 label = "Variable Fillet"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["VariableFilletSrf"]
-summary = "Bo cung bán kính thay đổi dọc giao tuyến."
-steps = ["Chọn hai mặt.", "Chỉnh bán kính đầu, cuối.", "Enter."]
+summary = "Bo cung bán kính thay đổi dọc cạnh như Rhino 5 VariableFilletSrf (bi lăn), có tay nắm."
+steps = ["Chọn mặt thứ nhất (bấm phía giữ).", "Chọn mặt thứ hai (bấm phía giữ).", "Bấm gần tay nắm để gõ bán kính; AddHandle thêm tay nắm; Enter để tạo."]
+options = ["SetAll: một bán kính cho mọi tay nắm.", "AddHandle: thêm tay nắm tại điểm trên cạnh.", "Trim: cắt mặt gốc theo mép bo."]
 
 [[commands]]
 id = "SurfaceChamferSurfaces"
@@ -250,11 +250,11 @@ id = "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"
 label = "Variable Chamfer"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["VariableChamferSrf"]
-summary = "Vát với khoảng thay đổi dọc giao tuyến."
-steps = ["Chọn hai mặt.", "Chỉnh khoảng đầu, cuối.", "Enter."]
+summary = "Vát với khoảng thay đổi dọc cạnh như Rhino 5 VariableChamferSrf, có tay nắm."
+steps = ["Chọn mặt thứ nhất (bấm phía giữ).", "Chọn mặt thứ hai (bấm phía giữ).", "Bấm gần tay nắm để gõ khoảng vát (một số, hoặc hai số: thứ nhất,thứ hai); Enter để tạo."]
+options = ["SetAll: một khoảng cho mọi tay nắm.", "AddHandle: thêm tay nắm tại điểm trên cạnh.", "Trim: cắt mặt gốc theo mép vát."]
 
 [[commands]]
 id = "SurfaceOffsetSurface"
@@ -587,7 +587,7 @@ label = "Khoảng vát trên mặt thứ nhất (mm)"
 default = 1.0
 min = 0.0001
 max = 1000.0
-commands = ["SurfaceChamferSurfaces"]
+commands = ["SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
 
 [[settings]]
 key = "cs_second_distance"
@@ -673,7 +673,7 @@ type = "bool"
 option = "Trim"
 label = "Cắt mặt gốc (Fillet/Chamfer)"
 default = true
-commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
+commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
 
 [[settings]]
 key = "sr_degree_v"
@@ -712,6 +712,16 @@ option = "FixEdges"
 label = "Giữ cạnh (Soft Edit)"
 default = false
 commands = ["SurfaceSurfaceEditToolsSoftEdit"]
+
+[[settings]]
+key = "cs_end_distance"
+type = "length"
+option = "EndDistance"
+label = "Khoảng vát ở đầu cuối (Variable Chamfer, mm)"
+default = 1.0
+min = 0.0001
+max = 1000.0
+commands = ["SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
 
 [[settings]]
 key = "sw1_style"

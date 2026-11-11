@@ -31,6 +31,8 @@ struct Pair<'a> {
     side: [f64; 2],
     /// ∂u × ∂v against `normal`'s side, per surface (found once).
     orient: [f64; 2],
+    /// Variable radius: the radius at a contact point on the first surface.
+    vr: Option<&'a dyn Fn(Vec3) -> f64>,
 }
 
 /// A fast unit normal: central differences (one-sided at the edges), `orient` sets the side;
@@ -57,21 +59,31 @@ impl Pair<'_> {
     fn n2(&self, a: f64, b: f64) -> Vec3 {
         quick_normal(&self.s2, a, b, self.orient[1])
     }
-    fn off1(&self, a: f64, b: f64) -> Vec3 {
-        add(self.s1.at_st(a, b), scale(self.n1(a, b), self.side[0] * self.r))
+    /// The radius for a ball touching the first surface at (a, b).
+    fn radius(&self, a: f64, b: f64) -> f64 {
+        match self.vr {
+            Some(f) => f(self.s1.at_st(a, b)),
+            None => self.r,
+        }
     }
-    fn off2(&self, a: f64, b: f64) -> Vec3 {
-        add(self.s2.at_st(a, b), scale(self.n2(a, b), self.side[1] * self.r))
+    fn off1(&self, a: f64, b: f64, r: f64) -> Vec3 {
+        add(self.s1.at_st(a, b), scale(self.n1(a, b), self.side[0] * r))
+    }
+    fn off2(&self, a: f64, b: f64, r: f64) -> Vec3 {
+        add(self.s2.at_st(a, b), scale(self.n2(a, b), self.side[1] * r))
     }
     fn ball(&self, x: [f64; 4]) -> Ball {
-        let c1 = self.off1(x[0], x[1]);
-        let c2 = self.off2(x[2], x[3]);
+        let r = self.radius(x[0], x[1]);
+        let c1 = self.off1(x[0], x[1], r);
+        let c2 = self.off2(x[2], x[3], r);
         Ball { x, c: scale(add(c1, c2), 0.5), p1: self.s1.at_st(x[0], x[1]), p2: self.s2.at_st(x[2], x[3]) }
     }
     /// Residual: the two offset points apart, and (with a plane) the distance from it.
     fn residual(&self, x: [f64; 4], plane: Option<(Vec3, Vec3)>) -> [f64; 4] {
-        let d = sub(self.off1(x[0], x[1]), self.off2(x[2], x[3]));
-        let e = plane.map_or(0.0, |(o, n)| dot(sub(self.off1(x[0], x[1]), o), n));
+        let r = self.radius(x[0], x[1]);
+        let o1 = self.off1(x[0], x[1], r);
+        let d = sub(o1, self.off2(x[2], x[3], r));
+        let e = plane.map_or(0.0, |(o, n)| dot(sub(o1, o), n));
         [d[0], d[1], d[2], e]
     }
 
@@ -197,11 +209,11 @@ fn trace(pair: &Pair, size: f64) -> Result<(Vec<Ball>, Vec<f64>), String> {
     let k = 16;
     let g1p: Vec<(f64, f64, Vec3)> = (0..=k)
         .flat_map(|i| (0..=k).map(move |j| (i as f64 / k as f64, j as f64 / k as f64)))
-        .map(|(a, b)| (a, b, pair.off1(a, b)))
+        .map(|(a, b)| (a, b, pair.off1(a, b, pair.radius(a, b))))
         .collect();
     let g2p: Vec<(f64, f64, Vec3)> = (0..=k)
         .flat_map(|i| (0..=k).map(move |j| (i as f64 / k as f64, j as f64 / k as f64)))
-        .map(|(a, b)| (a, b, pair.off2(a, b)))
+        .map(|(a, b)| (a, b, pair.off2(a, b, pair.r)))
         .collect();
     let mut seeds: Vec<(f64, [f64; 4])> = Vec::new();
     for p in &g1p {
@@ -249,12 +261,12 @@ fn trace(pair: &Pair, size: f64) -> Result<(Vec<Ball>, Vec<f64>), String> {
             let Some(b) = next else {
                 // Ran off a surface: put the last ball on the edge it ran into (the parameter
                 // nearest its bound, held there).
-                let k = (0..4)
-                    .min_by(|a, b| {
-                        let gap = |i: usize| cur.x[i].min(1.0 - cur.x[i]);
-                        gap(*a).total_cmp(&gap(*b))
-                    })
-                    .unwrap();
+                // (Parameters already on an edge — the ball sliding along it — do not count.)
+                let gap = |i: usize| {
+                    let g = cur.x[i].min(1.0 - cur.x[i]);
+                    if g <= 1e-9 { f64::MAX } else { g }
+                };
+                let k = (0..4).min_by(|a, b| gap(*a).total_cmp(&gap(*b))).unwrap();
                 let mut x = cur.x;
                 x[k] = if x[k] < 0.5 { 0.0 } else { 1.0 };
                 if let Some(x) = self_solve_edge(pair, x, k) {
@@ -270,7 +282,12 @@ fn trace(pair: &Pair, size: f64) -> Result<(Vec<Ball>, Vec<f64>), String> {
                 break;
             };
             // Stop where a parameter reached a surface edge.
-            let at_edge = b.x.iter().any(|v| *v <= 1e-9 || *v >= 1.0 - 1e-9);
+            // Stop where a parameter newly reached a surface edge (a ball sliding along an
+            // edge — surfaces meeting at their edges — goes on).
+            let at_edge = (0..4).any(|k| {
+                let hit = |v: f64| v <= 1e-9 || v >= 1.0 - 1e-9;
+                hit(b.x[k]) && !hit(cur.x[k])
+            });
             prev_t = t;
             if dir > 0.0 {
                 forward.push(b);
@@ -325,7 +342,7 @@ pub fn fillet(g1: &Geo, g2: &Geo, r: f64, keep1: Vec3, keep2: Vec3, tol: f64) ->
         if dot(sub(toward, s.at_st(a, b)), n) >= 0.0 { 1.0 } else { -1.0 }
     };
     let orient = [orientation(&s1), orientation(&s2)];
-    let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r, orient };
+    let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r, orient, vr: None };
     let size = r;
     let (balls, s) = trace(&pair, size)?;
     // The exact section anywhere: from the nearest traced ball, Newton on the plane through
@@ -409,7 +426,7 @@ pub fn chamfer(g1: &Geo, g2: &Geo, d1: f64, d2: f64, keep1: Vec3, keep2: Vec3, t
     let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
     let orient = [orientation(&s1), orientation(&s2)];
     let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0))).max(d1).max(d2);
-    let pair = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient };
+    let pair = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
     let (balls, s) = trace(&pair, size)?;
     let placed = |t: f64| -> Vec<H> {
         let b = ball_at(&pair, &balls, &s, t);
@@ -422,6 +439,132 @@ pub fn chamfer(g1: &Geo, g2: &Geo, d1: f64, d2: f64, keep1: Vec3, keep2: Vec3, t
         }
     };
     // Every traced place must have both contacts (else the distance runs off a surface).
+    for t in &s {
+        let row = placed(*t);
+        if dist(crate::exact::euclid(row[0]), crate::exact::euclid(row[1])) < 1e-12 {
+            return Err("a chamfer distance runs off a surface".into());
+        }
+    }
+    fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)
+}
+
+
+/// Places along the intersection of two surfaces: arc-length fraction of the point on it
+/// nearest `p`.
+struct Along {
+    pts: Vec<Vec3>,
+    s: Vec<f64>,
+}
+
+impl Along {
+    fn of(balls: &[Ball], s: &[f64]) -> Along {
+        Along { pts: balls.iter().map(|b| b.c).collect(), s: s.to_vec() }
+    }
+    fn place(&self, p: Vec3) -> f64 {
+        let mut best = (f64::MAX, 0.0);
+        for i in 0..self.pts.len().saturating_sub(1) {
+            let (a, b) = (self.pts[i], self.pts[i + 1]);
+            let ab = sub(b, a);
+            let l2 = dot(ab, ab).max(1e-300);
+            let f = (dot(sub(p, a), ab) / l2).clamp(0.0, 1.0);
+            let d = dist(p, add(a, scale(ab, f)));
+            if d < best.0 {
+                best = (d, self.s[i] + (self.s[i + 1] - self.s[i]) * f);
+            }
+        }
+        best.1
+    }
+}
+
+/// A smooth profile through (place, value) handles: flat at each handle, smoothstep between
+/// (Rhino's handles: the value changes smoothly from one to the next).
+fn profile(handles: &[(f64, f64)], s: f64) -> f64 {
+    let mut h: Vec<(f64, f64)> = handles.to_vec();
+    h.sort_by(|a, b| a.0.total_cmp(&b.0));
+    if s <= h[0].0 {
+        return h[0].1;
+    }
+    for w in h.windows(2) {
+        if s <= w[1].0 {
+            let t = ((s - w[0].0) / (w[1].0 - w[0].0).max(1e-300)).clamp(0.0, 1.0);
+            let t = t * t * (3.0 - 2.0 * t);
+            return w[0].1 + (w[1].1 - w[0].1) * t;
+        }
+    }
+    h[h.len() - 1].1
+}
+
+/// Rhino 5 VariableFilletSrf (RailType=RollingBall): the radius goes smoothly from handle to
+/// handle along the edge. `handles`: (place 0..1 along the intersection, radius); `at`
+/// turns a point near the edge into its place (for handles picked on the model).
+pub fn variable_fillet(g1: &Geo, g2: &Geo, handles: &[(f64, f64)], keep1: Vec3, keep2: Vec3, tol: f64) -> Result<Swept, String> {
+    if handles.is_empty() || handles.iter().any(|h| h.1 <= 0.0) {
+        return Err("the radius must be more than 0".into());
+    }
+    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0)));
+    // The intersection first: places along the edge.
+    let orient = [orientation(&s1), orientation(&s2)];
+    let along = {
+        let s1 = Srf::of(g1).unwrap();
+        let s2 = Srf::of(g2).unwrap();
+        let pair0 = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
+        let (balls, s) = trace(&pair0, size)?;
+        Along::of(&balls, &s)
+    };
+    let radius = |p: Vec3| profile(handles, along.place(p));
+    let side_of = |s: &Srf, toward: Vec3| -> f64 {
+        let (a, b) = s.closest_st(toward);
+        let n = normal(s, a, b);
+        if dot(sub(toward, s.at_st(a, b)), n) >= 0.0 { 1.0 } else { -1.0 }
+    };
+    let rmax = handles.iter().map(|h| h.1).fold(0.0, f64::max);
+    let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r: rmax, orient, vr: Some(&radius) };
+    let (balls, s) = trace(&pair, rmax)?;
+    let placed = |t: f64| -> Vec<H> {
+        let ball = ball_at(&pair, &balls, &s, t);
+        arc(ball.c, ball.p1, ball.p2)
+    };
+    fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 2, &[0.0, 0.0, 0.0, 1.0, 1.0, 1.0], tol, 600)
+}
+
+/// The place (0..1) along the intersection of two surfaces nearest `p` (for handles).
+pub fn place_on_intersection(g1: &Geo, g2: &Geo, p: Vec3) -> Result<f64, String> {
+    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0)));
+    let orient = [orientation(&s1), orientation(&s2)];
+    let pair0 = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
+    let (balls, s) = trace(&pair0, size)?;
+    Ok(Along::of(&balls, &s).place(p))
+}
+
+/// Rhino 5 VariableChamferSrf: distances on the two surfaces going smoothly from handle to
+/// handle (place, first distance, second distance).
+pub fn variable_chamfer(g1: &Geo, g2: &Geo, handles: &[(f64, f64, f64)], keep1: Vec3, keep2: Vec3, tol: f64) -> Result<Swept, String> {
+    if handles.is_empty() || handles.iter().any(|h| h.1 <= 0.0 || h.2 <= 0.0) {
+        return Err("the distances must be more than 0".into());
+    }
+    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let orient = [orientation(&s1), orientation(&s2)];
+    let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0)));
+    let pair = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
+    let (balls, s) = trace(&pair, size)?;
+    let h1: Vec<(f64, f64)> = handles.iter().map(|h| (h.0, h.1)).collect();
+    let h2: Vec<(f64, f64)> = handles.iter().map(|h| (h.0, h.2)).collect();
+    let placed = |t: f64| -> Vec<H> {
+        let b = ball_at(&pair, &balls, &s, t);
+        let tan = pair.tangent(&b);
+        let (d1, d2) = (profile(&h1, t), profile(&h2, t));
+        let p1 = contact(&pair.s1, (b.x[0], b.x[1]), b.c, tan, pair.n1(b.x[0], b.x[1]), d1, keep1);
+        let p2 = contact(&pair.s2, (b.x[2], b.x[3]), b.c, tan, pair.n2(b.x[2], b.x[3]), d2, keep2);
+        match (p1, p2) {
+            (Some(p), Some(q)) => vec![[p[0], p[1], p[2], 1.0], [q[0], q[1], q[2], 1.0]],
+            _ => vec![[b.c[0], b.c[1], b.c[2], 1.0]; 2],
+        }
+    };
     for t in &s {
         let row = placed(*t);
         if dist(crate::exact::euclid(row[0]), crate::exact::euclid(row[1])) < 1e-12 {
@@ -502,12 +645,42 @@ mod tests {
         let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 8.0, 0.0]);
         let wall = plane([0.0, 0.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 0.0]);
         let c = chamfer(&floor, &wall, 1.0, 2.0, [5.0, 4.0, 0.0], [0.0, 4.0, 3.0], 0.001).unwrap();
+        // The whole edge (the planes meet along their own edges).
+        assert!((eval(&c, 0.0, 0.0)[1] - eval(&c, 1.0, 0.0)[1]).abs() > 7.999, "full length {:?} {:?}", eval(&c, 0.0, 0.0), eval(&c, 1.0, 0.0));
         for i in 0..=10 {
             let (a, b) = (eval(&c, i as f64 / 10.0, 0.0), eval(&c, i as f64 / 10.0, 1.0));
             assert!(a[2].abs() < 1e-9 && (a[0] - 1.0).abs() < 1e-9, "on the floor 1 from the corner: {a:?}");
             assert!(b[0].abs() < 1e-9 && (b[2] - 2.0).abs() < 1e-9, "on the wall 2 up: {b:?}");
         }
     }
+    #[test]
+    fn variable_fillet_and_chamfer_follow_their_handles() {
+        let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 8.0, 0.0]);
+        let wall = plane([0.0, 0.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 0.0]);
+        // Radius 1 at y = 0 to 2 at y = 8 (handles at the ends of the edge).
+        let s0 = place_on_intersection(&floor, &wall, [0.0, 0.0, 0.0]).unwrap();
+        let s8 = place_on_intersection(&floor, &wall, [0.0, 8.0, 0.0]).unwrap();
+        assert!((s0 - s8).abs() > 0.999, "the whole edge: {s0} {s8}");
+        let t0 = std::time::Instant::now();
+        let f = variable_fillet(&floor, &wall, &[(s0, 1.0), (s8, 2.0)], [5.0, 4.0, 0.0], [0.0, 4.0, 3.0], 0.001).unwrap();
+        eprintln!("variable fillet: {:?}, {} stations", t0.elapsed(), f.stations);
+        for i in 0..=20 {
+            let (a, b) = (eval(&f, i as f64 / 20.0, 0.0), eval(&f, i as f64 / 20.0, 1.0));
+            // On the floor at x = r(y), on the wall at z = r(y): equal (a ball touching both).
+            let y = a[1];
+            let t = (y / 8.0).clamp(0.0, 1.0);
+            let want = 1.0 + (t * t * (3.0 - 2.0 * t));
+            assert!(a[2].abs() < 1e-9 && (a[0] - want).abs() < 2e-3, "floor contact {a:?} want x {want}");
+            assert!(b[0].abs() < 1e-9 && (b[2] - a[0]).abs() < 2e-3, "wall contact {b:?}");
+        }
+        let c = variable_chamfer(&floor, &wall, &[(s0, 1.0, 1.0), (s8, 2.0, 3.0)], [5.0, 4.0, 0.0], [0.0, 4.0, 3.0], 0.001).unwrap();
+        let (a, b) = (eval(&c, 1.0, 0.0), eval(&c, 1.0, 1.0));
+        let (a0, b0) = (eval(&c, 0.0, 0.0), eval(&c, 0.0, 1.0));
+        let ends = [(a, b), (a0, b0)];
+        assert!(ends.iter().any(|(p, q)| (p[0] - 2.0).abs() < 1e-6 && (q[2] - 3.0).abs() < 1e-6), "{ends:?}");
+        assert!(ends.iter().any(|(p, q)| (p[0] - 1.0).abs() < 1e-6 && (q[2] - 1.0).abs() < 1e-6), "{ends:?}");
+    }
+
 }
 
 /// Rhino 5 Fin: the curve (on `g`) extruded along the surface normal (or tangent to the

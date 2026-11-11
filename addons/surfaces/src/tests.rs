@@ -1410,3 +1410,58 @@ fn fin_follows_rhino5() {
     let zs: Vec<f64> = [s.at_st(0.5, 0.0), s.at_st(0.5, 1.0), s.at_st(0.0, 0.5), s.at_st(1.0, 0.5)].iter().map(|p| p[2].abs()).collect();
     assert!(zs.iter().any(|z| (z - 2.5).abs() < 1e-9) && zs.iter().any(|z| *z < 1e-9), "{zs:?}");
 }
+
+/// Rhino 5 VariableFilletSrf: handles at the ends (click near one, type its radius),
+/// AddHandle (a point on the edge, then its radius), preview, Enter.
+#[test]
+fn variable_fillet_follows_rhino5_handles() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        name: String::new(),
+        bbox: [[0.0; 3]; 2],
+        points: vec![],
+        closed: false,
+        gem: None,
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
+    let sel = || vec![floor.clone(), wall.clone()];
+    let set = json!({"fs_radius": 1.0, "fs_end_radius": 1.0, "fs_trim": false});
+    let r = feed(VAR_FILLET, &Value::Null, Input::Start, sel(), set.clone());
+    assert!(r.prompt.starts_with("Select handle to edit"), "{}", r.prompt);
+    assert!(!r.preview.is_empty(), "{:?}", r.error);
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 7.9, 0.0]), sel(), set.clone());
+    assert!(r.prompt.starts_with("Radius <1>"), "{}", r.prompt);
+    let r = feed(VAR_FILLET, &r.state, text("2"), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, opt("AddHandle", None), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 4.0, 0.0]), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, text("0.5"), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, Input::Enter, sel(), set);
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).unwrap();
+    // The floor contact (z = 0): x is the radius there.
+    let floor_x_at = |y: f64| -> f64 {
+        let mut best = (f64::MAX, 0.0);
+        for i in 0..=400 {
+            for v in [0.0, 1.0] {
+                let p = s.at_st(i as f64 / 400.0, v);
+                if p[2].abs() < 1e-6 && (p[1] - y).abs() < best.0 {
+                    best = ((p[1] - y).abs(), p[0]);
+                }
+            }
+        }
+        best.1
+    };
+    assert!((floor_x_at(0.0) - 1.0).abs() < 2e-3, "{}", floor_x_at(0.0));
+    assert!((floor_x_at(4.0) - 0.5).abs() < 2e-3, "{}", floor_x_at(4.0));
+    assert!((floor_x_at(8.0) - 2.0).abs() < 2e-3, "{}", floor_x_at(8.0));
+}

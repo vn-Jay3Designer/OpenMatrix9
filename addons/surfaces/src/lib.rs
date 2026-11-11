@@ -129,7 +129,7 @@ impl Interactive for Surfaces {
             RAIL_REVOLVE => rail_revolve(e),
             TWEEN => tween(e),
             FILLET | CHAMFER => fillet_srf(e),
-            VAR_FILLET | VAR_CHAMFER => fillet(e),
+            VAR_FILLET | VAR_CHAMFER => variable_fillet(e),
             OFFSET => offset_srf(e),
             VAR_OFFSET => offset(e),
             MERGE => merge(e),
@@ -2034,6 +2034,189 @@ fn pick_two_edges(e: &Event, edges: &mut Vec<(String, usize, bool)>, prompts: [&
         }
     }
     Ok(entering)
+}
+
+/// VariableFilletSrf / VariableChamferSrf command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct VarFilletState {
+    first: Option<(String, Vec3)>,
+    second: Option<(String, Vec3)>,
+    /// Handles: place along the edge (0..1), radius or first distance, second distance.
+    handles: Vec<(f64, f64, f64)>,
+    /// What the next input sets: "SetAll", "AddHandle", "AddValue", or "Edit".
+    mode: Option<String>,
+    /// The handle being edited.
+    editing: usize,
+    trim: Option<bool>,
+}
+
+/// Rhino 5 VariableFilletSrf / VariableChamferSrf: the two surfaces (clicks on the sides
+/// kept), then the handles — one at each end of the edge; click near one to type its
+/// value, AddHandle to add one at a point, SetAll for all — with a preview; Enter creates.
+fn variable_fillet(e: &Event) -> Reply {
+    use om9_addon_geom::fillet;
+    let chamfer = e.command == VAR_CHAMFER;
+    let label = if chamfer { "Variable Chamfer Surfaces" } else { "Variable Fillet Surfaces" };
+    let noun = if chamfer { "chamfer" } else { "fillet" };
+    let mut st: VarFilletState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = VarFilletState::default();
+    }
+    let save = |st: &VarFilletState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
+    // Meshes (no exact surface): the mesh fillet / chamfer with start and end values.
+    if surfaces.is_empty() && !meshes(e).is_empty() && st.first.is_none() {
+        return fillet(e);
+    }
+    let center = |s: &Selected| Srf::of(s.exact.as_ref().unwrap()).map_or(s.bbox[0], |f| f.at_st(0.5, 0.5));
+    let trim = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
+    // 1. The surfaces (preselected ones: their middles as the kept sides).
+    if st.second.is_none() {
+        let started = matches!(e.input, Input::Start);
+        for s in &surfaces {
+            let at = if started { center(s) } else { e.pick.unwrap_or_else(|| center(s)) };
+            if st.first.is_none() {
+                st.first = Some((s.id.clone(), at));
+            } else if st.first.as_ref().is_some_and(|f| f.0 != s.id) && st.second.is_none() {
+                st.second = Some((s.id.clone(), at));
+            }
+        }
+        if st.second.is_none() {
+            let prompt = if st.first.is_none() { format!("Select first surface to {noun}") } else { format!("Select second surface to {noun}") };
+            return Reply::ask(prompt, save(&st)).want(Want::Objects);
+        }
+    }
+    let find = |id: &str| surfaces.iter().find(|s| s.id == id).copied();
+    let ((ia, k1), (ib, k2)) = (st.first.clone().unwrap(), st.second.clone().unwrap());
+    let (Some(a), Some(b)) = (find(&ia), find(&ib)) else {
+        return Reply::ask(format!("Select first surface to {noun}"), save(&VarFilletState::default())).want(Want::Objects);
+    };
+    let (g1, g2) = (a.exact.as_ref().unwrap(), b.exact.as_ref().unwrap());
+    if st.handles.is_empty() {
+        let (r0, r1) = if chamfer {
+            (e.number("cs_distance", 1.0), e.number("cs_end_distance", e.number("cs_distance", 1.0)))
+        } else {
+            (e.number("fs_radius", 1.0), e.number("fs_end_radius", 2.0))
+        };
+        st.handles = vec![(0.0, r0, r0), (1.0, r1, r1)];
+    }
+    // 2. The handles.
+    let values = |t: &str| -> Option<(f64, f64)> {
+        let v: Vec<f64> = t.split([',', ' ', ';']).filter(|x| !x.is_empty()).filter_map(|x| x.parse::<f64>().ok()).collect();
+        match v.as_slice() {
+            [x] if *x > 0.0 => Some((*x, *x)),
+            [x, y] if *x > 0.0 && *y > 0.0 => Some((*x, *y)),
+            _ => None,
+        }
+    };
+    let mut error = None;
+    match &e.input {
+        Input::Option { name, value } if name.eq_ignore_ascii_case("Trim") => {
+            st.trim = Some(match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("yes"),
+                None => !trim,
+            });
+        }
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("SetAll") => st.mode = Some("SetAll".into()),
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("AddHandle") => st.mode = Some("AddHandle".into()),
+        Input::Point { point } => match fillet::place_on_intersection(g1, g2, *point) {
+            Ok(place) => {
+                if st.mode.as_deref() == Some("AddHandle") {
+                    let (v1, v2) = (fillet_profile(&st.handles, place, 1), fillet_profile(&st.handles, place, 2));
+                    st.handles.push((place, v1, v2));
+                    st.editing = st.handles.len() - 1;
+                } else {
+                    st.editing = (0..st.handles.len())
+                        .min_by(|x, y| (st.handles[*x].0 - place).abs().total_cmp(&(st.handles[*y].0 - place).abs()))
+                        .unwrap_or(0);
+                }
+                st.mode = Some("Edit".into());
+            }
+            Err(why) => error = Some(why),
+        },
+        Input::Text { text } if st.mode.is_some() => match values(text) {
+            Some((x, y)) => {
+                if st.mode.as_deref() == Some("SetAll") {
+                    st.handles.iter_mut().for_each(|h| (h.1, h.2) = (x, y));
+                } else {
+                    let i = st.editing.min(st.handles.len() - 1);
+                    let h = &mut st.handles[i];
+                    (h.1, h.2) = (x, y);
+                }
+                st.mode = None;
+            }
+            None => error = Some(format!("{text}: type a number more than 0{}", if chamfer { " (or two: first,second)" } else { "" })),
+        },
+        Input::Enter if st.mode.is_some() => st.mode = None,
+        _ => {}
+    }
+    let tol = e.number("sw_tolerance", 0.001).max(1e-6);
+    let make = || -> Result<om9_addon_geom::sweep::Swept, String> {
+        if chamfer {
+            fillet::variable_chamfer(g1, g2, &st.handles, k1, k2, tol)
+        } else {
+            let h: Vec<(f64, f64)> = st.handles.iter().map(|h| (h.0, h.1)).collect();
+            fillet::variable_fillet(g1, g2, &h, k1, k2, tol)
+        }
+    };
+    let show = |v: &(f64, f64, f64)| if chamfer { format!("{},{}", fmt(v.1), fmt(v.2)) } else { fmt(v.1) };
+    if matches!(e.input, Input::Enter) && st.mode.is_none() && error.is_none() && !matches!(e.input, Input::Start) {
+        return match make() {
+            Ok(f) => {
+                let mut r = Reply::finish(vec![f.geo()]).say(format!("{label}: {} handles", st.handles.len()));
+                if trim {
+                    let edge = |k: usize| Nc {
+                        degree: f.degree[0],
+                        points: f.rows.iter().map(|row| if k == 0 { row[0] } else { row[row.len() - 1] }).collect(),
+                        knots: f.knots[0].clone(),
+                    };
+                    let mut done = Vec::new();
+                    for (id, g, curve, keep) in [(&ia, g1, edge(0), k1), (&ib, g2, edge(1), k2)] {
+                        match om9_addon_geom::trimsides::trim_keeping(g, &curve, keep) {
+                            Ok(t) => done.push(Replacement { id: id.clone(), geo: t }),
+                            Err(why) => r = r.say(format!("{label}: not trimmed: {why}")),
+                        }
+                    }
+                    if done.len() == 2 {
+                        r.replace = done;
+                    }
+                }
+                r
+            }
+            Err(why) => Reply::ask("Select handle to edit. Press Enter when done", save(&st)).want(Want::Point).refuse(format!("{label}: {why}")),
+        };
+    }
+    let prompt = match st.mode.as_deref() {
+        Some("SetAll") => format!("{} for all handles", if chamfer { "Distances" } else { "Radius" }),
+        Some("AddHandle") => "Point on the edge for the new handle".to_owned(),
+        Some(_) => format!("{} <{}>", if chamfer { "Distances" } else { "Radius" }, show(&st.handles[st.editing.min(st.handles.len() - 1)])),
+        None => "Select handle to edit. Press Enter when done".to_owned(),
+    };
+    let want = if matches!(st.mode.as_deref(), Some("SetAll") | Some("Edit")) { Want::Number } else { Want::Point };
+    let mut r = Reply::ask(prompt, save(&st))
+        .want(want)
+        .with_options(vec![OptionToken::action("SetAll"), OptionToken::action("AddHandle"), OptionToken::toggle("Trim", trim)]);
+    match make() {
+        Ok(f) => r = r.preview(vec![f.geo()]),
+        Err(why) => error = error.or(Some(why)),
+    }
+    match error {
+        Some(why) => r.refuse(format!("{label}: {why}")),
+        None => r,
+    }
+}
+
+/// The value a new handle starts with: the current profile there.
+fn fillet_profile(handles: &[(f64, f64, f64)], place: f64, which: usize) -> f64 {
+    let mut h: Vec<(f64, f64)> = handles.iter().map(|x| (x.0, if which == 1 { x.1 } else { x.2 })).collect();
+    h.sort_by(|a, b| a.0.total_cmp(&b.0));
+    for w in h.windows(2) {
+        if place <= w[1].0 {
+            let t = ((place - w[0].0) / (w[1].0 - w[0].0).max(1e-300)).clamp(0.0, 1.0);
+            return w[0].1 + (w[1].1 - w[0].1) * t * t * (3.0 - 2.0 * t);
+        }
+    }
+    h.last().map_or(1.0, |x| x.1)
 }
 
 /// BlendSrf command state.
