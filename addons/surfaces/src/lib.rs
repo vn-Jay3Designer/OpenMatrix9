@@ -3230,7 +3230,7 @@ fn rebuild(e: &Event) -> Reply {
             .filter_map(|(s, f)| {
                 let g = surface_through(&grid(f, nu, nv), [deg.min(nu - 1), deg_v.min(nv - 1)])?;
                 if let Some(r) = Srf::of(&g) {
-                    worst = worst.max(deviation(f, &r));
+                    worst = worst.max(surface_gap(f, &r, 2 * nu.max(nv).clamp(8, 60)));
                 }
                 Some((s.id.clone(), g))
             })
@@ -3244,49 +3244,104 @@ fn rebuild(e: &Event) -> Reply {
     })
 }
 
-/// Largest distance between two surfaces sampled on the same grid.
-fn deviation(a: &Srf, b: &Srf) -> f64 {
+/// Largest distance from a surface `b` to a surface `a` it was fitted to, over a k × k grid
+/// of `b`: each sample projected on `a` (Gauss-Newton from the same parameters, since a fit
+/// keeps the parameters close; the two may differ in parameterisation, so the distance is to
+/// the surface, not to the point of the same parameters).
+fn surface_gap(a: &Srf, b: &Srf, k: usize) -> f64 {
     let mut m: f64 = 0.0;
-    for i in 0..=12 {
-        for j in 0..=12 {
-            let (s, t) = (i as f64 / 12.0, j as f64 / 12.0);
-            m = m.max(dist(a.at_st(s, t), b.at_st(s, t)));
+    let h = 1e-6;
+    for i in 0..=k {
+        for j in 0..=k {
+            let (s0, t0) = (i as f64 / k as f64, j as f64 / k as f64);
+            let p = b.at_st(s0, t0);
+            let (mut s, mut t) = (s0, t0);
+            let mut d = dist(a.at_st(s, t), p);
+            for _ in 0..8 {
+                let q = a.at_st(s, t);
+                let r = sub(p, q);
+                let ds = {
+                    let s2 = if s + h <= 1.0 { s + h } else { s - h };
+                    scale(sub(a.at_st(s2, t), q), 1.0 / (s2 - s))
+                };
+                let dt = {
+                    let t2 = if t + h <= 1.0 { t + h } else { t - h };
+                    scale(sub(a.at_st(s, t2), q), 1.0 / (t2 - t))
+                };
+                let (aa, ab, bb) = (dot(ds, ds), dot(ds, dt), dot(dt, dt));
+                let det = aa * bb - ab * ab;
+                if det.abs() < 1e-300 {
+                    break;
+                }
+                let (ra, rb) = (dot(r, ds), dot(r, dt));
+                let (s2, t2) = (
+                    (s + (bb * ra - ab * rb) / det).clamp(0.0, 1.0),
+                    (t + (aa * rb - ab * ra) / det).clamp(0.0, 1.0),
+                );
+                let d2 = dist(a.at_st(s2, t2), p);
+                if d2 >= d {
+                    break;
+                }
+                (s, t, d) = (s2, t2, d2);
+            }
+            m = m.max(d);
         }
     }
     m
 }
 
+/// Rhino 5 FitSrf: Select surfaces, then the fitting tolerance (options UDegree, VDegree,
+/// DeleteInput). The fewest control points (interpolating a uniform grid, the count growing
+/// by about half each try) whose surface stays within the tolerance of the input, checked
+/// between the fitted points where the error peaks.
 fn refit(e: &Event) -> Reply {
     let tol = e.number("srf_tolerance", 0.01).max(1e-6);
+    let deg = [
+        (e.number("rf_degree_u", 3.0).round() as usize).clamp(1, 7),
+        (e.number("rf_degree_v", 3.0).round() as usize).clamp(1, 7),
+    ];
+    let delete_input = e.flag("rf_delete_input", true);
     replaced(
         e,
         "Refit to Tolerance",
         "select NURBS surfaces, Enter",
         || {
             let mut items = Vec::new();
+            let mut extra = Vec::new();
+            let mut worst: f64 = 0.0;
             for (s, f) in nurbs_surfaces(e) {
-                let mut n = 4;
+                let mut n = deg[0].max(deg[1]) + 1;
                 let mut best = None;
-                while n <= 128 {
-                    if let Some(g) = surface_through(&grid(&f, n, n), [3, 3]) {
-                        let ok = Srf::of(&g).is_some_and(|x| deviation(&f, &x) <= tol);
-                        best = Some(g);
-                        if ok {
+                loop {
+                    if let Some(g) = surface_through(&grid(&f, n, n), deg) {
+                        let d = Srf::of(&g).map_or(f64::MAX, |x| surface_gap(&f, &x, (2 * (n - 1)).clamp(16, 160)));
+                        let ok = d <= tol;
+                        best = Some((g, d));
+                        if ok || n >= 160 {
                             break;
                         }
                     }
-                    n *= 2;
+                    if n >= 160 {
+                        break;
+                    }
+                    n = (n + n / 2).clamp(n + 1, 160);
                 }
-                if let Some(g) = best {
-                    items.push((s.id.clone(), g));
+                if let Some((g, d)) = best {
+                    worst = worst.max(d);
+                    if delete_input {
+                        items.push((s.id.clone(), g));
+                    } else {
+                        extra.push(g);
+                    }
                 }
             }
-            let k = items.len();
-            Ok((
-                items,
-                Vec::new(),
-                format!("{k} surfaces within {} mm", fmt(tol)),
-            ))
+            let k = items.len() + extra.len();
+            let what = if worst <= tol {
+                format!("{k} surfaces within {} mm (maximum deviation {} mm)", fmt(tol), fmt(worst))
+            } else {
+                format!("{k} surfaces, maximum deviation {} mm (more than {} mm)", fmt(worst), fmt(tol))
+            };
+            Ok((items, extra, what))
         },
     )
 }
@@ -3830,26 +3885,49 @@ fn soft_edit(e: &Event) -> Reply {
         },
     )
 }
+/// Rhino 5 CutPlane: Select objects for cut plane, Start of cut plane, End of cut plane. The
+/// plane stands square to the CPlane through the picked line and is made large enough to
+/// cut through every selected object (along the line and across the CPlane).
 fn cutting_plane(e: &Event) -> Reply {
     let flow = Flow::new("Cutting Plane")
-        .point("Start of the cut line")
-        .point("End of the cut line");
+        .select_prompt("Select objects for cut plane")
+        .point("Start of cut plane")
+        .point("End of cut plane");
     let make = |c: &Collected, end: Option<Vec3>| -> Option<Geo> {
         let (a, b) = (c.p(0)?, c.p(1).or(end)?);
         let n = e.plane.normal();
-        // Through the line, square to the CPlane, tall enough for the selection.
+        let flat = |p: Vec3| sub(p, scale(n, dot(p, n)));
+        let (fa, fb) = (flat(a), flat(b));
+        let along = sub(fb, fa);
+        let len = norm(along);
+        if len < 1e-9 {
+            return None;
+        }
+        let dir = scale(along, 1.0 / len);
+        // Extents of the selection's boxes (all 8 corners) across the CPlane and along the line.
         let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+        let (mut t0, mut t1) = (0.0f64, len);
         for s in &e.selection {
-            for p in [s.bbox[0], s.bbox[1]] {
-                lo = lo.min(dot(p, n));
-                hi = hi.max(dot(p, n));
+            let [p, q] = s.bbox;
+            for k in 0..8 {
+                let c = [
+                    if k & 1 == 0 { p[0] } else { q[0] },
+                    if k & 2 == 0 { p[1] } else { q[1] },
+                    if k & 4 == 0 { p[2] } else { q[2] },
+                ];
+                lo = lo.min(dot(c, n));
+                hi = hi.max(dot(c, n));
+                let t = dot(sub(flat(c), fa), dir);
+                t0 = t0.min(t);
+                t1 = t1.max(t);
             }
         }
         if lo > hi {
             (lo, hi) = (-10.0, 10.0);
         }
-        let margin = (hi - lo) * 0.1 + 1.0;
-        let up = |p: Vec3, h: f64| add(sub(p, scale(n, dot(p, n))), scale(n, h));
+        let margin = (hi - lo).max(t1 - t0) * 0.05 + 1.0;
+        let (a, b) = (add(fa, scale(dir, t0 - margin)), add(fa, scale(dir, t1 + margin)));
+        let up = |p: Vec3, h: f64| add(p, scale(n, h));
         surface_on_grid(
             &[
                 vec![up(a, lo - margin), up(a, hi + margin)],

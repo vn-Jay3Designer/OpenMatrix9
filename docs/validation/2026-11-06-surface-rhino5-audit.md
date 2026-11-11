@@ -40,9 +40,19 @@ exact / within 0.001 mm; **Perf** = measured.
 | ExtendSrf | edge, distance; Type Smooth/Line | **done**: Select edge of surface to extend (Type Smooth/Line), Extension factor; Smooth exact (the surface's own polynomial continued) | trimmed edges |
 | Fin (Extrude normal) | curve on surface, surface, height point(s); Direction Normal/Tangent | **done**: curve → surface → height (typed / point / Enter, preview follows the pointer), Direction; exact stations to 0.001 mm (3 ms) | second height (variable) |
 | Split (Isocurve), SrfSeam | surface, isocurve location (Direction U/V/Both); closed surface, new seam (Direction) | **done**: exact by knot insertion / seam move, the isocurve follows the pointer | Shrink |
-| Rebuild | point count, degree U/V, max deviation | **done**: U/V points, degree U and V, maximum deviation reported | Retrim |
+| Rebuild | point count, degree U/V, max deviation | **done**: U/V points, degree U and V, maximum deviation reported (distance to the original surface, not same-parameter) | Retrim |
 | MergeSrf | Select a pair of surfaces to merge (Smooth, Tolerance, RoundnessFactor) | **done**: second pick merges; exact with Smooth=No (compatible + p-fold seam knot); Smooth lines up the seam poles by the roundness | – |
-| TweenSurfaces, Variable Fillet/Blend/Chamfer/Offset, Drape, Heightfield, SplitIsocurve, ShrinkTrimmedSrf, Untrim, Smash, UnrollSrf, SoftEditSrf, SrfSeam, SetSurfaceTangent, FitSrf, Rebuild, CutPlane | read the Rhino 5 page when each is worked | implemented, settings-driven | flow and options per page |
+| TweenSurfaces | two surfaces, number of surfaces; MatchMethod, SampleNumber | **done**: corners matched, the two made compatible, poles interpolated (exact for compatible inputs) | MatchMethod Refit/Sample points |
+| VariableFilletSrf / VariableChamferSrf / VariableBlendSrf | two surfaces, then radius handles along the edge (AddHandle, set each value), Trim | **done**: handles at clicked places on the intersection, radius/distances per handle (smoothstep between), Bulge for the blend (quintic G2 sections), the picked sides kept | Rail type; Trim for the variable kinds |
+| VariableOffsetSrf | surface, then handles with distances; Tolerance, Corner | **done**: handles at clicked places with their distances (four corners: bilinear, more: inverse-distance), fitted to the tolerance | Corner, TaperedCorners |
+| ShrinkTrimmedSrf | surfaces | **done**: exact (full-multiplicity knots at the trimmed box, outer poles dropped; the surface unchanged) | – |
+| Untrim | edge of a trim; KeepTrimObjects, All | **done**: returns the exact underlying surface | a single trim loop (host trims) |
+| SoftEditSrf | surface point, distance, U/V reach; FixEdges, Copy | **done**: the surface refined where it is moved, poles moved by a smooth falloff in U/V | Copy |
+| SetSurfaceTangent | untrimmed edge, base point, second direction point | **done**: Rhino prompts; the edge row kept, the next row set along the direction (refined first) | – |
+| UnrollSrf | developable surfaces; Explode, Labels, KeepProperties | **done**: NURBS input unrolls to a flat **NURBS** surface (a half cylinder r 3 → 3π × length within 2e-4 mm); meshes unfold to a flat mesh | Labels; following curves (points/curves along) |
+| Smash, Drape, Heightfield | Smash: surface, flattened mesh; Drape: rectangle over the view, AutoSpacing/Spacing; Heightfield: image, sample points, height | implemented as sampling (by nature in Rhino too): Smash unfolds a fine mesh; Drape and Heightfield fit a grid | Drape from the depth buffer of the view (host) |
+| FitSrf | surfaces, tolerance (0 = document); DeleteInput, ReTrim, UDegree, VDegree | **done**: fewest uniform points whose surface stays within the tolerance — measured from the fit **to the surface** (projected), UDegree/VDegree, DeleteInput; half cylinder at 0.001 mm: 9 × 9 points, 2 ms | ReTrim (trim loops from the host) |
+| CutPlane | objects, start and end of the cut line; repeats | **done**: Select objects for cut plane → Start → End; square to the CPlane through the line, large enough to cut every selected object along the line and across | repeat for more planes; 3Point |
 
 ## Rounds
 
@@ -50,11 +60,14 @@ exact / within 0.001 mm; **Perf** = measured.
    PlanarSrf (exact trimmed faces through OCCT), Extrude flows and options.
 2. **Done 2026-11-10.** Sweep1, Sweep2, Profile/Multi sweep, RailRevolve, NetworkSrf, Patch —
    Rhino prompts, options, exact sections.
-3. **Major tools done 2026-11-10**: OffsetSrf, FilletSrf, ChamferSrf, ExtendSrf, MergeSrf,
-   BlendSrf, MatchSrf — prompts and options per page. Done since: Trim for Fillet/Chamfer, Split
-   at Isocurve, SrfSeam, Rebuild report, Fin. Left: Extend/Split for Fillet/Chamfer, the remaining edit tools (Tween, variable fillet/blend/chamfer/offset,
-   Drape, Heightfield, ShrinkTrimmedSrf, Untrim, Smash, UnrollSrf, SoftEditSrf,
-   SetSurfaceTangent, FitSrf, CutPlane).
+3. **Done 2026-11-11.** OffsetSrf, FilletSrf, ChamferSrf, ExtendSrf, MergeSrf, BlendSrf,
+   MatchSrf, Trim for Fillet/Chamfer, Split at Isocurve, SrfSeam, Rebuild report, Fin,
+   TweenSurfaces, Variable Fillet/Chamfer/Blend/Offset, ShrinkTrimmedSrf, Untrim, SoftEditSrf,
+   SetSurfaceTangent, UnrollSrf (flat NURBS), FitSrf, CutPlane. Bugs found and fixed in the
+   round: the fillet/chamfer tracer stopped after one step when the surfaces meet along their
+   own edges; FitSrf/Rebuild measured deviation at equal parameters (FitSrf always went to
+   128 × 128 points; now the fewest that meet the tolerance). Left for later: Extend/Split for
+   Fillet/Chamfer, G3/G4 blends, ReTrim, MatchSrf Average/Refine.
 
 Each round: speed of preview and result on empty and 5,000/20,000-object files, accuracy
 against exact references, Vietnamese strings, package tests.

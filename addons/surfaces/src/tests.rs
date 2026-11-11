@@ -1542,3 +1542,41 @@ fn unroll_gives_a_flat_surface_with_true_lengths() {
     assert!(((dist(c, d) - dist(a, b)).abs()) < 2e-4);
     assert!([a, b, c, d].iter().all(|p| p[2].abs() < 1e-9), "flat");
 }
+
+/// Rhino 5 FitSrf: a rational cylinder piece fitted within the tolerance, degrees as set;
+/// DeleteInput=No adds the fit instead of replacing.
+#[test]
+fn fitsrf_meets_the_tolerance_with_the_set_degrees() {
+    let arc = om9_addon_geom::exact::arc([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 10.0, PI);
+    let rows: Vec<Vec<om9_addon_geom::exact::H>> = arc.points.iter().map(|c| vec![*c, [c[0], c[1], 5.0 * c[3], c[3]]]).collect();
+    let g = om9_addon_geom::exact::surface(&rows, [2, 1], [arc.knots.clone(), vec![0.0, 0.0, 1.0, 1.0]]);
+    let r = run(REFIT, vec![srf_sel("c", g.clone())], json!({"srf_tolerance": 0.001, "rf_degree_u": 5, "rf_degree_v": 1}), vec![Input::Enter]);
+    assert!(r.done, "{:?}", r.error);
+    assert_eq!(r.replace.len(), 1);
+    let Geo::Surface { degree, .. } = &r.replace[0].geo else { panic!() };
+    assert_eq!(*degree, [5, 1]);
+    let f = Srf::of(&r.replace[0].geo).unwrap();
+    for i in 0..=97 {
+        for j in 0..=3 {
+            let p = f.at_st(i as f64 / 97.0, j as f64 / 3.0);
+            assert!((p[0].hypot(p[1]) - 10.0).abs() <= 0.001, "{p:?}");
+        }
+    }
+    let r = run(REFIT, vec![srf_sel("c", g)], json!({"rf_delete_input": false}), vec![Input::Enter]);
+    assert!(r.done && r.replace.is_empty() && r.create.len() == 1);
+}
+
+/// Rhino 5 CutPlane: the plane runs through the picked line, square to the CPlane, and
+/// reaches past every selected object even when the line is short.
+#[test]
+fn cutplane_is_large_enough_for_the_selection() {
+    let s = flat("p", -20.0, 30.0, -5.0, 5.0, 3.0);
+    let r = run(CUTTING_PLANE, vec![s], json!({}), vec![pt([0.0, 0.0, 0.0]), pt([1.0, 0.0, 0.0])]);
+    assert!(r.done, "{:?}", r.error);
+    let f = Srf::of(&r.create[0]).unwrap();
+    let corners = [f.at_st(0.0, 0.0), f.at_st(1.0, 0.0), f.at_st(0.0, 1.0), f.at_st(1.0, 1.0)];
+    assert!(corners.iter().all(|p| p[1].abs() < 1e-9), "through the line: {corners:?}");
+    let (x0, x1) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[0]), b.max(p[0])));
+    let (z0, z1) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[2]), b.max(p[2])));
+    assert!(x0 < -20.0 && x1 > 30.0 && z0 < 3.0 && z1 > 3.0, "{x0} {x1} {z0} {z1}");
+}

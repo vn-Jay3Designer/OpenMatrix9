@@ -1088,7 +1088,7 @@ label = "Cutting Plane"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["CutPlane"]
-summary = "Mặt phẳng cắt đứng qua đường bấm, đủ cao cho vật đã chọn."
+summary = "Như CutPlane Rhino 5: mặt phẳng đứng qua đường bấm, đủ lớn để cắt qua mọi vật đã chọn."
 steps = ["Chọn vật.", "Bấm hai điểm đường cắt."]
 
 [[commands]]
@@ -1117,7 +1117,7 @@ handler = "om9_addon_session"
 interactive = true
 builder = true
 aliases = ["RefitSrf"]
-summary = "Làm lại mặt ít điểm nhất trong dung sai."
+summary = "Như FitSrf Rhino 5: làm lại mặt ít điểm nhất trong dung sai (UDegree, VDegree, DeleteInput)."
 steps = ["Chọn mặt.", "Chỉnh dung sai.", "Enter."]
 
 [[settings]]
@@ -1815,6 +1815,34 @@ default = 3
 min = 1
 max = 7
 commands = ["OthersSurfaceRebuild"]
+
+[[settings]]
+key = "rf_degree_u"
+type = "int"
+option = "UDegree"
+label = "Bậc U"
+default = 3
+min = 1
+max = 7
+commands = ["SurfaceSurfaceEditToolsRefittoTolerance"]
+
+[[settings]]
+key = "rf_degree_v"
+type = "int"
+option = "VDegree"
+label = "Bậc V"
+default = 3
+min = 1
+max = 7
+commands = ["SurfaceSurfaceEditToolsRefittoTolerance"]
+
+[[settings]]
+key = "rf_delete_input"
+type = "bool"
+option = "DeleteInput"
+label = "Xoá mặt gốc"
+default = true
+commands = ["SurfaceSurfaceEditToolsRefittoTolerance"]
 
 [[settings]]
 key = "srf_tolerance"
