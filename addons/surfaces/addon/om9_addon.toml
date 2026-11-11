@@ -668,6 +668,22 @@ default = "curvature"
 commands = ["SurfaceBlendSurface"]
 
 [[settings]]
+key = "fs_extend"
+type = "bool"
+option = "Extend"
+label = "Kéo dài tới mép mặt dài hơn (Fillet/Chamfer)"
+default = true
+commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
+
+[[settings]]
+key = "fs_split"
+type = "bool"
+option = "Split"
+label = "Tách mặt gốc tại mép (Fillet/Chamfer)"
+default = false
+commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
+
+[[settings]]
 key = "fs_trim"
 type = "bool"
 option = "Trim"

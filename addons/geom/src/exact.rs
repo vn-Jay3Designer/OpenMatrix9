@@ -310,6 +310,11 @@ impl Nc {
     }
 
     /// The parameter of the point nearest `p` (dense scan then Newton-free refinement).
+    /// The exact piece of the curve between parameters `a` and `b` (normalised, a < b).
+    pub fn part(&self, a: f64, b: f64) -> Option<Nc> {
+        clamp_to(self, a, b)
+    }
+
     pub fn closest(&self, p: Vec3) -> f64 {
         let n = 256;
         let mut best = (f64::MAX, 0.0);

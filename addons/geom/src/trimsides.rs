@@ -97,62 +97,66 @@ fn inside(p: (f64, f64), poly: &[(f64, f64)]) -> bool {
     c
 }
 
-/// Trim `g` along `curve` (on it), keeping the side where `keep` is.
-pub fn trim_keeping(g: &Geo, curve: &Nc, keep: Vec3) -> Result<Geo, String> {
-    let s = Srf::of(g).ok_or("not a NURBS surface")?;
-    let edges = iso_edges(g).ok_or("not a NURBS surface")?;
+/// One side of a surface cut along a curve: its trim loops (exact) and, in (u, v), its
+/// outline and holes (for choosing a side and drawing it).
+struct Side {
+    loops: Vec<Vec<Nc>>,
+    outline: Vec<(f64, f64)>,
+    holes: Vec<Vec<(f64, f64)>>,
+}
+
+/// Both sides of `g` cut along `curve` (lying on it, edge to edge or closed inside).
+fn sides(s: &Srf, edges: &[Nc; 4], curve: &Nc) -> Result<[Side; 2], String> {
     let n = 64;
     let cuv: Vec<(f64, f64)> = (0..=n).map(|i| s.closest_st(curve.eval(i as f64 / n as f64))).collect();
-    let kuv = s.closest_st(keep);
     let closed = dist(curve.start(), curve.end()) < 1e-6;
-    let (outer_poly, loops, holes): (Vec<(f64, f64)>, Vec<Vec<Nc>>, Vec<Vec<(f64, f64)>>) = if closed {
-        if inside(kuv, &cuv) {
-            (cuv.clone(), vec![vec![curve.clone()]], vec![])
+    if closed {
+        let rect = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
+        let boundary = ccw(edges, 0.0, 4.0).ok_or("could not trim")?;
+        return Ok([
+            Side { loops: vec![vec![curve.clone()]], outline: cuv.clone(), holes: vec![] },
+            Side { loops: vec![boundary, vec![curve.clone()]], outline: rect, holes: vec![cuv] },
+        ]);
+    }
+    let (p0, p1) = (cuv[0], cuv[n]);
+    let (Some(t0), Some(t1)) = (perimeter(p0.0, p0.1), perimeter(p1.0, p1.1)) else {
+        return Err("the trim curve does not run from edge to edge".into());
+    };
+    // Exact places: project the curve's ends on the boundary curves they are on.
+    let exact_t = |t: f64, at: Vec3| -> f64 {
+        let k = (t.floor() as usize).min(3);
+        let u = edges[k].closest(at);
+        k as f64 + if k < 2 { u } else { 1.0 - u }
+    };
+    let (t0, t1) = (exact_t(t0, curve.start()), exact_t(t1, curve.end()));
+    // Two ways back along the boundary: counter-clockwise from t1 to t0, or the other.
+    let way = |forward: bool| -> Option<Side> {
+        let pieces = if forward {
+            ccw(edges, t1, t0)?
         } else {
-            let rect = vec![(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)];
-            let boundary = ccw(&edges, 0.0, 4.0).ok_or("could not trim")?;
-            (rect, vec![boundary, vec![curve.clone()]], vec![cuv.clone()])
+            ccw(edges, t0, t1)?.into_iter().rev().map(|c| c.reversed()).collect()
+        };
+        let mut poly = cuv.clone();
+        let steps = 32;
+        let mut end = if forward { t0 } else { t1 };
+        let start = if forward { t1 } else { t0 };
+        while end <= start + 1e-12 {
+            end += 4.0;
         }
-    } else {
-        let (p0, p1) = (cuv[0], cuv[n]);
-        let (Some(t0), Some(t1)) = (perimeter(p0.0, p0.1), perimeter(p1.0, p1.1)) else {
-            return Err("the trim curve does not run from edge to edge".into());
-        };
-        // Exact places: project the curve's ends on the boundary curves they are on.
-        let exact_t = |t: f64, at: Vec3| -> f64 {
-            let k = (t.floor() as usize).min(3);
-            let u = edges[k].closest(at);
-            k as f64 + if k < 2 { u } else { 1.0 - u }
-        };
-        let (t0, t1) = (exact_t(t0, curve.start()), exact_t(t1, curve.end()));
-        // Two ways back along the boundary: counter-clockwise from t1 to t0, or the other.
-        let way = |forward: bool| -> Option<(Vec<Nc>, Vec<(f64, f64)>)> {
-            let pieces = if forward {
-                ccw(&edges, t1, t0)?
-            } else {
-                ccw(&edges, t0, t1)?.into_iter().rev().map(|c| c.reversed()).collect()
-            };
-            let mut poly = cuv.clone();
-            let steps = 32;
-            let mut end = if forward { t0 } else { t1 };
-            let start = if forward { t1 } else { t0 };
-            while end <= start + 1e-12 {
-                end += 4.0;
-            }
-            let mut path: Vec<(f64, f64)> = (0..=steps).map(|i| uv_at(start + (end - start) * i as f64 / steps as f64)).collect();
-            if !forward {
-                path.reverse();
-            }
-            poly.extend(path);
-            Some((pieces, poly))
-        };
-        let (a, b) = (way(true).ok_or("could not trim")?, way(false).ok_or("could not trim")?);
-        let (pieces, poly) = if inside(kuv, &a.1) { a } else { b };
+        let mut path: Vec<(f64, f64)> = (0..=steps).map(|i| uv_at(start + (end - start) * i as f64 / steps as f64)).collect();
+        if !forward {
+            path.reverse();
+        }
+        poly.extend(path);
         let mut lp = vec![curve.clone()];
         lp.extend(pieces);
-        (poly, vec![lp], vec![])
+        Some(Side { loops: vec![lp], outline: poly, holes: vec![] })
     };
-    // Display: the surface's triangles inside the kept region.
+    Ok([way(true).ok_or("could not trim")?, way(false).ok_or("could not trim")?])
+}
+
+/// The trimmed face of one side, with its display mesh.
+fn face(g: &Geo, s: &Srf, side: &Side) -> Geo {
     let k = 40;
     let mut vertices = Vec::new();
     for i in 0..=k {
@@ -165,18 +169,40 @@ pub fn trim_keeping(g: &Geo, curve: &Nc, keep: Vec3) -> Result<Geo, String> {
     for i in 0..k {
         for j in 0..k {
             let c = ((i as f64 + 0.5) / k as f64, (j as f64 + 0.5) / k as f64);
-            if inside(c, &outer_poly) && !holes.iter().any(|h| inside(c, h)) {
+            if inside(c, &side.outline) && !side.holes.iter().any(|h| inside(c, h)) {
                 triangles.push([at(i, j), at(i + 1, j), at(i + 1, j + 1)]);
                 triangles.push([at(i, j), at(i + 1, j + 1), at(i, j + 1)]);
             }
         }
     }
     let display = Mesh { vertices, triangles }.geo("Trimmed surface", None, None);
-    Ok(Geo::Trimmed {
+    Geo::Trimmed {
         surface: Box::new(g.clone()),
-        loops: loops.iter().map(|l| l.iter().map(Nc::to_geo).collect()).collect(),
+        loops: side.loops.iter().map(|l| l.iter().map(Nc::to_geo).collect()).collect(),
         display: Some(Box::new(display)),
-    })
+    }
+}
+
+/// Trim `g` along `curve` (on it), keeping the side where `keep` is.
+pub fn trim_keeping(g: &Geo, curve: &Nc, keep: Vec3) -> Result<Geo, String> {
+    let s = Srf::of(g).ok_or("not a NURBS surface")?;
+    let edges = iso_edges(g).ok_or("not a NURBS surface")?;
+    let both = sides(&s, &edges, curve)?;
+    let kuv = s.closest_st(keep);
+    let pick = |x: &Side| inside(kuv, &x.outline) && !x.holes.iter().any(|h| inside(kuv, h));
+    let side = if pick(&both[0]) { &both[0] } else { &both[1] };
+    Ok(face(g, &s, side))
+}
+
+/// Rhino's Split: `g` cut along `curve` into its two sides, the side where `keep` is first.
+pub fn split_keeping(g: &Geo, curve: &Nc, keep: Vec3) -> Result<[Geo; 2], String> {
+    let s = Srf::of(g).ok_or("not a NURBS surface")?;
+    let edges = iso_edges(g).ok_or("not a NURBS surface")?;
+    let both = sides(&s, &edges, curve)?;
+    let kuv = s.closest_st(keep);
+    let pick = |x: &Side| inside(kuv, &x.outline) && !x.holes.iter().any(|h| inside(kuv, h));
+    let (a, b) = if pick(&both[0]) { (&both[0], &both[1]) } else { (&both[1], &both[0]) };
+    Ok([face(g, &s, a), face(g, &s, b)])
 }
 
 #[cfg(test)]
@@ -216,5 +242,34 @@ mod tests {
                 assert!(dist(ncs[w].end(), next.start()) < 1e-9, "chained {:?}", ncs.iter().map(|c| (c.start(), c.end())).collect::<Vec<_>>());
             }
         }
+    }
+
+    #[test]
+    fn split_gives_both_sides() {
+        let g = Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: vec![[0.0, 0.0, 0.0], [0.0, 4.0, 0.0], [10.0, 0.0, 0.0], [10.0, 4.0, 0.0]],
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        };
+        let cut = Nc::from_geo(&Geo::Line { start: [3.0, 0.0, 0.0], end: [3.0, 4.0, 0.0] }).unwrap();
+        let [a, b] = split_keeping(&g, &cut, [1.0, 2.0, 0.0]).unwrap();
+        let span = |t: &Geo| {
+            let Geo::Trimmed { loops, .. } = t else { panic!() };
+            let (mut lo, mut hi) = (f64::MAX, f64::MIN);
+            for c in &loops[0] {
+                let n = Nc::from_geo(c).unwrap();
+                for k in 0..=8 {
+                    let p = n.eval(k as f64 / 8.0);
+                    lo = lo.min(p[0]);
+                    hi = hi.max(p[0]);
+                }
+            }
+            (lo, hi)
+        };
+        let (sa, sb) = (span(&a), span(&b));
+        assert!((sa.0 - 0.0).abs() < 1e-9 && (sa.1 - 3.0).abs() < 1e-9, "{sa:?}");
+        assert!((sb.0 - 3.0).abs() < 1e-9 && (sb.1 - 10.0).abs() < 1e-9, "{sb:?}");
     }
 }

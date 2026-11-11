@@ -330,11 +330,148 @@ fn ball_at(pair: &Pair, balls: &[Ball], s: &[f64], t: f64) -> Ball {
 /// Rhino 5 FilletSrf: the rolling-ball surface of radius `r` between `g1` and `g2`, in the
 /// corner facing the points `keep1` (on g1) and `keep2` (on g2) — the sides kept.
 pub fn fillet(g1: &Geo, g2: &Geo, r: f64, keep1: Vec3, keep2: Vec3, tol: f64) -> Result<Swept, String> {
+    fillet_with(g1, g2, r, keep1, keep2, tol, false).map(|x| x.0)
+}
+
+/// Where a fillet or chamfer lies on each input: the range of its parameter along the
+/// intersection (0..1) whose edge is on the first and on the second surface (all of it
+/// unless extended past the shorter surface).
+pub type OnInputs = [[f64; 2]; 2];
+
+/// A surface carried on straight past its open edges by `len`, and the original's parameter
+/// box on it ([u0, u1, v0, v1]); a closed direction is left as it is.
+fn extended(g: &Geo, len: f64) -> Option<(Geo, [f64; 4])> {
+    let s0 = Srf::of(g)?;
+    let closed = |dir: usize| {
+        [0.3, 0.7].iter().all(|t| {
+            let (a, b) = if dir == 0 { ((0.0, *t), (1.0, *t)) } else { ((*t, 0.0), (*t, 1.0)) };
+            dist(s0.at_st(a.0, a.1), s0.at_st(b.0, b.1)) < 1e-9
+        })
+    };
+    let (c0, c1) = (s0.at_st(0.0, 0.0), s0.at_st(1.0, 1.0));
+    let open = [!closed(0), !closed(1)];
+    let mut x = g.clone();
+    for dir in 0..2 {
+        if open[dir] {
+            for end in [false, true] {
+                x = crate::extend::extend(&x, dir, end, len, false).ok()?;
+            }
+        }
+    }
+    let s = Srf::of(&x)?;
+    let (a0, b0) = s.closest_st(c0);
+    let (a1, b1) = s.closest_st(c1);
+    let bx = [a0.min(a1), a0.max(a1), b0.min(b1), b0.max(b1)];
+    Some((x, bx))
+}
+
+fn in_box(b: &[f64; 4], u: f64, v: f64) -> bool {
+    let e = 1e-9;
+    u >= b[0] - e && u <= b[1] + e && v >= b[2] - e && v <= b[3] + e
+}
+
+/// Rhino's Extend=Yes: keep the traced balls while either contact is on its own (unextended)
+/// surface, with the end balls placed exactly where the last one leaves it.
+fn clip(pair: &Pair, balls: &[Ball], s: &[f64], boxes: [[f64; 4]; 2]) -> Result<(Vec<Ball>, Vec<f64>, OnInputs), String> {
+    let on = |b: &Ball, k: usize| if k == 0 { in_box(&boxes[0], b.x[0], b.x[1]) } else { in_box(&boxes[1], b.x[2], b.x[3]) };
+    let keep = |b: &Ball| on(b, 0) || on(b, 1);
+    // The longest run of kept balls.
+    let (mut best, mut cur) = ((0usize, 0usize), None::<usize>);
+    for i in 0..=balls.len() {
+        let k = i < balls.len() && keep(&balls[i]);
+        match (k, cur) {
+            (true, None) => cur = Some(i),
+            (false, Some(a)) => {
+                if i - a > best.1 - best.0 {
+                    best = (a, i);
+                }
+                cur = None;
+            }
+            _ => {}
+        }
+    }
+    if best.1 <= best.0 {
+        return Err("the surfaces do not meet within their edges".into());
+    }
+    // The place along the centre line where `test` turns from true to false between t_in and t_out.
+    let edge_place = |t_in: f64, t_out: f64, test: &dyn Fn(&Ball) -> bool| -> f64 {
+        let (mut a, mut b) = (t_in, t_out);
+        for _ in 0..40 {
+            let m = 0.5 * (a + b);
+            if test(&ball_at(pair, balls, s, m)) {
+                a = m;
+            } else {
+                b = m;
+            }
+        }
+        a
+    };
+    let mut ts: Vec<f64> = s[best.0..best.1].to_vec();
+    if best.0 > 0 {
+        ts.insert(0, edge_place(s[best.0], s[best.0 - 1], &keep));
+    }
+    if best.1 < balls.len() {
+        ts.push(edge_place(s[best.1 - 1], s[best.1], &keep));
+    }
+    let new: Vec<Ball> = ts.iter().map(|t| ball_at(pair, balls, s, *t)).collect();
+    let mut len = vec![0.0];
+    for w in new.windows(2) {
+        len.push(len.last().unwrap() + dist(w[0].c, w[1].c));
+    }
+    let total = len.last().copied().unwrap_or(0.0).max(1e-300);
+    let ns: Vec<f64> = len.iter().map(|v| v / total).collect();
+    // Each input's own range along the new parameter.
+    let range = |k: usize| -> [f64; 2] {
+        let idx: Vec<usize> = (0..new.len()).filter(|i| on(&new[*i], k)).collect();
+        match (idx.first(), idx.last()) {
+            (Some(&a), Some(&b)) => {
+                let lo = if a > 0 {
+                    let t = edge_place(ts[a], ts[a - 1], &|x: &Ball| on(x, k));
+                    let p = ball_at(pair, balls, s, t);
+                    // Map back to the new arc-length parameter.
+                    ns[a - 1] + (ns[a] - ns[a - 1]) * (dist(p.c, new[a - 1].c) / dist(new[a].c, new[a - 1].c).max(1e-300)).clamp(0.0, 1.0)
+                } else {
+                    0.0
+                };
+                let hi = if b + 1 < new.len() {
+                    let t = edge_place(ts[b], ts[b + 1], &|x: &Ball| on(x, k));
+                    let p = ball_at(pair, balls, s, t);
+                    ns[b] + (ns[b + 1] - ns[b]) * (dist(p.c, new[b].c) / dist(new[b + 1].c, new[b].c).max(1e-300)).clamp(0.0, 1.0)
+                } else {
+                    1.0
+                };
+                [lo, hi]
+            }
+            _ => [0.0, 0.0],
+        }
+    };
+    let ranges = [range(0), range(1)];
+    Ok((new, ns, ranges))
+}
+
+/// FilletSrf with Rhino's Extend option: with `extend`, where one surface is longer than the
+/// other the fillet runs on to the longer one's edges (rolling on the shorter one carried on
+/// straight). Also returns where the fillet's edges lie on each input.
+pub fn fillet_with(g1: &Geo, g2: &Geo, r: f64, keep1: Vec3, keep2: Vec3, tol: f64, extend: bool) -> Result<(Swept, OnInputs), String> {
     if r <= 0.0 {
         return Err("the radius must be more than 0".into());
     }
-    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
-    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let ext = if extend {
+        let diag = |g: &Geo| Srf::of(g).map_or(0.0, |s| dist(s.at_st(0.0, 0.0), s.at_st(1.0, 1.0)).max(dist(s.at_st(1.0, 0.0), s.at_st(0.0, 1.0))));
+        let len = diag(g1).max(diag(g2)) + 2.0 * r;
+        match (extended(g1, len), extended(g2, len)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let (e1, e2) = match &ext {
+        Some(((a, _), (b, _))) => (a, b),
+        None => (g1, g2),
+    };
+    let s1 = Srf::of(e1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(e2).ok_or("not a NURBS surface")?;
     // Sides: the ball is offset from each surface towards the other surface's kept side.
     let side_of = |s: &Srf, toward: Vec3| -> f64 {
         let (a, b) = s.closest_st(toward);
@@ -343,17 +480,21 @@ pub fn fillet(g1: &Geo, g2: &Geo, r: f64, keep1: Vec3, keep2: Vec3, tol: f64) ->
     };
     let orient = [orientation(&s1), orientation(&s2)];
     let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r, orient, vr: None };
-    let size = r;
-    let (balls, s) = trace(&pair, size)?;
+    let (balls, s) = trace(&pair, r)?;
+    let (balls, s, on) = match &ext {
+        Some(((_, b1), (_, b2))) => clip(&pair, &balls, &s, [*b1, *b2])?,
+        None => (balls, s, [[0.0, 1.0], [0.0, 1.0]]),
+    };
     // The exact section anywhere: from the nearest traced ball, Newton on the plane through
     // the interpolated centre.
     let placed = |t: f64| -> Vec<H> {
         let ball = ball_at(&pair, &balls, &s, t);
         arc(ball.c, ball.p1, ball.p2)
     };
-    fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 2, &[0.0, 0.0, 0.0, 1.0, 1.0, 1.0], tol, 600)
+    let step = if s.len() > 8 { 4 } else { 1 };
+    let f = fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(step).chain(std::iter::once(1.0)).collect(), 2, &[0.0, 0.0, 0.0, 1.0, 1.0, 1.0], tol, 600)?;
+    Ok((f, on))
 }
-
 
 /// Surface derivatives by central differences (one-sided at the edges).
 fn derivs(s: &Srf, a: f64, b: f64) -> (Vec3, Vec3) {
@@ -419,15 +560,38 @@ fn contact(s: &Srf, start: (f64, f64), at: Vec3, tan: Vec3, n: Vec3, d: f64, tow
 /// Rhino 5 ChamferSrf: a ruled surface from `d1` on `g1` to `d2` on `g2`, measured from their
 /// intersection across it, on the sides kept (`keep1`, `keep2`).
 pub fn chamfer(g1: &Geo, g2: &Geo, d1: f64, d2: f64, keep1: Vec3, keep2: Vec3, tol: f64) -> Result<Swept, String> {
+    chamfer_with(g1, g2, d1, d2, keep1, keep2, tol, false).map(|x| x.0)
+}
+
+/// ChamferSrf with Rhino's Extend option (as [`fillet_with`]).
+pub fn chamfer_with(g1: &Geo, g2: &Geo, d1: f64, d2: f64, keep1: Vec3, keep2: Vec3, tol: f64, extend: bool) -> Result<(Swept, OnInputs), String> {
     if d1 <= 0.0 || d2 <= 0.0 {
         return Err("the distances must be more than 0".into());
     }
-    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
-    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let diag = |g: &Geo| Srf::of(g).map_or(0.0, |s| dist(s.at_st(0.0, 0.0), s.at_st(1.0, 1.0)).max(dist(s.at_st(1.0, 0.0), s.at_st(0.0, 1.0))));
+    let ext = if extend {
+        let len = diag(g1).max(diag(g2)) + 2.0 * d1.max(d2);
+        match (extended(g1, len), extended(g2, len)) {
+            (Some(a), Some(b)) => Some((a, b)),
+            _ => None,
+        }
+    } else {
+        None
+    };
+    let (e1, e2) = match &ext {
+        Some(((a, _), (b, _))) => (a, b),
+        None => (g1, g2),
+    };
+    let s1 = Srf::of(e1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(e2).ok_or("not a NURBS surface")?;
     let orient = [orientation(&s1), orientation(&s2)];
-    let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0))).max(d1).max(d2);
+    let size = diag(e1).max(diag(e2)).max(d1).max(d2);
     let pair = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
     let (balls, s) = trace(&pair, size)?;
+    let (balls, s, on) = match &ext {
+        Some(((_, b1), (_, b2))) => clip(&pair, &balls, &s, [*b1, *b2])?,
+        None => (balls, s, [[0.0, 1.0], [0.0, 1.0]]),
+    };
     let placed = |t: f64| -> Vec<H> {
         let b = ball_at(&pair, &balls, &s, t);
         let tan = pair.tangent(&b);
@@ -445,9 +609,10 @@ pub fn chamfer(g1: &Geo, g2: &Geo, d1: f64, d2: f64, keep1: Vec3, keep2: Vec3, t
             return Err("a chamfer distance runs off a surface".into());
         }
     }
-    fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)
+    let step = if s.len() > 8 { 4 } else { 1 };
+    let f = fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(step).chain(std::iter::once(1.0)).collect(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)?;
+    Ok((f, on))
 }
-
 
 /// Places along the intersection of two surfaces: arc-length fraction of the point on it
 /// nearest `p`.
@@ -655,7 +820,7 @@ mod tests {
     use super::*;
     use crate::exact::{self, Nc};
 
-    fn plane(o: Vec3, u: Vec3, v: Vec3) -> Geo {
+    pub(super) fn plane(o: Vec3, u: Vec3, v: Vec3) -> Geo {
         Geo::Surface {
             degree: [1, 1],
             size: [2, 2],
@@ -864,5 +1029,46 @@ mod fin_tests {
             let rb = b[0].hypot(b[1]);
             assert!((rb - 4.0).abs() < 2e-3 || (rb - 2.0).abs() < 2e-3, "{rb}");
         }
+    }
+    use super::tests::plane;
+
+    /// Rhino 5 FilletSrf / ChamferSrf Extend=Yes: the second surface is shorter (y 2..6 of the
+    /// first's 0..10); extended, the fillet runs the whole 10 mm and its edge on the second
+    /// surface is reported as 0.2..0.6 of its length.
+    #[test]
+    fn extend_runs_to_the_longer_surface() {
+        let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]);
+        let wall = plane([5.0, 2.0, -2.0], [0.0, 4.0, 0.0], [0.0, 0.0, 7.0]);
+        let (k1, k2) = ([8.0, 5.0, 0.0], [5.0, 4.0, 3.0]);
+        let short = fillet(&floor, &wall, 1.0, k1, k2, 1e-4).unwrap();
+        let len = |f: &Swept, k: usize| {
+            let g = f.geo();
+            let s = Srf::of(&g).unwrap();
+            let (a, b) = (s.at_st(0.0, if k == 0 { 0.0 } else { 1.0 }), s.at_st(1.0, if k == 0 { 0.0 } else { 1.0 }));
+            (dist(a, b), a, b)
+        };
+        assert!((len(&short, 0).0 - 4.0).abs() < 1e-6, "{:?}", len(&short, 0));
+        let (long, on) = fillet_with(&floor, &wall, 1.0, k1, k2, 1e-4, true).unwrap();
+        let (l, a, b) = len(&long, 0);
+        assert!((l - 10.0).abs() < 1e-6, "{l} {a:?} {b:?}");
+        // Still the exact quarter cylinder: every point 1 from the axis (x 6, z 1).
+        let g = long.geo();
+        let s = Srf::of(&g).unwrap();
+        for i in 0..=20 {
+            for j in 0..=4 {
+                let p = s.at_st(i as f64 / 20.0, j as f64 / 4.0);
+                assert!(((p[0] - 6.0).hypot(p[2] - 1.0) - 1.0).abs() < 1e-6, "{p:?}");
+            }
+        }
+        let first = if a[1] < b[1] { [0.0, 1.0] } else { [0.0, 1.0] };
+        assert!((on[0][0] - first[0]).abs() < 1e-6 && (on[0][1] - first[1]).abs() < 1e-6, "{on:?}");
+        let mut r = on[1];
+        if a[1] > b[1] {
+            r = [1.0 - r[1], 1.0 - r[0]];
+        }
+        assert!((r[0] - 0.2).abs() < 1e-6 && (r[1] - 0.6).abs() < 1e-6, "{on:?}");
+        // Chamfer the same way.
+        let (c, _) = chamfer_with(&floor, &wall, 1.0, 1.0, k1, k2, 1e-4, true).unwrap();
+        assert!((len(&c, 0).0 - 10.0).abs() < 1e-6, "{:?}", len(&c, 0));
     }
 }

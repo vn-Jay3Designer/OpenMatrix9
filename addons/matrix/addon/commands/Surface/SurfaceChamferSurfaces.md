@@ -22,6 +22,8 @@ Vát phẳng giữa hai mặt cắt nhau như Rhino 5 ChamferSrf: hai khoảng v
 |---|---|---|---|
 | `FirstDistance=` | Khoảng vát trên mặt thứ nhất (mm) | 1 | 0.0001 … 1000 |
 | `SecondDistance=` | Khoảng vát trên mặt thứ hai (mm) | 1 | 0.0001 … 1000 |
+| `Extend=` | Kéo dài tới mép mặt dài hơn (Fillet/Chamfer) | Yes |  |
+| `Split=` | Tách mặt gốc tại mép (Fillet/Chamfer) | No |  |
 | `Trim=` | Cắt mặt gốc (Fillet/Chamfer) | Yes |  |
 | `Radius=` | Bán kính / khoảng | 1 | 0.01 … 50 |
 | `FlipFirst=` | Đổi phía mặt 1 | No |  |

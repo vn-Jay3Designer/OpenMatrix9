@@ -20,6 +20,8 @@ Bo cung bán kính không đổi giữa hai mặt như Rhino 5 FilletSrf (bi lă
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
+| `Extend=` | Kéo dài tới mép mặt dài hơn (Fillet/Chamfer) | Yes |  |
+| `Split=` | Tách mặt gốc tại mép (Fillet/Chamfer) | No |  |
 | `Trim=` | Cắt mặt gốc (Fillet/Chamfer) | Yes |  |
 | `Radius=` | Bán kính / khoảng | 1 | 0.01 … 50 |
 | `FlipFirst=` | Đổi phía mặt 1 | No |  |

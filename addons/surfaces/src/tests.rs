@@ -1580,3 +1580,68 @@ fn cutplane_is_large_enough_for_the_selection() {
     let (z0, z1) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[2]), b.max(p[2])));
     assert!(x0 < -20.0 && x1 > 30.0 && z0 < 3.0 && z1 > 3.0, "{x0} {x1} {z0} {z1}");
 }
+
+/// Rhino 5 FilletSrf Extend and Split: the wall is shorter (y 2..6 of the floor's 0..8). With
+/// Extend=Yes the fillet runs the floor's whole 8 mm; Trim=No, Split=Yes cuts each input into
+/// two surfaces along its fillet edge (the wall only along its own 4 mm).
+#[test]
+fn filletsrf_extend_and_split() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+        ..flat("x", 0.0, 1.0, 0.0, 1.0, 0.0)
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 2.0, -1.0], [0.0, 6.0, -1.0], [0.0, 2.0, 6.0], [0.0, 6.0, 6.0]]);
+    let run = |set: Value| {
+        let mut e = event(FILLET, Input::Start, vec![], set.clone());
+        let r = Surfaces::step(&e).unwrap();
+        e = event(FILLET, Input::Selection, vec![floor.clone()], set.clone());
+        e.state = r.state;
+        e.pick = Some([6.0, 4.0, 0.0]);
+        let r = Surfaces::step(&e).unwrap();
+        e = event(FILLET, Input::Selection, vec![floor.clone(), wall.clone()], set);
+        e.state = r.state;
+        e.pick = Some([0.0, 4.0, 4.0]);
+        Surfaces::step(&e).unwrap()
+    };
+    let length = |g: &Geo| {
+        let s = Srf::of(g).unwrap();
+        dist(s.at_st(0.0, 0.0), s.at_st(1.0, 0.0))
+    };
+    let r = run(json!({"fs_radius": 1.0, "fs_extend": false, "fs_trim": false}));
+    assert!(r.done && r.replace.is_empty(), "{:?}", r.error);
+    assert!((length(&r.create[0]) - 4.0).abs() < 1e-6);
+    let r = run(json!({"fs_radius": 1.0, "fs_trim": false, "fs_split": true}));
+    assert!(r.done, "{:?}", r.error);
+    assert!((length(&r.create[0]) - 8.0).abs() < 1e-6, "{}", length(&r.create[0]));
+    assert_eq!(r.replace.len(), 2, "{:?}", r.messages);
+    assert_eq!(r.create.len(), 3, "fillet + the two other pieces");
+    // The wall's kept piece: z from 1 (its fillet edge) to 6; its other piece z −1 to 1.
+    let span = |g: &Geo, axis: usize| {
+        let Geo::Trimmed { loops, .. } = g else { panic!("trimmed piece expected") };
+        let pts: Vec<Vec3> = loops[0].iter().flat_map(|c| om9_addon_geom::nurbs::samples(c, 8)).collect();
+        (pts.iter().map(|p| p[axis]).fold(f64::MAX, f64::min), pts.iter().map(|p| p[axis]).fold(f64::MIN, f64::max))
+    };
+    let wall_kept = &r.replace.iter().find(|x| x.id == "wall").unwrap().geo;
+    let (lo, hi) = span(wall_kept, 2);
+    assert!((lo - 1.0).abs() < 1e-6 && (hi - 6.0).abs() < 1e-6, "{lo} {hi}");
+    let others: Vec<(f64, f64)> = r.create[1..].iter().map(|g| span(g, 2)).collect();
+    assert!(others.iter().any(|(lo, hi)| (lo + 1.0).abs() < 1e-6 && (hi - 1.0).abs() < 1e-6), "{others:?}");
+    let floor_kept = &r.replace.iter().find(|x| x.id == "floor").unwrap().geo;
+    let (lo, hi) = span(floor_kept, 0);
+    assert!((lo - 1.0).abs() < 1e-6 && (hi - 10.0).abs() < 1e-6, "{lo} {hi}");
+    // Extend + Trim: both inputs trimmed (the wall along its own part of the edge).
+    let r = run(json!({"fs_radius": 1.0}));
+    assert!(r.done && r.replace.len() == 2 && r.create.len() == 1, "{:?}", r.messages);
+    let (lo, hi) = span(&r.replace.iter().find(|x| x.id == "wall").unwrap().geo, 2);
+    assert!((lo - 1.0).abs() < 1e-6 && (hi - 6.0).abs() < 1e-6, "{lo} {hi}");
+}

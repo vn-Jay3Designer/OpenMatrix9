@@ -2533,6 +2533,8 @@ struct FilletState {
     /// Asking for: 1 the radius or first distance, 2 the second distance.
     want: u8,
     trim: Option<bool>,
+    extend: Option<bool>,
+    split: Option<bool>,
 }
 
 /// Rhino 5 FilletSrf (Radius) and ChamferSrf (Distances): Select first surface, Select second
@@ -2562,9 +2564,16 @@ fn fillet_srf(e: &Event) -> Reply {
             None => st.want = 1,
         },
         Input::Option { name, .. } if name.eq_ignore_ascii_case("Distances") && chamfer => st.want = 1,
-        Input::Option { name, value } if name.eq_ignore_ascii_case("Trim") => {
-            let now = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
-            st.trim = Some(match value.as_deref() {
+        Input::Option { name, value } if ["Trim", "Extend", "Split"].iter().any(|n| name.eq_ignore_ascii_case(n)) => {
+            let (slot, key, default) = if name.eq_ignore_ascii_case("Trim") {
+                (&mut st.trim, "fs_trim", true)
+            } else if name.eq_ignore_ascii_case("Extend") {
+                (&mut st.extend, "fs_extend", true)
+            } else {
+                (&mut st.split, "fs_split", false)
+            };
+            let now = slot.unwrap_or_else(|| e.flag(key, default));
+            *slot = Some(match value.as_deref() {
                 Some(v) => v.eq_ignore_ascii_case("yes"),
                 None => !now,
             });
@@ -2599,6 +2608,8 @@ fn fillet_srf(e: &Event) -> Reply {
         };
     }
     let trim = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
+    let extend = st.extend.unwrap_or_else(|| e.flag("fs_extend", true));
+    let split = st.split.unwrap_or_else(|| e.flag("fs_split", false));
     let options = || {
         let mut v = if chamfer {
             let mut t = OptionToken::action("Distances");
@@ -2607,7 +2618,9 @@ fn fillet_srf(e: &Event) -> Reply {
         } else {
             vec![OptionToken::number("Radius", Some(radius))]
         };
+        v.push(OptionToken::toggle("Extend", extend));
         v.push(OptionToken::toggle("Trim", trim));
+        v.push(OptionToken::toggle("Split", split));
         v
     };
     // The picks: preselected surfaces count in order (their middles as the kept sides).
@@ -2636,31 +2649,59 @@ fn fillet_srf(e: &Event) -> Reply {
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
     let (g1, g2) = (first.exact.as_ref().unwrap(), second.exact.as_ref().unwrap());
     let made = if chamfer {
-        om9_addon_geom::fillet::chamfer(g1, g2, dists[0], dists[1], keep1, keep2, tol)
-            .map(|f| (f, format!("distances {}, {} mm", fmt(dists[0]), fmt(dists[1]))))
+        om9_addon_geom::fillet::chamfer_with(g1, g2, dists[0], dists[1], keep1, keep2, tol, extend)
+            .map(|(f, on)| (f, on, format!("distances {}, {} mm", fmt(dists[0]), fmt(dists[1]))))
     } else {
-        om9_addon_geom::fillet::fillet(g1, g2, radius, keep1, keep2, tol).map(|f| (f, format!("radius {} mm, within {} mm", fmt(radius), fmt(tol))))
+        om9_addon_geom::fillet::fillet_with(g1, g2, radius, keep1, keep2, tol, extend)
+            .map(|(f, on)| (f, on, format!("radius {} mm, within {} mm", fmt(radius), fmt(tol))))
     };
     match made {
-        Ok((f, what)) => {
+        Ok((f, on, what)) => {
             let mut r = Reply::finish(vec![f.geo()]).say(format!("{label}: {what}"));
-            if trim {
+            if trim || split {
                 // Trim=Yes: each input trimmed along its edge of the new surface, the side
-                // picked kept.
-                let edge = |k: usize| Nc {
-                    degree: f.degree[0],
-                    points: f.rows.iter().map(|row| if k == 0 { row[0] } else { row[row.len() - 1] }).collect(),
-                    knots: f.knots[0].clone(),
+                // picked kept. Split=Yes (Trim=No): each input cut there into two surfaces.
+                // With Extend, only the part of the edge lying on that input cuts it.
+                let edge = |k: usize| -> Option<Nc> {
+                    let whole = Nc {
+                        degree: f.degree[0],
+                        points: f.rows.iter().map(|row| if k == 0 { row[0] } else { row[row.len() - 1] }).collect(),
+                        knots: f.knots[0].clone(),
+                    };
+                    let [a, b] = on[k];
+                    if b - a < 1e-9 {
+                        None
+                    } else if a <= 1e-12 && b >= 1.0 - 1e-12 {
+                        Some(whole)
+                    } else {
+                        whole.part(a, b)
+                    }
                 };
                 let mut done = Vec::new();
-                for (sel, g, curve, keep) in [(*first, g1, edge(0), keep1), (second, g2, edge(1), keep2)] {
-                    match om9_addon_geom::trimsides::trim_keeping(g, &curve, keep) {
-                        Ok(t) => done.push(Replacement { id: sel.id.clone(), geo: t }),
-                        Err(why) => r = r.say(format!("{label}: not trimmed: {why}")),
+                let mut extra = Vec::new();
+                for (sel, g, k, keep) in [(*first, g1, 0, keep1), (second, g2, 1, keep2)] {
+                    let Some(curve) = edge(k) else {
+                        r = r.say(format!("{label}: not trimmed: the edge is not on a surface"));
+                        continue;
+                    };
+                    if trim {
+                        match om9_addon_geom::trimsides::trim_keeping(g, &curve, keep) {
+                            Ok(t) => done.push(Replacement { id: sel.id.clone(), geo: t }),
+                            Err(why) => r = r.say(format!("{label}: not trimmed: {why}")),
+                        }
+                    } else {
+                        match om9_addon_geom::trimsides::split_keeping(g, &curve, keep) {
+                            Ok([a, b]) => {
+                                done.push(Replacement { id: sel.id.clone(), geo: a });
+                                extra.push(b);
+                            }
+                            Err(why) => r = r.say(format!("{label}: not split: {why}")),
+                        }
                     }
                 }
                 if done.len() == 2 {
                     r.replace = done;
+                    r.create.extend(extra);
                 }
             }
             r
