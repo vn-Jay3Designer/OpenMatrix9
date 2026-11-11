@@ -6,7 +6,7 @@ Tách một mặt (vùng mặt liền) ra khỏi khối.
 - **Vị trí:** menu Solid, ô số 6
 - **Icon:** `Resources/icons/solid-minimal/SolidExtractSurface.svg`
 - **Gọi bằng dòng lệnh:** `SolidExtractSurface`, `ExtractSrf`
-- **Cách chạy:** từng bước trên dòng lệnh; Enter để tạo, Esc để huỷ
+- **Cách chạy:** lệnh có sẵn của OM9 (khối chính xác bằng lõi B-Rep); bản không có lõi dùng lệnh của add-on
 
 ## Cách dùng
 

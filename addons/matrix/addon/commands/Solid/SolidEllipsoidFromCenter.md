@@ -6,7 +6,7 @@ Tạo khối elip.
 - **Vị trí:** menu Solid, ô số 14
 - **Icon:** `Resources/icons/solid-minimal/SolidEllipsoidFromCenter.svg`
 - **Gọi bằng dòng lệnh:** `SolidEllipsoidFromCenter`, `Ellipsoid`
-- **Cách chạy:** từng bước trên dòng lệnh; Enter để tạo, Esc để huỷ
+- **Cách chạy:** lệnh có sẵn của OM9 (khối chính xác bằng lõi B-Rep); bản không có lõi dùng lệnh của add-on
 
 ## Cách dùng
 

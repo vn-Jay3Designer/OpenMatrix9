@@ -438,3 +438,36 @@ fn bench_surface_phases() {
         eprintln!("PHASE select {sel:?} start {start:?} enter+commit {enter:?} undo {undo:?}");
     }
 }
+
+/// Solid commands OM9 implements exactly (`builtin = true` in the package) run OM9's own
+/// command wherever it is available (a build with the B-Rep kernel); the add-on keeps their
+/// names only in a build without it. Commands OM9 does not have stay the add-on's.
+#[test]
+fn builtin_solid_commands_run_om9s_own_where_available() {
+    let tmp = std::env::temp_dir().join(format!("om9-builtin-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let shared = host(&tmp);
+    let c = controller(0, Some(&shared));
+    let h = shared.lock().unwrap();
+    let mut deferred = 0;
+    for code in ["SolidUnion", "SolidBoxCornertoCornerHeight", "SolidFilletEdgeFilletEdge", "SolidShell", "SolidBoss"] {
+        let info = h.command_info(code).expect(code);
+        assert!(info.command.builtin, "{code} is marked builtin");
+        let feature = om9_app::icons::feature_for(code).expect(code);
+        let available = Controller::availability(feature).is_ok();
+        assert_eq!(om9_app::addons::defers_to_builtin(&h, code), available, "{code}");
+        // The menu icon and the typed code follow: OM9's command, else the add-on's.
+        let target = c.icon_target(code, None).expect(code);
+        assert_eq!(target.addon, !available, "{code}: {target:?}");
+        assert_eq!(c.addon_code(code).is_some(), !available, "{code}");
+        deferred += usize::from(available);
+    }
+    // Not in OM9: always the add-on's.
+    for code in ["SolidRib", "SolidSolidEditToolsHolesMakeHole", "SolidPtOn"] {
+        assert!(!h.command_info(code).unwrap().command.builtin, "{code}");
+        assert!(!om9_app::addons::defers_to_builtin(&h, code), "{code}");
+        assert!(c.addon_code(code).is_some(), "{code}");
+    }
+    eprintln!("deferred to OM9: {deferred} (the kernel is {})", if cfg!(feature = "occt-brep") { "on" } else { "off" });
+}
