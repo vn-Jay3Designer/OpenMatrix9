@@ -12,7 +12,7 @@ use om9_addon_abi::session::{
     cross, dist, dot, fmt, norm, scale, sub, unit,
 };
 use om9_addon_geom::cmd::{Collected, Flow, Show};
-use om9_addon_geom::fit::{grid, grid_mesh, sub_grid, surface_on_grid, surface_through};
+use om9_addon_geom::fit::{grid, grid_mesh, surface_on_grid, surface_through};
 use om9_addon_geom::mesh::{Frame, Mesh};
 use om9_addon_geom::nurbs::{self, Srf};
 use om9_addon_geom::path::{Path, Target};
@@ -21,7 +21,7 @@ use om9_addon_geom::sweep;
 use om9_addon_geom::{interpolate, section, shapes};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::FRAC_PI_2;
 
 pub const SWEEP1: &str = "SurfaceSweepSweep1Rail";
 pub const SWEEP2: &str = "SurfaceSweepSweep2Rails";
@@ -2644,23 +2644,10 @@ fn tween(e: &Event) -> Reply {
         if ss.len() != 2 {
             return Err("select two NURBS surfaces".into());
         }
-        let (ga, gb) = (grid(&ss[0].1, 20, 20), grid(&ss[1].1, 20, 20));
-        let mut out = Vec::new();
-        for k in 1..=count {
-            let t = k as f64 / (count + 1) as f64;
-            let rows: Vec<Vec<Vec3>> = ga
-                .iter()
-                .zip(&gb)
-                .map(|(ra, rb)| {
-                    ra.iter()
-                        .zip(rb)
-                        .map(|(p, q)| add(*p, scale(sub(*q, *p), t)))
-                        .collect()
-                })
-                .collect();
-            out.push(surface(&rows)?);
-        }
-        Ok((out, format!("{count} surfaces between")))
+        // Rhino 5 MatchMethod=None made exact: corners matched, the surfaces made compatible,
+        // corresponding control points connected.
+        let out = om9_addon_geom::surfedit::tween(ss[0].0.exact.as_ref().unwrap(), ss[1].0.exact.as_ref().unwrap(), count)?;
+        Ok((out, format!("{count} surfaces between (exact)")))
     })
 }
 
@@ -3020,10 +3007,11 @@ fn shrink(e: &Event) -> Reply {
                 if hi[0] - lo[0] > 0.999 && hi[1] - lo[1] > 0.999 {
                     continue;
                 }
-                if let Some(g) = surface_through(
-                    &sub_grid(&f, [lo[0], hi[0]], [lo[1], hi[1]], 16, 16),
-                    [3, 3],
-                ) {
+                // Rhino: full-multiplicity knots at the box, the outer control points dropped
+                // (a small margin kept, as ShrinkTrimmedSrf does); the surface is unchanged.
+                let m = 0.01;
+                let (u, v) = ([(lo[0] - m).max(0.0), (hi[0] + m).min(1.0)], [(lo[1] - m).max(0.0), (hi[1] + m).min(1.0)]);
+                if let Ok(g) = om9_addon_geom::surfedit::shrink(s.exact.as_ref().unwrap(), u, v) {
                     items.push((s.id.clone(), g));
                 }
             }
@@ -3457,47 +3445,53 @@ fn unroll(e: &Event) -> Reply {
     })
 }
 
+/// Rhino 5 SoftEditSrf: Select surface, base point on it, point to move to (UDistance,
+/// VDistance, FixEdges, Copy); the control points around move with a smooth fall-off and
+/// the base point lands exactly; the surface follows the pointer.
 fn soft_edit(e: &Event) -> Reply {
     let flow = Flow::new("Soft Edit Surface")
-        .number("Falloff (fraction of the surface)", 0.3)
-        .point("Point on the surface to move")
-        .point("Where to move it");
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let fall = c.n(0).unwrap().clamp(0.01, 2.0);
-        let (from, to) = (c.p(0).unwrap(), c.p(1).unwrap());
+        .select_prompt("Select surface to edit")
+        .point("Base point")
+        .point("Point to move to")
+        .num("UDistance", e.number("se_u_distance", 5.0))
+        .num("VDistance", e.number("se_v_distance", 5.0))
+        .toggle("FixEdges", e.flag("se_fix_edges", false))
+        .toggle("Copy", false);
+    let make = |c: &Collected, to: Option<Vec3>| -> Result<(Selected, Geo), String> {
         let ss = nurbs_surfaces(e);
         let (sel, f) = ss.first().ok_or("select a NURBS surface")?;
+        let from = c.p(0).ok_or("pick the base point")?;
+        let to = c.p(1).or(to).ok_or("pick where to move it")?;
         let (a, b) = f.closest_st(from);
-        let mv = sub(to, from);
-        let n = 24;
-        let rows: Vec<Vec<Vec3>> = grid(f, n, n)
-            .into_iter()
-            .enumerate()
-            .map(|(i, r)| {
-                r.into_iter()
-                    .enumerate()
-                    .map(|(j, p)| {
-                        let (s, t) = (i as f64 / (n - 1) as f64, j as f64 / (n - 1) as f64);
-                        let d = ((s - a).powi(2) + (t - b).powi(2)).sqrt();
-                        let w = if d >= fall {
-                            0.0
-                        } else {
-                            0.5 + 0.5 * (PI * d / fall).cos()
-                        };
-                        add(p, scale(mv, w))
-                    })
-                    .collect()
-            })
-            .collect();
-        let mut r = Reply::finish(Vec::new()).say("Soft Edit Surface: moved");
-        r.replace.push(Replacement {
-            id: sel.id.clone(),
-            geo: surface(&rows)?,
-        });
-        Ok(r)
-    })
+        let base = f.at_st(a, b);
+        // Distances along the surface → parameter reach (lengths of the isocurves through it).
+        let length = |dir: usize| -> f64 {
+            (0..32)
+                .map(|k| {
+                    let (t0, t1) = (k as f64 / 32.0, (k + 1) as f64 / 32.0);
+                    if dir == 0 { dist(f.at_st(t0, b), f.at_st(t1, b)) } else { dist(f.at_st(a, t0), f.at_st(a, t1)) }
+                })
+                .sum::<f64>()
+                .max(1e-9)
+        };
+        let reach = [c.num(&flow, "UDistance") / length(0), c.num(&flow, "VDistance") / length(1)];
+        let g = om9_addon_geom::surfedit::soft_edit(sel.exact.as_ref().unwrap(), a, b, sub(to, base), reach, c.yes(&flow, "FixEdges"))?;
+        Ok(((*sel).clone(), g))
+    };
+    flow.step(
+        e,
+        &|c, h| Show { geo: make(c, h).map(|m| vec![m.1]).unwrap_or_default(), ..Default::default() },
+        &|c| {
+            let (sel, g) = make(c, None)?;
+            if c.yes(&flow, "Copy") {
+                return Ok(Reply::finish(vec![g]).say("Soft Edit Surface: copied"));
+            }
+            let mut r = Reply::finish(Vec::new()).say("Soft Edit Surface: moved");
+            r.replace.push(Replacement { id: sel.id, geo: g });
+            Ok(r)
+        },
+    )
 }
-
 fn cutting_plane(e: &Event) -> Reply {
     let flow = Flow::new("Cutting Plane")
         .point("Start of the cut line")

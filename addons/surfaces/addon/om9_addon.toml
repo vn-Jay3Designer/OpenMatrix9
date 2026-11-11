@@ -119,7 +119,7 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["ShrinkTrimmedSrf"]
-summary = "Thu miền mặt NURBS vừa phần đã cắt (trim)."
+summary = "Thu mặt nền vừa sát phần đã cắt như Rhino 5 ShrinkTrimmedSrf: hình không đổi (chính xác)."
 steps = ["Chọn mặt.", "Enter."]
 
 [[commands]]
@@ -209,7 +209,7 @@ handler = "om9_addon_session"
 interactive = true
 builder = true
 aliases = ["TweenSrf"]
-summary = "Các mặt trung gian giữa hai mặt."
+summary = "Các mặt trung gian giữa hai mặt như Rhino 5 TweenSurfaces: góc khớp, điểm điều khiển nối nhau (chính xác)."
 steps = ["Chọn hai mặt.", "Chỉnh số mặt.", "Enter."]
 
 [[commands]]
@@ -376,8 +376,9 @@ label = "Soft Edit Surface"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["SoftEditSrf"]
-summary = "Kéo một điểm trên mặt, vùng quanh đi theo mềm mại."
-steps = ["Chọn mặt, Enter.", "Gõ vùng ảnh hưởng.", "Bấm điểm và điểm đích."]
+summary = "Kéo một điểm trên mặt như Rhino 5 SoftEditSrf: các điểm điều khiển quanh đó dời mềm, điểm bấm tới đúng chỗ."
+steps = ["Chọn mặt.", "Bấm điểm gốc trên mặt.", "Bấm điểm đích (mặt đi theo chuột)."]
+options = ["UDistance / VDistance: vùng ảnh hưởng dọc mặt (mm).", "FixEdges: giữ nguyên các cạnh.", "Copy: tạo bản sao, giữ mặt gốc."]
 
 [[commands]]
 id = "SurfacePlaneCuttingPlane"
@@ -683,6 +684,34 @@ default = 3
 min = 1
 max = 7
 commands = ["OthersSurfaceRebuild"]
+
+[[settings]]
+key = "se_u_distance"
+type = "length"
+option = "UDistance"
+label = "Vùng ảnh hưởng U (Soft Edit, mm)"
+default = 5.0
+min = 0.001
+max = 10000.0
+commands = ["SurfaceSurfaceEditToolsSoftEdit"]
+
+[[settings]]
+key = "se_v_distance"
+type = "length"
+option = "VDistance"
+label = "Vùng ảnh hưởng V (Soft Edit, mm)"
+default = 5.0
+min = 0.001
+max = 10000.0
+commands = ["SurfaceSurfaceEditToolsSoftEdit"]
+
+[[settings]]
+key = "se_fix_edges"
+type = "bool"
+option = "FixEdges"
+label = "Giữ cạnh (Soft Edit)"
+default = false
+commands = ["SurfaceSurfaceEditToolsSoftEdit"]
 
 [[settings]]
 key = "sw1_style"

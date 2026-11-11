@@ -14,7 +14,7 @@ use crate::exact::H;
 use crate::network::{Srf, conform_v};
 use om9_addon_abi::session::{Geo, Vec3, add, dist, norm, scale, sub, unit};
 
-fn of_geo(g: &Geo) -> Option<Srf> {
+pub(crate) fn of_geo(g: &Geo) -> Option<Srf> {
     let Geo::Surface { degree, size, points, weights, knots } = g else { return None };
     let w = |k: usize| weights.get(k).copied().unwrap_or(1.0);
     let rows = (0..size[0])
@@ -35,12 +35,12 @@ fn of_geo(g: &Geo) -> Option<Srf> {
     Some(Srf { rows, degree: *degree, knots: [norm01(&knots[0]), norm01(&knots[1])] })
 }
 
-fn to_geo(s: &Srf) -> Geo {
+pub(crate) fn to_geo(s: &Srf) -> Geo {
     crate::exact::surface(&s.rows, s.degree, s.knots.clone())
 }
 
 /// Reverse along u (rows) or v (within rows).
-fn reverse(s: &Srf, dir: usize) -> Srf {
+pub(crate) fn reverse(s: &Srf, dir: usize) -> Srf {
     let flip = |k: &[f64]| k.iter().rev().map(|v| 1.0 - v).collect::<Vec<f64>>();
     let mut out = s.clone();
     if dir == 0 {

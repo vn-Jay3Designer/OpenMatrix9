@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 use super::*;
-use std::f64::consts::TAU;
+use std::f64::consts::{PI, TAU};
 use om9_addon_abi::session::Plane;
 use om9_addon_geom::mesh::cuboid;
 use serde_json::Value;
@@ -518,10 +518,11 @@ fn soft_edit_seam_tangent_refit() {
         SOFT_EDIT,
         vec![a.clone()],
         json!({}),
-        vec![num(0.3), pt([5.0, 5.0, 0.0]), pt([5.0, 5.0, 2.0])],
+        vec![pt([5.0, 5.0, 0.0]), pt([5.0, 5.0, 2.0])],
     );
+    // Rhino 5 order: base point, point to move to; the base point lands exactly.
     let s = Srf::of(&r.replace[0].geo).unwrap();
-    assert!((s.at_st(0.5, 0.5)[2] - 2.0).abs() < 0.05 && s.at_st(0.0, 0.0)[2].abs() < 1e-6);
+    assert!((s.at_st(0.5, 0.5)[2] - 2.0).abs() < 1e-9 && s.at_st(0.0, 0.0)[2].abs() < 1e-9, "{:?}", s.at_st(0.5, 0.5));
     let rows: Vec<Vec<Vec3>> = (0..=24)
         .map(|i| {
             let a = TAU * i as f64 / 24.0;
