@@ -86,10 +86,10 @@ id = "SurfaceVariableFilletBlendChamferVariableBlendSurfaces"
 label = "Variable Blend Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 aliases = ["VariableBlendSrf"]
-summary = "Blend có độ phình thay đổi dọc mép."
-steps = ["Chọn hai mặt.", "Chỉnh phình đầu và cuối.", "Enter."]
+summary = "Mặt chuyển tiếp liên tục độ cong với bán kính thay đổi dọc cạnh như Rhino 5 VariableBlendSrf, có tay nắm."
+steps = ["Chọn mặt thứ nhất (bấm phía giữ).", "Chọn mặt thứ hai (bấm phía giữ).", "Bấm gần tay nắm để gõ bán kính; AddHandle thêm tay nắm; Enter để tạo."]
+options = ["SetAll: một bán kính cho mọi tay nắm.", "AddHandle: thêm tay nắm tại điểm trên cạnh.", "Trim: cắt mặt gốc theo mép."]
 
 [[commands]]
 id = "SurfaceLoft"
@@ -673,7 +673,7 @@ type = "bool"
 option = "Trim"
 label = "Cắt mặt gốc (Fillet/Chamfer)"
 default = true
-commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
+commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableBlendSurfaces"]
 
 [[settings]]
 key = "sr_degree_v"
@@ -925,7 +925,7 @@ default = 1.0
 min = 0.01
 max = 50.0
 step = 0.05
-commands = ["SurfaceFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
+commands = ["SurfaceFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableBlendSurfaces"]
 
 [[settings]]
 key = "fs_end_radius"
@@ -936,7 +936,7 @@ default = 2.0
 min = 0.01
 max = 50.0
 step = 0.05
-commands = ["SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces"]
+commands = ["SurfaceVariableFilletBlendChamferVariableFilletSurfaces", "SurfaceVariableFilletBlendChamferVariableChamferSurfaces", "SurfaceVariableFilletBlendChamferVariableBlendSurfaces"]
 
 [[settings]]
 key = "fs_flip_first"

@@ -118,7 +118,7 @@ impl Interactive for Surfaces {
             PLANE => plane(e),
             REBUILD => rebuild(e),
             BLEND => blend_srf(e),
-            VAR_BLEND => blend(e),
+            VAR_BLEND => variable_fillet(e),
             LOFT => loft(e),
             NETWORK => network(e),
             SHRINK => shrink(e),
@@ -2167,17 +2167,24 @@ struct VarFilletState {
 fn variable_fillet(e: &Event) -> Reply {
     use om9_addon_geom::fillet;
     let chamfer = e.command == VAR_CHAMFER;
-    let label = if chamfer { "Variable Chamfer Surfaces" } else { "Variable Fillet Surfaces" };
-    let noun = if chamfer { "chamfer" } else { "fillet" };
+    let blending = e.command == VAR_BLEND;
+    let label = if chamfer {
+        "Variable Chamfer Surfaces"
+    } else if blending {
+        "Variable Blend Surfaces"
+    } else {
+        "Variable Fillet Surfaces"
+    };
+    let noun = if chamfer { "chamfer" } else if blending { "blend" } else { "fillet" };
     let mut st: VarFilletState = serde_json::from_value(e.state.clone()).unwrap_or_default();
     if matches!(e.input, Input::Start) {
         st = VarFilletState::default();
     }
     let save = |st: &VarFilletState| serde_json::to_value(st).unwrap_or(Value::Null);
     let surfaces: Vec<&Selected> = e.selection.iter().filter(|s| matches!(s.exact, Some(Geo::Surface { .. }))).collect();
-    // Meshes (no exact surface): the mesh fillet / chamfer with start and end values.
+    // Meshes (no exact surface): the mesh fillet / chamfer / blend with start and end values.
     if surfaces.is_empty() && !meshes(e).is_empty() && st.first.is_none() {
-        return fillet(e);
+        return if blending { blend(e) } else { fillet(e) };
     }
     let center = |s: &Selected| Srf::of(s.exact.as_ref().unwrap()).map_or(s.bbox[0], |f| f.at_st(0.5, 0.5));
     let trim = st.trim.unwrap_or_else(|| e.flag("fs_trim", true));
@@ -2263,10 +2270,12 @@ fn variable_fillet(e: &Event) -> Reply {
     }
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
     let make = || -> Result<om9_addon_geom::sweep::Swept, String> {
+        let h: Vec<(f64, f64)> = st.handles.iter().map(|h| (h.0, h.1)).collect();
         if chamfer {
             fillet::variable_chamfer(g1, g2, &st.handles, k1, k2, tol)
+        } else if blending {
+            fillet::variable_blend(g1, g2, &h, k1, k2, e.number("bl_bulge", 1.0).max(0.01), tol)
         } else {
-            let h: Vec<(f64, f64)> = st.handles.iter().map(|h| (h.0, h.1)).collect();
             fillet::variable_fillet(g1, g2, &h, k1, k2, tol)
         }
     };

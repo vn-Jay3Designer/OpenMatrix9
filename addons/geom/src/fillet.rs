@@ -574,6 +574,82 @@ pub fn variable_chamfer(g1: &Geo, g2: &Geo, handles: &[(f64, f64, f64)], keep1: 
     fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)
 }
 
+
+/// The point and the second derivative of the surface curve leaving (a, b) along the unit
+/// tangent `dir` at unit speed (its normal part is the normal curvature).
+fn bend(s: &Srf, a: f64, b: f64, dir: Vec3) -> Vec3 {
+    let (su, sv) = derivs(s, a, b);
+    // (du, dv) with su·du + sv·dv = dir (least squares).
+    let m = [[dot(su, su), dot(su, sv)], [dot(su, sv), dot(sv, sv)]];
+    let det = m[0][0] * m[1][1] - m[0][1] * m[1][0];
+    if det.abs() < 1e-300 {
+        return [0.0; 3];
+    }
+    let (ra, rb) = (dot(su, dir), dot(sv, dir));
+    let (du, dv) = ((m[1][1] * ra - m[0][1] * rb) / det, (m[0][0] * rb - m[1][0] * ra) / det);
+    let h = 1e-3;
+    let at = |k: f64| s.at_st((a + du * h * k).clamp(0.0, 1.0), (b + dv * h * k).clamp(0.0, 1.0));
+    // One-sided when the curve would leave the surface.
+    let (p0, p1, p2) = (at(0.0), at(1.0), at(2.0));
+    let back = at(-1.0);
+    let inside = (0.0..=1.0).contains(&(a - du * h)) && (0.0..=1.0).contains(&(b - dv * h));
+    if inside {
+        std::array::from_fn(|k| (p1[k] - 2.0 * p0[k] + back[k]) / (h * h))
+    } else {
+        std::array::from_fn(|k| (p2[k] - 2.0 * p1[k] + p0[k]) / (h * h))
+    }
+}
+
+/// Rhino 5 VariableBlendSrf: like VariableFilletSrf (handles of radius along the edge) but
+/// the section is a curvature-continuous blend between where the ball touches: a quintic
+/// Bézier leaving each surface along the ball's arc direction with the surface's normal
+/// curvature there; `bulge` scales the end tangents.
+pub fn variable_blend(g1: &Geo, g2: &Geo, handles: &[(f64, f64)], keep1: Vec3, keep2: Vec3, bulge: f64, tol: f64) -> Result<Swept, String> {
+    if handles.is_empty() || handles.iter().any(|h| h.1 <= 0.0) {
+        return Err("the radius must be more than 0".into());
+    }
+    let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
+    let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
+    let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0)));
+    let orient = [orientation(&s1), orientation(&s2)];
+    let along = {
+        let pair0 = Pair { side: [1.0, 1.0], s1: Srf::of(g1).unwrap(), s2: Srf::of(g2).unwrap(), r: 0.0, orient, vr: None };
+        let (balls, s) = trace(&pair0, size)?;
+        Along::of(&balls, &s)
+    };
+    let radius = |p: Vec3| profile(handles, along.place(p));
+    let side_of = |s: &Srf, toward: Vec3| -> f64 {
+        let (a, b) = s.closest_st(toward);
+        let n = normal(s, a, b);
+        if dot(sub(toward, s.at_st(a, b)), n) >= 0.0 { 1.0 } else { -1.0 }
+    };
+    let rmax = handles.iter().map(|h| h.1).fold(0.0, f64::max);
+    let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r: rmax, orient, vr: Some(&radius) };
+    let (balls, s) = trace(&pair, rmax)?;
+    let placed = |t: f64| -> Vec<H> {
+        let b = ball_at(&pair, &balls, &s, t);
+        let (p, q) = (b.p1, b.p2);
+        let gap = dist(p, q).max(1e-12);
+        // Arc directions at the contacts (in each surface's tangent plane, across the edge).
+        let along_arc = |from: Vec3, to: Vec3| {
+            let r = sub(from, b.c);
+            let d = sub(to, from);
+            unit(sub(d, scale(r, dot(d, r) / dot(r, r).max(1e-300))))
+        };
+        let (t1, t2) = (along_arc(p, q), along_arc(q, p));
+        let lam = bulge * gap;
+        let k1 = bend(&pair.s1, b.x[0], b.x[1], t1);
+        let k2 = bend(&pair.s2, b.x[2], b.x[3], t2);
+        // Quintic: C'(0) = 5(P1 − P0) = λ t1, C''(0) = 20(P2 − 2P1 + P0) = λ² k1 (mirrored at 1).
+        let p1 = add(p, scale(t1, lam / 5.0));
+        let p2 = add(sub(scale(p1, 2.0), p), scale(k1, lam * lam / 20.0));
+        let q1 = add(q, scale(t2, lam / 5.0));
+        let q2 = add(sub(scale(q1, 2.0), q), scale(k2, lam * lam / 20.0));
+        [p, p1, p2, q2, q1, q].iter().map(|x| [x[0], x[1], x[2], 1.0]).collect()
+    };
+    fit_stations(&placed, 0.0, 1.0, false, s.iter().copied().step_by(4).collect(), 5, &[0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0], tol, 600)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,6 +757,23 @@ mod tests {
         assert!(ends.iter().any(|(p, q)| (p[0] - 1.0).abs() < 1e-6 && (q[2] - 1.0).abs() < 1e-6), "{ends:?}");
     }
 
+
+    #[test]
+    fn variable_blend_leaves_both_surfaces_tangent() {
+        let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 8.0, 0.0]);
+        let wall = plane([0.0, 0.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 0.0]);
+        let s0 = place_on_intersection(&floor, &wall, [0.0, 0.0, 0.0]).unwrap();
+        let s8 = place_on_intersection(&floor, &wall, [0.0, 8.0, 0.0]).unwrap();
+        let b = variable_blend(&floor, &wall, &[(s0, 1.0), (s8, 2.0)], [5.0, 4.0, 0.0], [0.0, 4.0, 3.0], 1.0, 0.001).unwrap();
+        for i in 0..=10 {
+            let u = i as f64 / 10.0;
+            let (a, a2) = (eval(&b, u, 0.0), eval(&b, u, 1e-4));
+            let (c, c2) = (eval(&b, u, 1.0), eval(&b, u, 1.0 - 1e-4));
+            // Starts on the floor going flat (z' = 0), ends on the wall going straight (x' = 0).
+            assert!(a[2].abs() < 1e-9 && (a2[2] - a[2]).abs() / dist(a2, a) < 1e-3, "{a:?} {a2:?}");
+            assert!(c[0].abs() < 1e-9 && (c2[0] - c[0]).abs() / dist(c2, c) < 1e-3, "{c:?} {c2:?}");
+        }
+    }
 }
 
 /// Rhino 5 Fin: the curve (on `g`) extruded along the surface normal (or tangent to the

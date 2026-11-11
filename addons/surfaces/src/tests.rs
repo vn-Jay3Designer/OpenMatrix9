@@ -1484,3 +1484,33 @@ fn variable_offset_follows_rhino5_handles() {
     let corners: Vec<f64> = [(0.0, 0.0), (1.0, 1.0)].iter().map(|(u, v)| s.at_st(*u, *v)[2].abs()).collect();
     assert!((corners[0] - 1.0).abs() < 1e-6 && (corners[1] - 3.0).abs() < 1e-6, "{corners:?}");
 }
+
+/// Rhino 5 VariableBlendSrf: the same handles; a curvature-continuous blend, Enter.
+#[test]
+fn variable_blend_follows_rhino5() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        name: String::new(),
+        bbox: [[0.0; 3]; 2],
+        points: vec![],
+        closed: false,
+        gem: None,
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
+    let sel = || vec![floor.clone(), wall.clone()];
+    let r = feed(VAR_BLEND, &Value::Null, Input::Start, sel(), json!({"fs_trim": true}));
+    assert!(r.prompt.starts_with("Select handle to edit"), "{}", r.prompt);
+    let r = feed(VAR_BLEND, &r.state, Input::Enter, sel(), json!({"fs_trim": true}));
+    assert!(r.done, "{:?}", r.error);
+    assert_eq!(r.replace.len(), 2, "trimmed inputs: {:?}", r.messages);
+}
