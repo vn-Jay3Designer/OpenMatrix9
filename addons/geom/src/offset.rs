@@ -170,6 +170,24 @@ pub fn offset(g: &Geo, d: f64, tol: f64, loose: bool) -> Result<Offset, String> 
         return Ok(Offset { geo, deviation: dev, exact: false });
     }
     // Free form: fit the offset points, finer until within tol.
+    fit_grid(&off, tol)
+}
+
+/// A surface through the points `off(a, b)` on a grid refined until it is within `tol` of
+/// them between the grid points too.
+fn fit_grid(off: &dyn Fn(f64, f64) -> Vec3, tol: f64) -> Result<Offset, String> {
+    let check = |geo: &Geo| -> f64 {
+        let f = Srf::of(geo).unwrap();
+        let k = 24;
+        let mut worst = 0.0f64;
+        for i in 0..k {
+            for j in 0..k {
+                let (a, b) = ((i as f64 + 0.5) / k as f64, (j as f64 + 0.5) / k as f64);
+                worst = worst.max(dist(f.at_st(a, b), off(a, b)));
+            }
+        }
+        worst
+    };
     let mut k = 8;
     loop {
         let params: Vec<f64> = (0..=k).map(|i| i as f64 / k as f64).collect();
@@ -190,6 +208,38 @@ pub fn offset(g: &Geo, d: f64, tol: f64, loose: bool) -> Result<Offset, String> 
         }
         k *= 2;
     }
+}
+
+/// Rhino 5 VariableOffsetSrf: the offset distance varies over the surface — through the
+/// handles (place (a, b) on the surface, distance): bilinear when the handles are the four
+/// corners, otherwise smoothly weighted by their parameter distance; fitted within `tol`.
+pub fn variable_offset(g: &Geo, handles: &[((f64, f64), f64)], tol: f64) -> Result<Offset, String> {
+    let s = Srf::of(g).ok_or("not a NURBS surface")?;
+    if handles.is_empty() {
+        return Err("no handles".into());
+    }
+    let corner = |a: f64, b: f64| handles.iter().find(|h| (h.0.0 - a).abs() < 1e-9 && (h.0.1 - b).abs() < 1e-9).map(|h| h.1);
+    let corners = [corner(0.0, 0.0), corner(1.0, 0.0), corner(0.0, 1.0), corner(1.0, 1.0)];
+    let bilinear = handles.len() == 4 && corners.iter().all(Option::is_some);
+    let d = |a: f64, b: f64| -> f64 {
+        if bilinear {
+            let [c00, c10, c01, c11] = corners.map(Option::unwrap);
+            return c00 * (1.0 - a) * (1.0 - b) + c10 * a * (1.0 - b) + c01 * (1.0 - a) * b + c11 * a * b;
+        }
+        let (mut num, mut den) = (0.0, 0.0);
+        for ((ha, hb), hd) in handles {
+            let r2 = (a - ha).powi(2) + (b - hb).powi(2);
+            if r2 < 1e-18 {
+                return *hd;
+            }
+            let w = 1.0 / (r2 * r2);
+            num += w * hd;
+            den += w;
+        }
+        num / den
+    };
+    let off = |a: f64, b: f64| add(s.at_st(a, b), scale(normal(&s, a, b), d(a, b)));
+    fit_grid(&off, tol)
 }
 
 /// The centre of the sphere through the points, if they are on one.
@@ -361,6 +411,25 @@ mod tests {
                 let d = dist(f.at_st(a, b), s.at_st(a, b));
                 assert!((d - 0.8).abs() < 0.001, "edge {d} at {a},{b}");
             }
+        }
+    }
+
+    #[test]
+    fn variable_offset_goes_from_corner_to_corner() {
+        let plane = Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: vec![[0.0, 0.0, 0.0], [0.0, 5.0, 0.0], [5.0, 0.0, 0.0], [5.0, 5.0, 0.0]],
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        };
+        let h = [((0.0, 0.0), 1.0), ((1.0, 0.0), 2.0), ((0.0, 1.0), 1.0), ((1.0, 1.0), 2.0)];
+        let o = variable_offset(&plane, &h, 0.001).unwrap();
+        let f = Srf::of(&o.geo).unwrap();
+        for i in 0..=10 {
+            let a = i as f64 / 10.0;
+            let z = f.at_st(a, 0.5)[2].abs();
+            assert!((z - (1.0 + a)).abs() < 1e-6, "{z} at {a}");
         }
     }
 }

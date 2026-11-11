@@ -131,7 +131,7 @@ impl Interactive for Surfaces {
             FILLET | CHAMFER => fillet_srf(e),
             VAR_FILLET | VAR_CHAMFER => variable_fillet(e),
             OFFSET => offset_srf(e),
-            VAR_OFFSET => offset(e),
+            VAR_OFFSET => variable_offset(e),
             MERGE => merge(e),
             MATCH => match_srf(e),
             DRAPE => drape(e),
@@ -2034,6 +2034,117 @@ fn pick_two_edges(e: &Event, edges: &mut Vec<(String, usize, bool)>, prompts: [&
         }
     }
     Ok(entering)
+}
+
+/// VariableOffsetSrf command state.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct VarOffsetState {
+    /// Handles: place on the surface (normalised u, v) and distance.
+    handles: Vec<((f64, f64), f64)>,
+    mode: Option<String>,
+    editing: usize,
+    flip: Option<bool>,
+}
+
+/// Rhino 5 VariableOffsetSrf: Select surface, then the handles — one at each corner; click
+/// near one to type its distance, AddHandle for one at a point, SetAll, Flip — with a
+/// preview; Enter creates.
+fn variable_offset(e: &Event) -> Reply {
+    let label = "Variable Offset Surface";
+    let mut st: VarOffsetState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = VarOffsetState::default();
+    }
+    let save = |st: &VarOffsetState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let ss = nurbs_surfaces(e);
+    let Some((sel, f)) = ss.first() else {
+        if !meshes(e).is_empty() {
+            return offset(e);
+        }
+        return Reply::ask("Select surface to offset", save(&st)).want(Want::Objects);
+    };
+    if st.handles.is_empty() {
+        let d = e.number("os_distance", 1.0);
+        let c = [d, e.number("os_d10", d), e.number("os_d01", d), e.number("os_d11", d)];
+        st.handles = vec![((0.0, 0.0), c[0]), ((1.0, 0.0), c[1]), ((0.0, 1.0), c[2]), ((1.0, 1.0), c[3])];
+    }
+    let flip = st.flip.unwrap_or_else(|| e.flag("os_flip", false));
+    let mut error = None;
+    match &e.input {
+        Input::Option { name, value } if name.eq_ignore_ascii_case("Flip") => {
+            st.flip = Some(match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("yes"),
+                None => !flip,
+            })
+        }
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("SetAll") => st.mode = Some("SetAll".into()),
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("AddHandle") => st.mode = Some("AddHandle".into()),
+        Input::Point { point } => {
+            let (a, b) = f.closest_st(*point);
+            if st.mode.as_deref() == Some("AddHandle") {
+                let now = st.handles.iter().map(|h| h.1).sum::<f64>() / st.handles.len() as f64;
+                st.handles.push(((a, b), now));
+                st.editing = st.handles.len() - 1;
+            } else {
+                st.editing = (0..st.handles.len())
+                    .min_by(|x, y| {
+                        let d = |i: usize| (st.handles[i].0.0 - a).powi(2) + (st.handles[i].0.1 - b).powi(2);
+                        d(*x).total_cmp(&d(*y))
+                    })
+                    .unwrap_or(0);
+            }
+            st.mode = Some("Edit".into());
+        }
+        Input::Text { text } if st.mode.is_some() => match text.trim().replace(',', ".").parse::<f64>() {
+            Ok(v) => {
+                if st.mode.as_deref() == Some("SetAll") {
+                    st.handles.iter_mut().for_each(|h| h.1 = v);
+                } else {
+                    let i = st.editing.min(st.handles.len() - 1);
+                    st.handles[i].1 = v;
+                }
+                st.mode = None;
+            }
+            Err(_) => error = Some(format!("{text}: type a number")),
+        },
+        Input::Enter if st.mode.is_some() => st.mode = None,
+        _ => {}
+    }
+    let flip = st.flip.unwrap_or(flip);
+    let tol = match e.number("os_tolerance", 0.0) {
+        t if t > 0.0 => t,
+        _ => e.number("sw_tolerance", 0.001).max(1e-6),
+    };
+    let make = || {
+        let h: Vec<((f64, f64), f64)> = st.handles.iter().map(|(p, d)| (*p, if flip { -d } else { *d })).collect();
+        om9_addon_geom::offset::variable_offset(sel.exact.as_ref().unwrap(), &h, tol)
+    };
+    if matches!(e.input, Input::Enter) && st.mode.is_none() {
+        return match make() {
+            Ok(o) => Reply::finish(vec![o.geo]).say(format!("{label}: {} handles, within {} mm", st.handles.len(), fmt(tol))),
+            Err(why) => Reply::ask("Select edge point to adjust. Press Enter when done", save(&st)).want(Want::Point).refuse(format!("{label}: {why}")),
+        };
+    }
+    let prompt = match st.mode.as_deref() {
+        Some("SetAll") => "Distance for all handles".to_owned(),
+        Some("AddHandle") => "Point on the surface for the new handle".to_owned(),
+        Some(_) => format!("Distance <{}>", fmt(st.handles[st.editing.min(st.handles.len() - 1)].1)),
+        None => "Select edge point to adjust. Press Enter when done".to_owned(),
+    };
+    let want = if matches!(st.mode.as_deref(), Some("SetAll") | Some("Edit")) { Want::Number } else { Want::Point };
+    let mut r = Reply::ask(prompt, save(&st)).want(want).with_options(vec![
+        OptionToken::action("SetAll"),
+        OptionToken::action("AddHandle"),
+        OptionToken::toggle("Flip", flip),
+    ]);
+    match make() {
+        Ok(o) => r = r.preview(vec![o.geo]),
+        Err(why) => error = error.or(Some(why)),
+    }
+    match error {
+        Some(why) => r.refuse(format!("{label}: {why}")),
+        None => r,
+    }
 }
 
 /// VariableFilletSrf / VariableChamferSrf command state.

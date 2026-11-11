@@ -272,11 +272,11 @@ id = "SurfaceVariableOffsetSurface"
 label = "Variable Offset Surface"
 handler = "om9_addon_session"
 interactive = true
-builder = true
 mesh_data = true
 aliases = ["VariableOffsetSrf"]
-summary = "Offset với khoảng khác nhau ở bốn góc."
-steps = ["Chọn mặt.", "Chỉnh bốn khoảng.", "Enter."]
+summary = "Offset với khoảng thay đổi trên mặt như Rhino 5 VariableOffsetSrf: tay nắm ở bốn góc, thêm tay nắm; mặt khớp trong dung sai."
+steps = ["Chọn mặt.", "Bấm gần tay nắm để gõ khoảng; AddHandle thêm tay nắm; Enter để tạo."]
+options = ["SetAll: một khoảng cho mọi tay nắm.", "AddHandle: thêm tay nắm tại điểm trên mặt.", "Flip: đổi phía."]
 
 [[commands]]
 id = "SurfaceSurfaceEditToolsMerge"

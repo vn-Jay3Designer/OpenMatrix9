@@ -1465,3 +1465,22 @@ fn variable_fillet_follows_rhino5_handles() {
     assert!((floor_x_at(4.0) - 0.5).abs() < 2e-3, "{}", floor_x_at(4.0));
     assert!((floor_x_at(8.0) - 2.0).abs() < 2e-3, "{}", floor_x_at(8.0));
 }
+
+/// Rhino 5 VariableOffsetSrf: corner handles (click near one, type its distance), preview,
+/// Enter.
+#[test]
+fn variable_offset_follows_rhino5_handles() {
+    let a = flat("a", 0.0, 4.0, 0.0, 4.0, 0.0);
+    let set = json!({"os_distance": 1.0});
+    let r = feed(VAR_OFFSET, &Value::Null, Input::Start, vec![a.clone()], set.clone());
+    assert!(r.prompt.starts_with("Select edge point to adjust"), "{}", r.prompt);
+    assert!(!r.preview.is_empty());
+    let r = feed(VAR_OFFSET, &r.state, pt([3.9, 3.9, 0.0]), vec![a.clone()], set.clone());
+    assert!(r.prompt.starts_with("Distance <1>"), "{}", r.prompt);
+    let r = feed(VAR_OFFSET, &r.state, text("3"), vec![a.clone()], set.clone());
+    let r = feed(VAR_OFFSET, &r.state, Input::Enter, vec![a], set);
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).unwrap();
+    let corners: Vec<f64> = [(0.0, 0.0), (1.0, 1.0)].iter().map(|(u, v)| s.at_st(*u, *v)[2].abs()).collect();
+    assert!((corners[0] - 1.0).abs() < 1e-6 && (corners[1] - 3.0).abs() < 1e-6, "{corners:?}");
+}
