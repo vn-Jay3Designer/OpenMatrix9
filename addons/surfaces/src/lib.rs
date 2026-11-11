@@ -3713,6 +3713,41 @@ fn unroll(e: &Event) -> Reply {
             + 5.0;
         let mut x = base;
         for s in &e.selection {
+            // NURBS surfaces unroll to a flat NURBS surface (Rhino's UnrollSrf result): the
+            // grid unfolded triangle by triangle (edge lengths kept), then a surface through it.
+            if !smash {
+                if let Some(f) = s.exact.as_ref().and_then(Srf::of) {
+                    // Fine unfolding (chord error ~ L·(θ/n)²/24), fitted through every 6th point.
+                    let (n, step) = (192, 6);
+                    let g = grid(&f, n, n);
+                    let m = grid_mesh(&g);
+                    let flat = unfold(&m, 0);
+                    let minx = flat.iter().map(|p| p[0]).fold(f64::MAX, f64::min);
+                    let miny = flat.iter().map(|p| p[1]).fold(f64::MAX, f64::min);
+                    let w = flat.iter().map(|p| p[0]).fold(f64::MIN, f64::max) - minx;
+                    let nv = g[0].len();
+                    // Every `step`-th point, always including the last row and column.
+                    let picks = |len: usize| -> Vec<usize> {
+                        let mut v: Vec<usize> = (0..len).step_by(step).collect();
+                        if *v.last().unwrap() != len - 1 {
+                            v.push(len - 1);
+                        }
+                        v
+                    };
+                    let rows: Vec<Vec<Vec3>> = picks(g.len())
+                        .into_iter()
+                        .map(|i| picks(nv).into_iter().map(|j| {
+                            let p = flat[i * nv + j];
+                            e.plane.at(x + p[0] - minx, p[1] - miny, 0.0)
+                        }).collect())
+                        .collect();
+                    if let Some(srf) = surface_through(&rows, [3, 3]) {
+                        out.push(srf);
+                        x += w + 5.0;
+                        continue;
+                    }
+                }
+            }
             let m: Mesh = match s.exact.as_ref().and_then(Srf::of) {
                 Some(f) => grid_mesh(&grid(&f, 24, 24)),
                 None => match &s.mesh {
@@ -3873,38 +3908,35 @@ fn seam(e: &Event) -> Reply {
         },
     )
 }
+/// Rhino 5 SetSurfaceTangent: Select an untrimmed surface edge (a click near it), the base
+/// point for the tangent direction, the second direction point (the surface follows the
+/// pointer); the edge stays, the surface leaves it along that direction.
 fn set_tangent(e: &Event) -> Reply {
     let flow = Flow::new("Set Surface Tangent")
-        .point("Pick near the edge")
-        .point("Tangent direction (a point the edge should lean toward)");
-    flow.step(e, &|_, _| Show::default(), &|c| {
-        let (p, q) = (c.p(0).unwrap(), c.p(1).unwrap());
+        .select_prompt("Select surface")
+        .point("Select untrimmed surface edge")
+        .point("Base point for tangent direction")
+        .point("Second direction point");
+    let make = |c: &Collected, to: Option<Vec3>| -> Result<(String, Geo), String> {
         let ss = nurbs_surfaces(e);
         let (sel, f) = ss.first().ok_or("select a NURBS surface")?;
-        let (dir, at) = nearest_edge(f, p);
-        let n = 24;
-        let g = grid(f, n, n);
-        let mut rows: Vec<Vec<Vec3>> = if dir == 0 {
-            g
-        } else {
-            (0..n).map(|j| g.iter().map(|r| r[j]).collect()).collect()
-        };
-        if at < 0.5 {
-            rows.reverse();
-        }
-        let edge_mid = rows[n - 1][n / 2];
-        let tdir = unit(sub(edge_mid, q));
-        for j in 0..n {
-            let h = dist(rows[n - 1][j], rows[n - 2][j]);
-            rows[n - 2][j] = add(rows[n - 1][j], scale(tdir, h));
-        }
-        let mut r = Reply::finish(Vec::new()).say("Set Surface Tangent: done");
-        r.replace.push(Replacement {
-            id: sel.id.clone(),
-            geo: surface(&rows)?,
-        });
-        Ok(r)
-    })
+        let at = c.p(0).ok_or("pick near the edge")?;
+        let base = c.p(1).ok_or("pick the base point")?;
+        let to = c.p(2).or(to).ok_or("pick the direction")?;
+        let (dir, end) = nearest_edge(f, at);
+        let g = om9_addon_geom::surfedit::set_tangent(sel.exact.as_ref().unwrap(), dir, end > 0.5, sub(to, base))?;
+        Ok((sel.id.clone(), g))
+    };
+    flow.step(
+        e,
+        &|c, h| Show { geo: make(c, h).map(|m| vec![m.1]).unwrap_or_default(), ..Default::default() },
+        &|c| {
+            let (id, g) = make(c, None)?;
+            let mut r = Reply::finish(Vec::new()).say("Set Surface Tangent: set");
+            r.replace.push(Replacement { id, geo: g });
+            Ok(r)
+        },
+    )
 }
 
 /// For tests and previews.

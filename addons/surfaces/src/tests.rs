@@ -543,9 +543,19 @@ fn soft_edit_seam_tangent_refit() {
         SET_TANGENT,
         vec![a.clone()],
         json!({}),
-        vec![pt([10.0, 5.0, 0.0]), pt([9.0, 5.0, -1.0])],
+        vec![pt([10.0, 5.0, 0.0]), pt([0.0, 0.0, 0.0]), pt([-1.0, 0.0, 1.0])],
     );
+    // Rhino 5 order: near the edge, base point, direction point; leaves x = 10 at 45° up.
     assert_eq!(r.replace.len(), 1);
+    let s = Srf::of(&r.replace[0].geo).unwrap();
+    let ends = [(1.0, 0.5, 1.0 - 1e-5), (0.0, 0.5, 1e-5)];
+    assert!(ends.iter().any(|(u, v, u2)| {
+        let (a, b) = (s.at_st(*u, *v), s.at_st(*u2, *v));
+        (a[0] - 10.0).abs() < 1e-9 && ((b[2] - a[2]) / (a[0] - b[0]) - 1.0).abs() < 1e-3
+    }) || [(0.5, 1.0, 1.0 - 1e-5), (0.5, 0.0, 1e-5)].iter().any(|(v, u, u2)| {
+        let (a, b) = (s.at_st(*v, *u), s.at_st(*v, *u2));
+        (a[0] - 10.0).abs() < 1e-9 && ((b[2] - a[2]) / (a[0] - b[0]) - 1.0).abs() < 1e-3
+    }));
     let r = run(
         REFIT,
         vec![a],
@@ -1513,4 +1523,22 @@ fn variable_blend_follows_rhino5() {
     let r = feed(VAR_BLEND, &r.state, Input::Enter, sel(), json!({"fs_trim": true}));
     assert!(r.done, "{:?}", r.error);
     assert_eq!(r.replace.len(), 2, "trimmed inputs: {:?}", r.messages);
+}
+
+/// Rhino 5 UnrollSrf: a half cylinder unrolls to a flat NURBS rectangle π·r long.
+#[test]
+fn unroll_gives_a_flat_surface_with_true_lengths() {
+    // An exact half cylinder (rational) as the input.
+    let half = om9_addon_geom::exact::arc([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 3.0, PI);
+    let srf_rows: Vec<Vec<om9_addon_geom::exact::H>> = half.points.iter().map(|c| vec![*c, [c[0], c[1], 4.0 * c[3], c[3]]]).collect();
+    let g = om9_addon_geom::exact::surface(&srf_rows, [2, 1], [half.knots.clone(), vec![0.0, 0.0, 1.0, 1.0]]);
+    let r = run(UNROLL, vec![srf_sel("c", g)], json!({}), vec![Input::Enter]);
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).expect("a NURBS surface");
+    let (a, b) = (s.at_st(0.0, 0.0), s.at_st(1.0, 0.0));
+    let (c, d) = (s.at_st(0.0, 1.0), s.at_st(1.0, 1.0));
+    let lengths = [dist(a, b), dist(a, c)];
+    assert!(lengths.iter().any(|l| (l - 3.0 * PI).abs() < 2e-4) && lengths.iter().any(|l| (l - 4.0).abs() < 1e-6), "{lengths:?}");
+    assert!(((dist(c, d) - dist(a, b)).abs()) < 2e-4);
+    assert!([a, b, c, d].iter().all(|p| p[2].abs() < 1e-9), "flat");
 }

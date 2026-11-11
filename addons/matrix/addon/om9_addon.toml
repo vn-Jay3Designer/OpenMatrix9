@@ -1107,8 +1107,8 @@ label = "Set Surface Tangent"
 handler = "om9_addon_session"
 interactive = true
 aliases = ["SetSrfTangent"]
-summary = "Đặt hướng tiếp tuyến của một mép mặt."
-steps = ["Chọn mặt.", "Bấm gần mép, rồi bấm hướng."]
+summary = "Đặt hướng tiếp tuyến của mặt tại một cạnh như Rhino 5 SetSurfaceTangent; cạnh giữ nguyên, cạnh bên kia không đổi."
+steps = ["Chọn mặt.", "Bấm gần cạnh.", "Điểm gốc của hướng.", "Điểm thứ hai của hướng (mặt đi theo chuột)."]
 
 [[commands]]
 id = "SurfaceSurfaceEditToolsRefittoTolerance"

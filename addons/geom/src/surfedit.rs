@@ -207,6 +207,50 @@ pub fn soft_edit(g: &Geo, a: f64, b: f64, mv: [f64; 3], reach: [f64; 2], fix_edg
     Ok(Geo::Surface { degree: *degree, size: *size, points: moved, weights: weights.clone(), knots: knots.clone() })
 }
 
+
+/// Rhino 5 SetSurfaceTangent: the surface leaves its edge (`dir`: the parameter that ends
+/// there, `at_end`) along `d` — the second row of control points turned onto that direction
+/// (lengths kept). Curves across the edge are refined first (shape unchanged) so the far
+/// side does not move.
+pub fn set_tangent(g: &Geo, dir: usize, at_end: bool, d: [f64; 3]) -> Result<Geo, String> {
+    use om9_addon_abi::session::{add, dot, norm, scale, sub, unit};
+    if norm(d) < 1e-12 {
+        return Err("the direction has no length".into());
+    }
+    let d = unit(d);
+    let (curves, degree, _, knots) = lines(g, dir).ok_or("not a NURBS surface")?;
+    let mut curves = normalised(curves);
+    if at_end {
+        curves = curves.iter().map(Nc::reversed).collect();
+    }
+    // Enough control points that row 1 is not near the far edge.
+    let p = curves[0].degree;
+    for _ in 0..6 {
+        let first = curves[0].knots.iter().copied().find(|v| *v > 1e-12).unwrap_or(1.0);
+        if curves[0].points.len() >= p + 3 && first < 1.0 {
+            break;
+        }
+        for c in curves.iter_mut() {
+            c.insert(first / 2.0);
+        }
+    }
+    for c in curves.iter_mut() {
+        let (p0, p1) = (crate::exact::euclid(c.points[0]), crate::exact::euclid(c.points[1]));
+        let old = sub(p1, p0);
+        let len = norm(old);
+        let dd = if dot(d, old) < 0.0 { scale(d, -1.0) } else { d };
+        let q = add(p0, scale(dd, len));
+        let w = c.points[1][3];
+        c.points[1] = [q[0] * w, q[1] * w, q[2] * w, w];
+    }
+    if at_end {
+        curves = curves.iter().map(Nc::reversed).collect();
+    }
+    let mut deg = degree;
+    deg[dir] = curves[0].degree;
+    Ok(assemble(&curves, dir, deg, knots))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -311,6 +355,24 @@ mod tests {
             for (a, b) in [(t, 0.0), (t, 1.0), (0.0, t), (1.0, t)] {
                 assert!(dist(s1.at_st(a, b), s0.at_st(a, b)) < 1e-12, "edge moved at {a},{b}");
             }
+        }
+    }
+
+    #[test]
+    fn set_tangent_turns_the_edge_direction_only() {
+        // A flat 4 × 4 sheet: make it leave its u = 0 edge going up at 45°.
+        let rows: Vec<Vec<H>> = (0..4).map(|i| (0..4).map(|j| [i as f64 * 4.0 / 3.0, j as f64 * 4.0 / 3.0, 0.0, 1.0]).collect()).collect();
+        let k = vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+        let sheet = exact::surface(&rows, [3, 3], [k.clone(), k]);
+        let out = set_tangent(&sheet, 0, false, [1.0, 0.0, 1.0]).unwrap();
+        let (s0, s1) = (Srf::of(&sheet).unwrap(), Srf::of(&out).unwrap());
+        for j in 0..=8 {
+            let v = j as f64 / 8.0;
+            let (a, b) = (s1.at_st(0.0, v), s1.at_st(1e-5, v));
+            assert!(dist(a, s0.at_st(0.0, v)) < 1e-12, "the edge stays");
+            let dz = (b[2] - a[2]) / (b[0] - a[0]);
+            assert!((dz - 1.0).abs() < 1e-3, "45° at the edge: {dz}");
+            assert!(dist(s1.at_st(1.0, v), s0.at_st(1.0, v)) < 1e-12, "the far edge stays");
         }
     }
 }
