@@ -2159,6 +2159,15 @@ struct VarFilletState {
     /// The handle being edited.
     editing: usize,
     trim: Option<bool>,
+    /// RailType (VariableFilletSrf): RollingBall, DistFromEdge or DistBetweenRails.
+    #[serde(default)]
+    rail: Option<String>,
+    /// LinkHandles: a value set on one handle is set on all.
+    #[serde(default)]
+    link: bool,
+    /// FromTwoPoints: the first point picked (the value is the distance to the second).
+    #[serde(default)]
+    from_two: Option<Vec<Vec3>>,
 }
 
 /// Rhino 5 VariableFilletSrf / VariableChamferSrf: the two surfaces (clicks on the sides
@@ -2228,7 +2237,81 @@ fn variable_fillet(e: &Event) -> Reply {
         }
     };
     let mut error = None;
+    let rail = st.rail.clone().unwrap_or_else(|| e.text("vf_rail_type", "RollingBall").to_owned());
+    // A value (typed, or the distance between two points) for the handle being set.
+    let apply = |st: &mut VarFilletState, x: f64, y: f64| {
+        if st.mode.as_deref() == Some("SetAll") || st.link {
+            st.handles.iter_mut().for_each(|h| (h.1, h.2) = (x, y));
+        } else {
+            let i = st.editing.min(st.handles.len() - 1);
+            let h = &mut st.handles[i];
+            (h.1, h.2) = (x, y);
+        }
+        st.mode = None;
+        st.from_two = None;
+    };
+    let nearest = |st: &VarFilletState, place: f64| {
+        (0..st.handles.len()).min_by(|x, y| (st.handles[*x].0 - place).abs().total_cmp(&(st.handles[*y].0 - place).abs())).unwrap_or(0)
+    };
     match &e.input {
+        Input::Option { name, value } if name.eq_ignore_ascii_case("RailType") && !chamfer && !blending => {
+            st.rail = Some(value.clone().unwrap_or_else(|| {
+                let all = ["RollingBall", "DistFromEdge", "DistBetweenRails"];
+                let i = all.iter().position(|r| r.eq_ignore_ascii_case(&rail)).unwrap_or(0);
+                all[(i + 1) % 3].to_owned()
+            }));
+        }
+        Input::Option { name, value } if name.eq_ignore_ascii_case("LinkHandles") => {
+            st.link = match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("yes"),
+                None => !st.link,
+            };
+        }
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("CopyHandle") => st.mode = Some("CopyHandle".into()),
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("RemoveHandle") => st.mode = Some("RemoveHandle".into()),
+        Input::Option { name, .. } if name.eq_ignore_ascii_case("FromTwoPoints") && matches!(st.mode.as_deref(), Some("SetAll") | Some("Edit")) => {
+            st.from_two = Some(Vec::new());
+        }
+        Input::Point { point } if st.from_two.is_some() => {
+            let mut pts = st.from_two.take().unwrap_or_default();
+            pts.push(*point);
+            if pts.len() == 2 {
+                let d = dist(pts[0], pts[1]);
+                if d > 0.0 {
+                    apply(&mut st, d, d);
+                } else {
+                    error = Some("the two points are the same".to_owned());
+                }
+            } else {
+                st.from_two = Some(pts);
+            }
+        }
+        Input::Point { point } if matches!(st.mode.as_deref(), Some("CopyHandle") | Some("CopyTo") | Some("RemoveHandle")) => match fillet::place_on_intersection(g1, g2, *point) {
+            Ok(place) => match st.mode.as_deref() {
+                Some("CopyHandle") => {
+                    st.editing = nearest(&st, place);
+                    st.mode = Some("CopyTo".into());
+                }
+                Some("CopyTo") => {
+                    let src = st.handles[st.editing.min(st.handles.len() - 1)];
+                    st.handles.push((place, src.1, src.2));
+                    st.editing = st.handles.len() - 1;
+                    st.mode = None;
+                }
+                _ => {
+                    let i = nearest(&st, place);
+                    // The end handles of an open edge stay (as in Rhino).
+                    if st.handles[i].0 <= 1e-9 || st.handles[i].0 >= 1.0 - 1e-9 {
+                        error = Some("the end handles cannot be removed".to_owned());
+                    } else {
+                        st.handles.remove(i);
+                        st.editing = 0;
+                    }
+                    st.mode = None;
+                }
+            },
+            Err(why) => error = Some(why),
+        },
         Input::Option { name, value } if name.eq_ignore_ascii_case("Trim") => {
             st.trim = Some(match value.as_deref() {
                 Some(v) => v.eq_ignore_ascii_case("yes"),
@@ -2253,21 +2336,21 @@ fn variable_fillet(e: &Event) -> Reply {
             Err(why) => error = Some(why),
         },
         Input::Text { text } if st.mode.is_some() => match values(text) {
-            Some((x, y)) => {
-                if st.mode.as_deref() == Some("SetAll") {
-                    st.handles.iter_mut().for_each(|h| (h.1, h.2) = (x, y));
-                } else {
-                    let i = st.editing.min(st.handles.len() - 1);
-                    let h = &mut st.handles[i];
-                    (h.1, h.2) = (x, y);
-                }
-                st.mode = None;
-            }
+            Some((x, y)) => apply(&mut st, x, y),
             None => error = Some(format!("{text}: type a number more than 0{}", if chamfer { " (or two: first,second)" } else { "" })),
         },
-        Input::Enter if st.mode.is_some() => st.mode = None,
+        Input::Enter if st.mode.is_some() => {
+            st.mode = None;
+            st.from_two = None;
+        }
         _ => {}
     }
+    let rail = st.rail.clone().unwrap_or(rail);
+    let rail_kind = match rail.to_ascii_lowercase().as_str() {
+        "distfromedge" => fillet::Rail::DistFromEdge,
+        "distbetweenrails" => fillet::Rail::DistBetweenRails,
+        _ => fillet::Rail::RollingBall,
+    };
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
     let make = || -> Result<om9_addon_geom::sweep::Swept, String> {
         let h: Vec<(f64, f64)> = st.handles.iter().map(|h| (h.0, h.1)).collect();
@@ -2276,7 +2359,7 @@ fn variable_fillet(e: &Event) -> Reply {
         } else if blending {
             fillet::variable_blend(g1, g2, &h, k1, k2, e.number("bl_bulge", 1.0).max(0.01), tol)
         } else {
-            fillet::variable_fillet(g1, g2, &h, k1, k2, tol)
+            fillet::variable_fillet_rail(g1, g2, &h, k1, k2, rail_kind, tol)
         }
     };
     let show = |v: &(f64, f64, f64)| if chamfer { format!("{},{}", fmt(v.1), fmt(v.2)) } else { fmt(v.1) };
@@ -2306,16 +2389,46 @@ fn variable_fillet(e: &Event) -> Reply {
             Err(why) => Reply::ask("Select handle to edit. Press Enter when done", save(&st)).want(Want::Point).refuse(format!("{label}: {why}")),
         };
     }
-    let prompt = match st.mode.as_deref() {
-        Some("SetAll") => format!("{} for all handles", if chamfer { "Distances" } else { "Radius" }),
-        Some("AddHandle") => "Point on the edge for the new handle".to_owned(),
-        Some(_) => format!("{} <{}>", if chamfer { "Distances" } else { "Radius" }, show(&st.handles[st.editing.min(st.handles.len() - 1)])),
-        None => "Select handle to edit. Press Enter when done".to_owned(),
+    let what = if chamfer {
+        "Distances"
+    } else if !blending && rail_kind != fillet::Rail::RollingBall {
+        "Distance"
+    } else {
+        "Radius"
     };
-    let want = if matches!(st.mode.as_deref(), Some("SetAll") | Some("Edit")) { Want::Number } else { Want::Point };
-    let mut r = Reply::ask(prompt, save(&st))
-        .want(want)
-        .with_options(vec![OptionToken::action("SetAll"), OptionToken::action("AddHandle"), OptionToken::toggle("Trim", trim)]);
+    let prompt = match (st.mode.as_deref(), &st.from_two) {
+        (_, Some(p)) if p.is_empty() => "First point".to_owned(),
+        (_, Some(_)) => "Second point".to_owned(),
+        (Some("SetAll"), _) => format!("{what} for all handles"),
+        (Some("AddHandle"), _) => "Point on the edge for the new handle".to_owned(),
+        (Some("CopyHandle"), _) => "Select handle to copy".to_owned(),
+        (Some("CopyTo"), _) => "Point on the edge for the copy".to_owned(),
+        (Some("RemoveHandle"), _) => "Select handle to remove".to_owned(),
+        (Some(_), _) => format!("{what} <{}>", show(&st.handles[st.editing.min(st.handles.len() - 1)])),
+        (None, _) => "Select handle to edit. Press Enter when done".to_owned(),
+    };
+    let setting = matches!(st.mode.as_deref(), Some("SetAll") | Some("Edit")) && st.from_two.is_none();
+    let want = if setting { Want::Number } else { Want::Point };
+    let mut options = Vec::new();
+    if setting {
+        options.push(OptionToken::action("FromTwoPoints"));
+    }
+    options.extend([OptionToken::action("SetAll"), OptionToken::action("AddHandle"), OptionToken::action("CopyHandle")]);
+    if st.handles.iter().any(|h| h.0 > 1e-9 && h.0 < 1.0 - 1e-9) {
+        options.push(OptionToken::action("RemoveHandle"));
+    }
+    options.push(OptionToken::toggle("LinkHandles", st.link));
+    if !chamfer && !blending {
+        let shown = match rail_kind {
+            fillet::Rail::DistFromEdge => "DistFromEdge",
+            fillet::Rail::DistBetweenRails => "DistBetweenRails",
+            fillet::Rail::RollingBall => "RollingBall",
+        };
+        options.push(OptionToken::choice("RailType", shown, &["DistFromEdge", "RollingBall", "DistBetweenRails"]));
+    }
+    options.push(OptionToken::toggle("Trim", trim));
+    let mut r = Reply::ask(prompt, save(&st)).want(want).with_options(options);
+    r.rubber_from = st.from_two.as_ref().and_then(|p| p.first().copied());
     match make() {
         Ok(f) => r = r.preview(vec![f.geo()]),
         Err(why) => error = error.or(Some(why)),
@@ -3581,10 +3694,18 @@ struct FinState {
     curve: Option<String>,
     surface: Option<String>,
     tangent: Option<bool>,
+    /// Heights set so far: (place on the curve, height).
+    #[serde(default)]
+    heights: Vec<(f64, f64)>,
+    /// A place picked, waiting for its height.
+    #[serde(default)]
+    at: Option<f64>,
 }
 
-/// Rhino 5 Fin: Select curve on surface, Select surface, the height (typed, or a point: its
-/// distance off the surface; the fin follows the pointer), Direction Normal / Tangent.
+/// Rhino 5 Fin: Select curve on surface, Select surface, Pick a location on the curve for a
+/// height, the height (typed, or a point: its distance off the surface), then Pick location
+/// to set another height, or press Enter if the surface should be uniform in height.
+/// Direction Normal / Tangent. A height typed at the first prompt makes a uniform fin at once.
 fn fin_cmd(e: &Event) -> Reply {
     let label = "Extrude Curve Normal to Surface";
     let mut st: FinState = serde_json::from_value(e.state.clone()).unwrap_or_default();
@@ -3621,7 +3742,8 @@ fn fin_cmd(e: &Event) -> Reply {
     };
     let g = srf.exact.as_ref().unwrap();
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
-    // A point gives the height: its distance off the surface (signed by the normal).
+    // A point gives the height: its distance off the surface at the nearest place on the
+    // curve (signed by the normal).
     let height_of = |p: Vec3| -> Option<f64> {
         let f = Srf::of(g)?;
         let t = c.closest(p);
@@ -3630,31 +3752,92 @@ fn fin_cmd(e: &Event) -> Reply {
         let n = f.normal_st(a, b);
         Some(dot(sub(p, q), n))
     };
-    let make = |h: f64| om9_addon_geom::fillet::fin(&c, g, h, tangent, tol).map(|f| f.geo());
-    let height = match &e.input {
-        Input::Text { text } => match text.trim().replace(',', ".").parse::<f64>() {
-            Ok(v) => Some(v),
-            Err(_) => return Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{text}: type a number")),
-        },
-        Input::Point { point } => height_of(*point),
-        Input::Enter => Some(height0),
-        _ => None,
+    let make = |hs: &[(f64, f64)]| om9_addon_geom::fillet::fin_heights(&c, g, hs, tangent, tol).map(|f| f.geo());
+    let finish = |hs: &[(f64, f64)]| -> Reply {
+        match make(hs) {
+            Ok(out) => {
+                let what = if hs.len() == 1 {
+                    format!("height {} mm", fmt(hs[0].1))
+                } else {
+                    format!("{} heights, {} to {} mm", hs.len(), fmt(hs.iter().map(|x| x.1).fold(f64::MAX, f64::min)), fmt(hs.iter().map(|x| x.1).fold(f64::MIN, f64::max)))
+                };
+                Reply::finish(vec![out]).say(format!("{label}: {what}, within {} mm", fmt(tol)))
+            }
+            Err(why) => Reply::ask(format!("Height <{}>", fmt(height0)), save(&FinState { heights: Vec::new(), at: None, ..st.clone() }))
+                .want(Want::Point)
+                .with_options(options.clone())
+                .refuse(format!("{label}: {why}")),
+        }
     };
-    if let Some(h) = height {
-        return match make(h) {
-            Ok(g) => Reply::finish(vec![g]).say(format!("{label}: height {} mm, within {} mm", fmt(h), fmt(tol))),
-            Err(why) => Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{label}: {why}")),
+    let typed = |text: &str| text.trim().replace(',', ".").parse::<f64>();
+    // Waiting for the height at a picked place.
+    if let Some(at) = st.at {
+        let height = match &e.input {
+            Input::Text { text } => match typed(text) {
+                Ok(v) => Some(v),
+                Err(_) => return Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{text}: type a number")),
+            },
+            Input::Point { point } => height_of(*point),
+            Input::Enter => Some(height0),
+            _ => None,
         };
+        if let Some(h) = height {
+            if h.abs() < 1e-12 {
+                return Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options).refuse(format!("{label}: the height must not be 0"));
+            }
+            st.heights.retain(|x| (x.0 - at).abs() > 1e-9);
+            st.heights.push((at, h));
+            st.at = None;
+            let mut r = Reply::ask("Pick location to set another height, or press Enter if the surface should be uniform in height", save(&st)).want(Want::Point).with_options(options);
+            if let Ok(out) = make(&st.heights) {
+                r = r.preview(vec![out]);
+            }
+            return r;
+        }
+        let mut r = Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options);
+        let mut hs = st.heights.clone();
+        if let Some(h) = match &e.input {
+            Input::Hover { point } => height_of(*point),
+            _ => Some(height0),
+        } {
+            hs.push((at, h));
+        }
+        if let Ok(out) = make(&hs) {
+            r = r.preview(vec![out]);
+        }
+        return r;
     }
-    let mut r = Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options);
-    let preview_h = match &e.input {
-        Input::Hover { point } => height_of(*point),
-        _ => Some(height0),
-    };
-    if let Some(Ok(g)) = preview_h.map(make) {
-        r = r.preview(vec![g]);
+    // Picking places.
+    let first = st.heights.is_empty();
+    let prompt = if first { "Pick a location on the curve for a height" } else { "Pick location to set another height, or press Enter if the surface should be uniform in height" };
+    match &e.input {
+        Input::Point { point } => {
+            st.at = Some(c.closest(*point));
+            let mut r = Reply::ask(format!("Height <{}>", fmt(height0)), save(&st)).want(Want::Point).with_options(options);
+            let mut hs = st.heights.clone();
+            hs.push((st.at.unwrap(), height0));
+            if let Ok(out) = make(&hs) {
+                r = r.preview(vec![out]);
+            }
+            r
+        }
+        // A height typed at the first prompt: a uniform fin at once (as before).
+        Input::Text { text } if first => match typed(text) {
+            Ok(h) => finish(&[(0.0, h)]),
+            Err(_) => Reply::ask(prompt, save(&st)).want(Want::Point).with_options(options).refuse(format!("{text}: pick a place on the curve or type a height")),
+        },
+        Input::Enter if first => finish(&[(0.0, height0)]),
+        // Enter after the heights: the fin; a single height is uniform.
+        Input::Enter => finish(&st.heights),
+        _ => {
+            let mut r = Reply::ask(prompt, save(&st)).want(Want::Point).with_options(options);
+            let hs = if first { vec![(0.0, height0)] } else { st.heights.clone() };
+            if let Ok(out) = make(&hs) {
+                r = r.preview(vec![out]);
+            }
+            r
+        }
     }
-    r
 }
 
 fn extrude_normal(e: &Event) -> Reply {
@@ -3799,7 +3982,8 @@ fn unroll(e: &Event) -> Reply {
     } else {
         "Unroll Developable Surface"
     };
-    built(e, label, "select surfaces, Enter", || {
+    let hint = if smash { "select surfaces, Enter" } else { "select surfaces, and curves or points on them to unroll with the surface, Enter" };
+    built(e, label, hint, || {
         let mut out = Vec::new();
         let base = e
             .selection
@@ -3839,6 +4023,43 @@ fn unroll(e: &Event) -> Reply {
                         .collect();
                     if let Some(srf) = surface_through(&rows, [3, 3]) {
                         out.push(srf);
+                        // Rhino: "Select curves or points to unroll with surface": curves and
+                        // points lying on this surface come along to their places on the flat
+                        // piece (each sample mapped through the unfolded grid).
+                        let to_flat = |q: Vec3| -> Option<Vec3> {
+                            let (a, b) = f.closest_st(q);
+                            if dist(f.at_st(a, b), q) > 0.01 {
+                                return None;
+                            }
+                            let (fi, fj) = (a * (n - 1) as f64, b * (nv - 1) as f64);
+                            let (i, j) = ((fi.floor() as usize).min(n - 2), (fj.floor() as usize).min(nv - 2));
+                            let (u, v) = (fi - i as f64, fj - j as f64);
+                            let at = |i: usize, j: usize| flat[i * nv + j];
+                            let lerp = |p: [f64; 2], q: [f64; 2], t: f64| [p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t];
+                            let p = lerp(lerp(at(i, j), at(i, j + 1), v), lerp(at(i + 1, j), at(i + 1, j + 1), v), u);
+                            Some(e.plane.at(x + p[0] - minx, p[1] - miny, 0.0))
+                        };
+                        for o in &e.selection {
+                            if std::ptr::eq(o, s) || o.exact.as_ref().and_then(Srf::of).is_some() {
+                                continue;
+                            }
+                            match &o.exact {
+                                Some(Geo::Point { point }) => {
+                                    if let Some(q) = to_flat(*point) {
+                                        out.push(Geo::Point { point: q });
+                                    }
+                                }
+                                Some(_) => {
+                                    let pts = dense(o);
+                                    let pts = if pts.len() > 120 { resample(&pts, o.closed, 120) } else { pts };
+                                    let mapped: Option<Vec<Vec3>> = pts.iter().map(|q| to_flat(*q)).collect();
+                                    if let Some(c) = mapped.filter(|m| m.len() >= 2).and_then(|m| om9_addon_geom::interpolate(&m, 3.min(m.len() - 1), o.closed)) {
+                                        out.push(c);
+                                    }
+                                }
+                                None => {}
+                            }
+                        }
                         x += w + 5.0;
                         continue;
                     }
@@ -3926,17 +4147,48 @@ fn soft_edit(e: &Event) -> Reply {
         },
     )
 }
-/// Rhino 5 CutPlane: Select objects for cut plane, Start of cut plane, End of cut plane. The
-/// plane stands square to the CPlane through the picked line and is made large enough to
-/// cut through every selected object (along the line and across the CPlane).
+/// CutPlane command state: the planes made so far and the points of the one being placed.
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct CutState {
+    /// Objects chosen (Enter pressed on the selection).
+    #[serde(default)]
+    chosen: bool,
+    #[serde(default)]
+    three_point: bool,
+    /// Picked points of the plane in progress.
+    #[serde(default)]
+    pts: Vec<Vec3>,
+    /// Finished planes, as their four corners.
+    #[serde(default)]
+    planes: Vec<[Vec3; 4]>,
+}
+
+/// Rhino 5 CutPlane: Select objects for cut plane, Start of cut plane, End of cut plane — the
+/// prompts repeat for more planes, Enter stops (all planes are made then). Each plane stands
+/// square to the CPlane through the line and is large enough to cut every selected object
+/// (along the line and across the CPlane). 3Point: start and end of an edge, then the width
+/// (a point on the far side, or typed: square up from the CPlane).
 fn cutting_plane(e: &Event) -> Reply {
-    let flow = Flow::new("Cutting Plane")
-        .select_prompt("Select objects for cut plane")
-        .point("Start of cut plane")
-        .point("End of cut plane");
-    let make = |c: &Collected, end: Option<Vec3>| -> Option<Geo> {
-        let (a, b) = (c.p(0)?, c.p(1).or(end)?);
-        let n = e.plane.normal();
+    let label = "Cutting Plane";
+    let mut st: CutState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = CutState::default();
+    }
+    let save = |st: &CutState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let n = e.plane.normal();
+    if let Input::Option { name, value } = &e.input {
+        if name.eq_ignore_ascii_case("3Point") {
+            st.three_point = match value.as_deref() {
+                Some(v) => v.eq_ignore_ascii_case("yes"),
+                None => !st.three_point,
+            };
+            st.pts.clear();
+        }
+    }
+    let options = |st: &CutState| vec![OptionToken::toggle("3Point", st.three_point)];
+    let quad = |q: &[Vec3; 4]| surface_on_grid(&[vec![q[0], q[3]], vec![q[1], q[2]]], [1, 1]);
+    // The plane through the line a → b, square to the CPlane, over the selection.
+    let fitted = |a: Vec3, b: Vec3| -> Option<[Vec3; 4]> {
         let flat = |p: Vec3| sub(p, scale(n, dot(p, n)));
         let (fa, fb) = (flat(a), flat(b));
         let along = sub(fb, fa);
@@ -3945,7 +4197,6 @@ fn cutting_plane(e: &Event) -> Reply {
             return None;
         }
         let dir = scale(along, 1.0 / len);
-        // Extents of the selection's boxes (all 8 corners) across the CPlane and along the line.
         let (mut lo, mut hi) = (f64::MAX, f64::MIN);
         let (mut t0, mut t1) = (0.0f64, len);
         for s in &e.selection {
@@ -3969,25 +4220,111 @@ fn cutting_plane(e: &Event) -> Reply {
         let margin = (hi - lo).max(t1 - t0) * 0.05 + 1.0;
         let (a, b) = (add(fa, scale(dir, t0 - margin)), add(fa, scale(dir, t1 + margin)));
         let up = |p: Vec3, h: f64| add(p, scale(n, h));
-        surface_on_grid(
-            &[
-                vec![up(a, lo - margin), up(a, hi + margin)],
-                vec![up(b, lo - margin), up(b, hi + margin)],
-            ],
-            [1, 1],
-        )
+        Some([up(a, lo - margin), up(b, lo - margin), up(b, hi + margin), up(a, hi + margin)])
     };
-    flow.step(
-        e,
-        &|c, h| Show {
-            geo: make(c, h).into_iter().collect(),
-            ..Default::default()
+    // 3Point: the rectangle on the edge a → b out to the far point (or `width` straight up).
+    let three = |a: Vec3, b: Vec3, far: Result<Vec3, f64>| -> Option<[Vec3; 4]> {
+        let e1 = sub(b, a);
+        if norm(e1) < 1e-9 {
+            return None;
+        }
+        let u = unit(e1);
+        let off = match far {
+            Ok(p) => {
+                let d = sub(p, a);
+                sub(d, scale(u, dot(d, u)))
+            }
+            Err(w) => {
+                let side = sub(n, scale(u, dot(n, u)));
+                if norm(side) < 1e-9 {
+                    return None;
+                }
+                scale(unit(side), w)
+            }
+        };
+        if norm(off) < 1e-9 {
+            return None;
+        }
+        Some([a, b, add(b, off), add(a, off)])
+    };
+    let made = |st: &CutState| -> Vec<Geo> { st.planes.iter().filter_map(quad).collect() };
+    let ask = |st: &CutState, extra: Option<[Vec3; 4]>| -> Reply {
+        let prompt = match (st.three_point, st.pts.len()) {
+            (false, 0) => "Start of cut plane. Press Enter when done",
+            (false, _) => "End of cut plane",
+            (true, 0) => "Start of edge",
+            (true, 1) => "End of edge",
+            (true, _) => "Width. Press Enter to use length",
+        };
+        let mut pv = made(st);
+        pv.extend(extra.and_then(|q| quad(&q)));
+        let mut r = Reply::ask(prompt, save(st)).want(Want::Point).with_options(options(st)).preview(pv);
+        r.rubber_from = st.pts.last().copied();
+        r
+    };
+    if !st.chosen {
+        let picked = !e.selection.is_empty();
+        if picked && matches!(e.input, Input::Enter | Input::Selection) || picked && matches!(e.input, Input::Start) {
+            st.chosen = true;
+        } else {
+            return Reply::ask("Select objects for cut plane", save(&st)).want(Want::Objects);
+        }
+        if !matches!(e.input, Input::Point { .. }) {
+            return ask(&st, None);
+        }
+    }
+    let finish = |st: &CutState| -> Reply {
+        if st.planes.is_empty() {
+            return Reply::finish(Vec::new()).say(format!("{label}: no planes"));
+        }
+        let k = st.planes.len();
+        Reply::finish(made(st)).say(format!("{label}: {k} planes"))
+    };
+    match &e.input {
+        Input::Point { point } => {
+            st.pts.push(*point);
+            let done = if st.three_point { st.pts.len() == 3 } else { st.pts.len() == 2 };
+            if done {
+                let q = if st.three_point { three(st.pts[0], st.pts[1], Ok(st.pts[2])) } else { fitted(st.pts[0], st.pts[1]) };
+                st.pts.clear();
+                match q {
+                    Some(q) => st.planes.push(q),
+                    None => return ask(&st, None).refuse(format!("{label}: the points are too close")),
+                }
+            }
+            ask(&st, None)
+        }
+        Input::Text { text } if st.three_point && st.pts.len() == 2 => match text.trim().replace(',', ".").parse::<f64>() {
+            Ok(w) => match three(st.pts[0], st.pts[1], Err(w)) {
+                Some(q) => {
+                    st.pts.clear();
+                    st.planes.push(q);
+                    ask(&st, None)
+                }
+                None => ask(&st, None).refuse(format!("{label}: the width must not be 0")),
+            },
+            Err(_) => ask(&st, None).refuse(format!("{text}: type a number")),
         },
-        &|c| {
-            Ok(Reply::finish(vec![make(c, None).ok_or("pick the line")?])
-                .say("Cutting Plane: done"))
-        },
-    )
+        // Width: Enter = the edge's length.
+        Input::Enter if st.three_point && st.pts.len() == 2 => {
+            let w = dist(st.pts[0], st.pts[1]);
+            if let Some(q) = three(st.pts[0], st.pts[1], Err(w)) {
+                st.planes.push(q);
+            }
+            st.pts.clear();
+            ask(&st, None)
+        }
+        Input::Enter => finish(&st),
+        Input::Hover { point } => {
+            let extra = match (st.three_point, st.pts.len()) {
+                (false, 1) => fitted(st.pts[0], *point),
+                (true, 2) => three(st.pts[0], st.pts[1], Ok(*point)),
+                _ => None,
+            };
+            ask(&st, extra)
+        }
+        _ => ask(&st, None),
+    }
 }
 
 /// Rhino 5 SrfSeam: Select closed surface to adjust seam, New seam location (Direction U / V,

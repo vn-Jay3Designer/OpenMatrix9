@@ -684,6 +684,16 @@ default = false
 commands = ["SurfaceFilletSurfaces", "SurfaceChamferSurfaces"]
 
 [[settings]]
+key = "vf_rail_type"
+type = "enum"
+option = "RailType"
+label = "Kiểu ray (Variable Fillet)"
+choices = ["RollingBall", "DistFromEdge", "DistBetweenRails"]
+choice_labels = ["RollingBall", "DistFromEdge", "DistBetweenRails"]
+default = "RollingBall"
+commands = ["SurfaceVariableFilletBlendChamferVariableFilletSurfaces"]
+
+[[settings]]
 key = "fs_trim"
 type = "bool"
 option = "Trim"

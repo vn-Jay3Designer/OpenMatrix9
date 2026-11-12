@@ -22,6 +22,7 @@ Bo cung bán kính thay đổi dọc cạnh như Rhino 5 VariableFilletSrf (bi l
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
+| `RailType=` | Kiểu ray (Variable Fillet) | RollingBall | RollingBall, DistFromEdge, DistBetweenRails |
 | `Trim=` | Cắt mặt gốc (Fillet/Chamfer) | Yes |  |
 | `Radius=` | Bán kính / khoảng | 1 | 0.01 … 50 |
 | `EndRadius=` | Bán kính / khoảng cuối | 2 | 0.01 … 50 |

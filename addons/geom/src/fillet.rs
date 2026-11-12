@@ -659,33 +659,83 @@ fn profile(handles: &[(f64, f64)], s: f64) -> f64 {
     h[h.len() - 1].1
 }
 
+/// Rhino 5 VariableFilletSrf RailType: what a handle's value measures.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rail {
+    /// The radius of the rolling ball.
+    RollingBall,
+    /// The distance from the edge (the intersection) to each fillet edge.
+    DistFromEdge,
+    /// The distance between the two fillet edges (the chord across the fillet).
+    DistBetweenRails,
+}
+
 /// Rhino 5 VariableFilletSrf (RailType=RollingBall): the radius goes smoothly from handle to
-/// handle along the edge. `handles`: (place 0..1 along the intersection, radius); `at`
-/// turns a point near the edge into its place (for handles picked on the model).
+/// handle along the edge. `handles`: (place 0..1 along the intersection, radius).
 pub fn variable_fillet(g1: &Geo, g2: &Geo, handles: &[(f64, f64)], keep1: Vec3, keep2: Vec3, tol: f64) -> Result<Swept, String> {
+    variable_fillet_rail(g1, g2, handles, keep1, keep2, Rail::RollingBall, tol)
+}
+
+/// VariableFilletSrf with Rhino's RailType: the handle values are distances from the edge or
+/// between the rails, turned into the rolling-ball radius with the angle between the two
+/// surfaces at each place (exact wherever that angle is the same across the fillet, as
+/// between planes or along a cylinder; R = d·tan(α/2) from the edge, d / (2·cos(α/2))
+/// between the rails, α the angle inside the corner).
+pub fn variable_fillet_rail(g1: &Geo, g2: &Geo, handles: &[(f64, f64)], keep1: Vec3, keep2: Vec3, rail: Rail, tol: f64) -> Result<Swept, String> {
     if handles.is_empty() || handles.iter().any(|h| h.1 <= 0.0) {
         return Err("the radius must be more than 0".into());
     }
     let s1 = Srf::of(g1).ok_or("not a NURBS surface")?;
     let s2 = Srf::of(g2).ok_or("not a NURBS surface")?;
     let size = dist(s1.at_st(0.0, 0.0), s1.at_st(1.0, 1.0)).max(dist(s2.at_st(0.0, 0.0), s2.at_st(1.0, 1.0)));
-    // The intersection first: places along the edge.
     let orient = [orientation(&s1), orientation(&s2)];
-    let along = {
-        let s1 = Srf::of(g1).unwrap();
-        let s2 = Srf::of(g2).unwrap();
-        let pair0 = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
-        let (balls, s) = trace(&pair0, size)?;
-        Along::of(&balls, &s)
-    };
-    let radius = |p: Vec3| profile(handles, along.place(p));
     let side_of = |s: &Srf, toward: Vec3| -> f64 {
         let (a, b) = s.closest_st(toward);
         let n = normal(s, a, b);
         if dot(sub(toward, s.at_st(a, b)), n) >= 0.0 { 1.0 } else { -1.0 }
     };
-    let rmax = handles.iter().map(|h| h.1).fold(0.0, f64::max);
-    let pair = Pair { side: [side_of(&s1, keep2), side_of(&s2, keep1)], s1, s2, r: rmax, orient, vr: Some(&radius) };
+    let side = [side_of(&s1, keep2), side_of(&s2, keep1)];
+    // The intersection first: places along the edge, and the angle inside the corner there.
+    let (along, angles) = {
+        let s1 = Srf::of(g1).unwrap();
+        let s2 = Srf::of(g2).unwrap();
+        let pair0 = Pair { side: [1.0, 1.0], s1, s2, r: 0.0, orient, vr: None };
+        let (balls, s) = trace(&pair0, size)?;
+        let angles: Vec<f64> = balls
+            .iter()
+            .map(|b| {
+                let o1 = scale(pair0.n1(b.x[0], b.x[1]), side[0]);
+                let o2 = scale(pair0.n2(b.x[2], b.x[3]), side[1]);
+                std::f64::consts::PI - dot(o1, o2).clamp(-1.0, 1.0).acos()
+            })
+            .collect();
+        (Along::of(&balls, &s), angles)
+    };
+    let angle_at = |t: f64| -> f64 {
+        let s = &along.s;
+        let i = s.partition_point(|v| *v < t).clamp(1, s.len().max(2) - 1);
+        if s.len() < 2 {
+            return angles.first().copied().unwrap_or(std::f64::consts::FRAC_PI_2);
+        }
+        let f = ((t - s[i - 1]) / (s[i] - s[i - 1]).max(1e-300)).clamp(0.0, 1.0);
+        angles[i - 1] + (angles[i] - angles[i - 1]) * f
+    };
+    let to_radius = |d: f64, alpha: f64| -> f64 {
+        match rail {
+            Rail::RollingBall => d,
+            Rail::DistFromEdge => d * (alpha / 2.0).tan(),
+            Rail::DistBetweenRails => d / (2.0 * (alpha / 2.0).cos()).max(1e-9),
+        }
+    };
+    let radius = |p: Vec3| {
+        let t = along.place(p);
+        to_radius(profile(handles, t), angle_at(t))
+    };
+    let rmax = handles.iter().map(|h| to_radius(h.1, angle_at(h.0))).fold(0.0, f64::max);
+    if !(rmax > 0.0 && rmax.is_finite()) {
+        return Err("the surfaces are too flat to each other for that distance".into());
+    }
+    let pair = Pair { side, s1, s2, r: rmax, orient, vr: Some(&radius) };
     let (balls, s) = trace(&pair, rmax)?;
     let placed = |t: f64| -> Vec<H> {
         let ball = ball_at(&pair, &balls, &s, t);
@@ -945,9 +995,25 @@ mod tests {
 /// surface, across the curve) by `height`: a ruled surface whose stations are exact, refined
 /// to the tolerance.
 pub fn fin(curve: &crate::exact::Nc, g: &Geo, height: f64, tangent: bool, tol: f64) -> Result<Swept, String> {
+    fin_heights(curve, g, &[(0.0, height)], tangent, tol)
+}
+
+/// Rhino 5 Fin with heights set at places along the curve (`(parameter, height)`, the
+/// curve's normalised parameter): the height runs smoothly from one place to the next
+/// (constant before the first and after the last; round a closed curve, on round to the
+/// first). One place: a uniform height.
+pub fn fin_heights(curve: &crate::exact::Nc, g: &Geo, heights: &[(f64, f64)], tangent: bool, tol: f64) -> Result<Swept, String> {
+    if heights.is_empty() || heights.iter().any(|(_, h)| h.abs() < 1e-12) {
+        return Err("the height must not be 0".into());
+    }
+    let wrap = curve.closed(1e-6);
+    let mut handles: Vec<(f64, f64)> = heights.to_vec();
+    if wrap && heights.len() > 1 {
+        handles.extend(heights.iter().flat_map(|(t, h)| [(t - 1.0, *h), (t + 1.0, *h)]));
+    }
+    let height_at = |t: f64| if heights.len() == 1 { heights[0].1 } else { profile(&handles, t) };
     let s = Srf::of(g).ok_or("not a NURBS surface")?;
     let orient = orientation(&s);
-    let wrap = curve.closed(1e-6);
     // Parameters on the surface along the curve, found once on a fine table and then
     // polished locally (closest points are the slow part).
     let n = 256;
@@ -993,12 +1059,9 @@ pub fn fin(curve: &crate::exact::Nc, g: &Geo, height: f64, tangent: bool, tol: f
         } else {
             nrm
         };
-        let q = add(p, scale(dir, height));
+        let q = add(p, scale(dir, height_at(t)));
         vec![[p[0], p[1], p[2], 1.0], [q[0], q[1], q[2], 1.0]]
     };
-    if height.abs() < 1e-12 {
-        return Err("the height must not be 0".into());
-    }
     fit_stations(&placed, 0.0, 1.0, wrap, curve.knots.clone(), 1, &[0.0, 0.0, 1.0, 1.0], tol, 600)
 }
 
@@ -1031,6 +1094,52 @@ mod fin_tests {
         }
     }
     use super::tests::plane;
+
+    /// RailType on two planes at 60° (the corner inside is 60°): DistFromEdge 2 → the fillet
+    /// edges 2 from the edge (R = 2·tan 30°); DistBetweenRails 2 → the edges 2 apart.
+    #[test]
+    fn rail_types_measure_what_rhino_says() {
+        let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 6.0, 0.0]);
+        let (c, s) = (60f64.to_radians().cos(), 60f64.to_radians().sin());
+        let slope = plane([0.0, 0.0, 0.0], [0.0, 6.0, 0.0], [8.0 * c, 0.0, 8.0 * s]);
+        let (k1, k2) = ([6.0, 3.0, 0.0], [3.0 * c, 3.0, 3.0 * s]);
+        for (rail, d) in [(Rail::DistFromEdge, 2.0), (Rail::DistBetweenRails, 2.0), (Rail::RollingBall, 1.0)] {
+            let f = variable_fillet_rail(&floor, &slope, &[(0.0, d), (1.0, d)], k1, k2, rail, 1e-5).unwrap();
+            let g = f.geo();
+            let srf = Srf::of(&g).unwrap();
+            let (p1, p2) = (srf.at_st(0.5, 0.0), srf.at_st(0.5, 1.0));
+            // Distance of each edge from the intersection line (the y axis).
+            let from_edge = |p: Vec3| p[0].hypot(p[2]);
+            match rail {
+                Rail::DistFromEdge => assert!((from_edge(p1) - 2.0).abs() < 1e-4 && (from_edge(p2) - 2.0).abs() < 1e-4, "{p1:?} {p2:?}"),
+                Rail::DistBetweenRails => assert!((dist(p1, p2) - 2.0).abs() < 1e-4, "{}", dist(p1, p2)),
+                Rail::RollingBall => assert!((from_edge(p1) - 1.0 / 30f64.to_radians().tan()).abs() < 1e-4, "{p1:?}"),
+            }
+        }
+    }
+
+    /// Rhino 5 Fin with heights at places: 1 mm at the start of a line on a plane, 3 mm at
+    /// its end, smooth between (2 mm half way).
+    #[test]
+    fn a_fin_with_two_heights_runs_smoothly_between_them() {
+        let floor = plane([0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [0.0, 10.0, 0.0]);
+        let c = Nc::from_geo(&Geo::Line { start: [1.0, 5.0, 0.0], end: [9.0, 5.0, 0.0] }).unwrap();
+        let f = fin_heights(&c, &floor, &[(0.0, 1.0), (1.0, 3.0)], false, 1e-5).unwrap();
+        let g = f.geo();
+        let s = Srf::of(&g).unwrap();
+        // Top edge heights: the fin stands straight up (the plane's normal ±z).
+        let top = |u: f64| s.at_st(u, 1.0)[2].abs();
+        assert!((top(0.0) - 1.0).abs() < 1e-5 && (top(1.0) - 3.0).abs() < 1e-5, "{} {}", top(0.0), top(1.0));
+        assert!((top(0.5) - 2.0).abs() < 1e-4, "{}", top(0.5));
+        for k in 0..=20 {
+            let p = s.at_st(k as f64 / 20.0, 0.0);
+            assert!(p[2].abs() < 1e-9 && (p[1] - 5.0).abs() < 1e-9, "{p:?}");
+        }
+        // One height: uniform, as before.
+        let u = fin_heights(&c, &floor, &[(0.3, 2.0)], false, 1e-5).unwrap().geo();
+        let su = Srf::of(&u).unwrap();
+        assert!((su.at_st(0.0, 1.0)[2].abs() - 2.0).abs() < 1e-9 && (su.at_st(1.0, 1.0)[2].abs() - 2.0).abs() < 1e-9);
+    }
 
     /// Rhino 5 FilletSrf / ChamferSrf Extend=Yes: the second surface is shorter (y 2..6 of the
     /// first's 0..10); extended, the fillet runs the whole 10 mm and its edge on the second

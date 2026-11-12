@@ -505,7 +505,7 @@ fn drape_unroll_and_cutting_plane() {
         CUTTING_PLANE,
         vec![block],
         json!({}),
-        vec![pt([-5.0, 0.0, 0.0]), pt([5.0, 0.0, 0.0])],
+        vec![pt([-5.0, 0.0, 0.0]), pt([5.0, 0.0, 0.0]), Input::Enter],
     );
     let s = Srf::of(&r.create[0]).unwrap();
     assert!(s.at_st(0.5, 0.5)[1].abs() < 1e-9);
@@ -1400,25 +1400,58 @@ fn split_isocurve_and_seam_are_exact() {
     assert!((area - 16.0).abs() < 1e-9, "{area}");
 }
 
-/// Rhino 5 Fin: curve on the surface, the surface, the height (typed, clicked, or Enter);
-/// Direction Normal / Tangent. On a plane the fin stands straight up exactly.
+/// Rhino 5 Fin: curve on the surface, the surface, Pick a location on the curve for a
+/// height, the height (typed or clicked), Pick location to set another height (or Enter:
+/// uniform). Direction Normal / Tangent. On a plane the fin stands straight up exactly.
 #[test]
 fn fin_follows_rhino5() {
     let a = flat("a", 0.0, 10.0, 0.0, 10.0, 0.0);
     let c = exact_sel("c", Geo::Line { start: [2.0, 5.0, 0.0], end: [8.0, 5.0, 0.0] }, false);
+    let sel = || vec![c.clone(), a.clone()];
     let r = feed(EXTRUDE_NORMAL, &Value::Null, Input::Start, vec![], json!({}));
     assert_eq!(r.prompt, "Select curve on surface");
     let r = feed(EXTRUDE_NORMAL, &r.state, Input::Selection, vec![c.clone()], json!({}));
     assert_eq!(r.prompt, "Select surface");
-    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Selection, vec![c.clone(), a.clone()], json!({}));
+    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Selection, sel(), json!({}));
+    assert_eq!(r.prompt, "Pick a location on the curve for a height");
+    let start = r.state.clone();
+    // Uniform: a location, a clicked height, Enter.
+    let r = feed(EXTRUDE_NORMAL, &start, pt([5.0, 5.0, 0.0]), sel(), json!({}));
     assert!(r.prompt.starts_with("Height"), "{}", r.prompt);
-    let h = feed(EXTRUDE_NORMAL, &r.state, Input::Hover { point: [5.0, 5.0, 2.0] }, vec![c.clone(), a.clone()], json!({}));
+    let h = feed(EXTRUDE_NORMAL, &r.state, Input::Hover { point: [5.0, 5.0, 2.0] }, sel(), json!({}));
     assert!(!h.preview.is_empty());
-    let r = feed(EXTRUDE_NORMAL, &r.state, pt([5.0, 5.0, 2.5]), vec![c, a], json!({}));
-    assert!(r.done);
+    let r = feed(EXTRUDE_NORMAL, &r.state, pt([5.0, 5.0, 2.5]), sel(), json!({}));
+    assert!(r.prompt.starts_with("Pick location to set another height"), "{}", r.prompt);
+    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done, "{:?}", r.error);
     let s = Srf::of(&r.create[0]).unwrap();
     let zs: Vec<f64> = [s.at_st(0.5, 0.0), s.at_st(0.5, 1.0), s.at_st(0.0, 0.5), s.at_st(1.0, 0.5)].iter().map(|p| p[2].abs()).collect();
     assert!(zs.iter().any(|z| (z - 2.5).abs() < 1e-9) && zs.iter().any(|z| *z < 1e-9), "{zs:?}");
+    // A height typed at the first prompt: uniform at once.
+    let r = feed(EXTRUDE_NORMAL, &start, text("1.5"), sel(), json!({}));
+    assert!(r.done, "{:?}", r.error);
+    // Two heights: 1 at the start (x 2), 3 at the end (x 8); 2 half way.
+    let r = feed(EXTRUDE_NORMAL, &start, pt([2.0, 5.0, 0.0]), sel(), json!({}));
+    let r = feed(EXTRUDE_NORMAL, &r.state, text("1"), sel(), json!({}));
+    let r = feed(EXTRUDE_NORMAL, &r.state, pt([8.0, 5.0, 0.0]), sel(), json!({}));
+    let r = feed(EXTRUDE_NORMAL, &r.state, text("3"), sel(), json!({}));
+    let r = feed(EXTRUDE_NORMAL, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).unwrap();
+    // The top edge: height at x.
+    let top_at = |x: f64| -> f64 {
+        let mut best = (f64::MAX, 0.0);
+        for i in 0..=600 {
+            for v in [0.0, 1.0] {
+                let p = s.at_st(i as f64 / 600.0, v);
+                if p[2].abs() > 1e-6 && (p[0] - x).abs() < best.0 {
+                    best = ((p[0] - x).abs(), p[2].abs());
+                }
+            }
+        }
+        best.1
+    };
+    assert!((top_at(2.0) - 1.0).abs() < 1e-3 && (top_at(8.0) - 3.0).abs() < 1e-3 && (top_at(5.0) - 2.0).abs() < 2e-2, "{} {} {}", top_at(2.0), top_at(5.0), top_at(8.0));
 }
 
 /// Rhino 5 VariableFilletSrf: handles at the ends (click near one, type its radius),
@@ -1532,7 +1565,7 @@ fn unroll_gives_a_flat_surface_with_true_lengths() {
     let half = om9_addon_geom::exact::arc([0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 3.0, PI);
     let srf_rows: Vec<Vec<om9_addon_geom::exact::H>> = half.points.iter().map(|c| vec![*c, [c[0], c[1], 4.0 * c[3], c[3]]]).collect();
     let g = om9_addon_geom::exact::surface(&srf_rows, [2, 1], [half.knots.clone(), vec![0.0, 0.0, 1.0, 1.0]]);
-    let r = run(UNROLL, vec![srf_sel("c", g)], json!({}), vec![Input::Enter]);
+    let r = run(UNROLL, vec![srf_sel("c", g.clone())], json!({}), vec![Input::Enter]);
     assert!(r.done, "{:?}", r.error);
     let s = Srf::of(&r.create[0]).expect("a NURBS surface");
     let (a, b) = (s.at_st(0.0, 0.0), s.at_st(1.0, 0.0));
@@ -1541,6 +1574,24 @@ fn unroll_gives_a_flat_surface_with_true_lengths() {
     assert!(lengths.iter().any(|l| (l - 3.0 * PI).abs() < 2e-4) && lengths.iter().any(|l| (l - 4.0).abs() < 1e-6), "{lengths:?}");
     assert!(((dist(c, d) - dist(a, b)).abs()) < 2e-4);
     assert!([a, b, c, d].iter().all(|p| p[2].abs() < 1e-9), "flat");
+    // A curve on the surface comes along: the half circle at height 2 unrolls to a straight
+    // line 3π long, 2 from the flat piece's edge.
+    let ring = om9_addon_geom::exact::arc([0.0, 0.0, 2.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 3.0, PI);
+    let curve = exact_sel("r", ring.to_geo(), false);
+    let r = run(UNROLL, vec![srf_sel("c", g.clone()), curve], json!({}), vec![Input::Enter]);
+    assert!(r.done && r.create.len() == 2, "{:?}", r.create.len());
+    let pts = om9_addon_geom::nurbs::samples(&r.create[1], 50);
+    let (p0, p1) = (pts[0], *pts.last().unwrap());
+    assert!((dist(p0, p1) - 3.0 * PI).abs() < 2e-3, "{}", dist(p0, p1));
+    let flat_srf = Srf::of(&r.create[0]).unwrap();
+    for q in &pts {
+        // On the flat piece, straight: every point on the chord p0–p1.
+        let t = dot(sub(*q, p0), sub(p1, p0)) / dot(sub(p1, p0), sub(p1, p0));
+        let on = add(p0, scale(sub(p1, p0), t));
+        assert!(dist(*q, on) < 2e-3 && q[2].abs() < 1e-9, "{q:?}");
+        let (a, b) = flat_srf.closest_st(*q);
+        assert!(dist(flat_srf.at_st(a, b), *q) < 2e-3);
+    }
 }
 
 /// Rhino 5 FitSrf: a rational cylinder piece fitted within the tolerance, degrees as set;
@@ -1571,14 +1622,43 @@ fn fitsrf_meets_the_tolerance_with_the_set_degrees() {
 #[test]
 fn cutplane_is_large_enough_for_the_selection() {
     let s = flat("p", -20.0, 30.0, -5.0, 5.0, 3.0);
-    let r = run(CUTTING_PLANE, vec![s], json!({}), vec![pt([0.0, 0.0, 0.0]), pt([1.0, 0.0, 0.0])]);
-    assert!(r.done, "{:?}", r.error);
+    let sel = || vec![s.clone()];
+    let r = feed(CUTTING_PLANE, &Value::Null, Input::Start, sel(), json!({}));
+    assert!(r.prompt.starts_with("Start of cut plane"), "{}", r.prompt);
+    let r = feed(CUTTING_PLANE, &r.state, pt([0.0, 0.0, 0.0]), sel(), json!({}));
+    assert_eq!(r.prompt, "End of cut plane");
+    let h = feed(CUTTING_PLANE, &r.state, Input::Hover { point: [1.0, 0.0, 0.0] }, sel(), json!({}));
+    assert_eq!(h.preview.len(), 1);
+    // The prompts repeat: a second plane across (x = 5), then Enter makes both.
+    let r = feed(CUTTING_PLANE, &r.state, pt([1.0, 0.0, 0.0]), sel(), json!({}));
+    assert!(r.prompt.starts_with("Start of cut plane") && r.preview.len() == 1, "{}", r.prompt);
+    let r = feed(CUTTING_PLANE, &r.state, pt([5.0, -1.0, 0.0]), sel(), json!({}));
+    let r = feed(CUTTING_PLANE, &r.state, pt([5.0, 1.0, 0.0]), sel(), json!({}));
+    let r = feed(CUTTING_PLANE, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done && r.create.len() == 2, "{:?}", r.error);
     let f = Srf::of(&r.create[0]).unwrap();
     let corners = [f.at_st(0.0, 0.0), f.at_st(1.0, 0.0), f.at_st(0.0, 1.0), f.at_st(1.0, 1.0)];
     assert!(corners.iter().all(|p| p[1].abs() < 1e-9), "through the line: {corners:?}");
     let (x0, x1) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[0]), b.max(p[0])));
     let (z0, z1) = corners.iter().fold((f64::MAX, f64::MIN), |(a, b), p| (a.min(p[2]), b.max(p[2])));
     assert!(x0 < -20.0 && x1 > 30.0 && z0 < 3.0 && z1 > 3.0, "{x0} {x1} {z0} {z1}");
+    let g = Srf::of(&r.create[1]).unwrap();
+    assert!([g.at_st(0.0, 0.0), g.at_st(1.0, 1.0)].iter().all(|p| (p[0] - 5.0).abs() < 1e-9));
+    // 3Point: edge (0,0,0) → (4,0,0), width typed 2: a 4 × 2 rectangle standing up.
+    let r = feed(CUTTING_PLANE, &Value::Null, Input::Start, sel(), json!({}));
+    let r = feed(CUTTING_PLANE, &r.state, opt("3Point", None), sel(), json!({}));
+    assert_eq!(r.prompt, "Start of edge");
+    let r = feed(CUTTING_PLANE, &r.state, pt([0.0, 0.0, 0.0]), sel(), json!({}));
+    let r = feed(CUTTING_PLANE, &r.state, pt([4.0, 0.0, 0.0]), sel(), json!({}));
+    assert!(r.prompt.starts_with("Width"), "{}", r.prompt);
+    let r = feed(CUTTING_PLANE, &r.state, text("2"), sel(), json!({}));
+    let r = feed(CUTTING_PLANE, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done && r.create.len() == 1);
+    let q = Srf::of(&r.create[0]).unwrap();
+    let c = [q.at_st(0.0, 0.0), q.at_st(1.0, 0.0), q.at_st(1.0, 1.0), q.at_st(0.0, 1.0)];
+    let xs = c.iter().map(|p| p[0]).fold(f64::MIN, f64::max);
+    let zs = c.iter().map(|p| p[2]).fold(f64::MIN, f64::max);
+    assert!((xs - 4.0).abs() < 1e-9 && (zs - 2.0).abs() < 1e-9 && c.iter().all(|p| p[1].abs() < 1e-9), "{c:?}");
 }
 
 /// Rhino 5 FilletSrf Extend and Split: the wall is shorter (y 2..6 of the floor's 0..8). With
@@ -1644,4 +1724,68 @@ fn filletsrf_extend_and_split() {
     assert!(r.done && r.replace.len() == 2 && r.create.len() == 1, "{:?}", r.messages);
     let (lo, hi) = span(&r.replace.iter().find(|x| x.id == "wall").unwrap().geo, 2);
     assert!((lo - 1.0).abs() < 1e-6 && (hi - 6.0).abs() < 1e-6, "{lo} {hi}");
+}
+
+/// Rhino 5 VariableFilletSrf handle options: CopyHandle, RemoveHandle (not the ends),
+/// LinkHandles, FromTwoPoints; RailType=DistFromEdge (between square planes the radius equals
+/// the distance from the edge).
+#[test]
+fn variable_fillet_handle_options_and_rail_type() {
+    let surface = |id: &str, pts: Vec<Vec3>| Selected {
+        id: id.into(),
+        kind: "surface".into(),
+        mesh: None,
+        exact: Some(Geo::Surface {
+            degree: [1, 1],
+            size: [2, 2],
+            points: pts,
+            weights: vec![1.0; 4],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
+        }),
+        ..flat("x", 0.0, 1.0, 0.0, 1.0, 0.0)
+    };
+    let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
+    let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
+    let sel = || vec![floor.clone(), wall.clone()];
+    let set = json!({"fs_radius": 1.0, "fs_end_radius": 1.0, "fs_trim": false});
+    let state = |st: &Value| -> Vec<(f64, f64)> {
+        st["handles"].as_array().unwrap().iter().map(|h| (h[0].as_f64().unwrap(), h[1].as_f64().unwrap())).collect()
+    };
+    let r = feed(VAR_FILLET, &Value::Null, Input::Start, sel(), set.clone());
+    let names: Vec<String> = r.options.iter().map(|o| o.name.clone()).collect();
+    for n in ["SetAll", "AddHandle", "CopyHandle", "LinkHandles", "RailType", "Trim"] {
+        assert!(names.iter().any(|x| x == n), "{n}: {names:?}");
+    }
+    // Edit the start handle by two points: 1.5 apart.
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 0.1, 0.0]), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, opt("FromTwoPoints", None), sel(), set.clone());
+    assert_eq!(r.prompt, "First point");
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 0.0, 0.0]), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, pt([1.5, 0.0, 0.0]), sel(), set.clone());
+    assert!(state(&r.state).iter().filter(|h| (h.1 - 1.5).abs() < 1e-12).count() == 1, "{:?}", state(&r.state));
+    // CopyHandle: copy the start (1.5) to the middle.
+    let r = feed(VAR_FILLET, &r.state, opt("CopyHandle", None), sel(), set.clone());
+    assert_eq!(r.prompt, "Select handle to copy");
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 0.2, 0.0]), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 4.0, 0.0]), sel(), set.clone());
+    let h = state(&r.state);
+    assert!(h.len() == 3 && (h[2].0 - 0.5).abs() < 1e-3 && (h[2].1 - 1.5).abs() < 1e-12, "{h:?}");
+    // RemoveHandle: the end handles stay; the middle one goes.
+    let r = feed(VAR_FILLET, &r.state, opt("RemoveHandle", None), sel(), set.clone());
+    let refused = feed(VAR_FILLET, &r.state, pt([0.0, 7.9, 0.0]), sel(), set.clone());
+    assert!(refused.error.is_some() && state(&refused.state).len() == 3);
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 4.1, 0.0]), sel(), set.clone());
+    assert_eq!(state(&r.state).len(), 2);
+    // LinkHandles: setting one sets all.
+    let r = feed(VAR_FILLET, &r.state, opt("LinkHandles", None), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, pt([0.0, 7.9, 0.0]), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, text("0.8"), sel(), set.clone());
+    assert!(state(&r.state).iter().all(|h| (h.1 - 0.8).abs() < 1e-12));
+    // RailType DistBetweenRails 0.8 between square planes: the edges 0.8 apart (R = 0.8/√2).
+    let r = feed(VAR_FILLET, &r.state, opt("RailType", Some("DistBetweenRails")), sel(), set.clone());
+    let r = feed(VAR_FILLET, &r.state, Input::Enter, sel(), set);
+    assert!(r.done, "{:?}", r.error);
+    let s = Srf::of(&r.create[0]).unwrap();
+    let (p, q) = (s.at_st(0.5, 0.0), s.at_st(0.5, 1.0));
+    assert!((dist(p, q) - 0.8).abs() < 1e-4, "{}", dist(p, q));
 }
