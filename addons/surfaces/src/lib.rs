@@ -111,18 +111,19 @@ impl Interactive for Surfaces {
     ];
     fn step(e: &Event) -> Result<Reply, String> {
         Ok(match e.command.as_str() {
-            SWEEP1 | PROFILE_SWEEP | FOUR_PROFILE_SWEEP => sweep1(e),
-            SWEEP2 => sweep2(e),
+            SWEEP1 | PROFILE_SWEEP | FOUR_PROFILE_SWEEP => with_surface_edges(e, sweep1),
+            SWEEP2 => with_surface_edges(e, sweep2),
             MULTI_RAIL => multi_rail(e),
             PLANAR => planar(e),
             PLANE => plane(e),
             REBUILD => rebuild(e),
             BLEND => blend_srf(e),
             VAR_BLEND => variable_fillet(e),
-            LOFT => loft(e),
-            NETWORK => network(e),
+            LOFT => with_surface_edges(e, loft),
+            NETWORK => with_surface_edges(e, network),
             SHRINK => shrink(e),
-            PATCH | EDGE_CURVES => patch(e),
+            EDGE_CURVES => with_surface_edges(e, patch),
+            PATCH => patch(e),
             UNTRIM => untrim(e),
             EXTRUDE_ALL => extrude_all(e),
             REVOLVE => revolve(e),
@@ -161,6 +162,73 @@ impl Interactive for Surfaces {
 }
 
 // ---- shared ----------------------------------------------------------------------------------
+
+/// Surface edges as curves (Rhino: "Select curves or surface edges"): a click on an
+/// untrimmed surface near one of its edges stands for that edge — the exact isoparametric
+/// curve — in the commands that take curves (Sweep1, Sweep2, Loft, NetworkSrf, EdgeSrf).
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct EdgePicks {
+    /// (surface id, the click) for each edge picked.
+    #[serde(default)]
+    picks: Vec<(String, Vec3)>,
+    /// The selection seen last time (to tell which object the click just added).
+    #[serde(default)]
+    seen: Vec<String>,
+    #[serde(default)]
+    inner: Value,
+}
+
+fn with_surface_edges(e: &Event, inner: fn(&Event) -> Reply) -> Reply {
+    let mut st: EdgePicks = if matches!(e.input, Input::Start) {
+        EdgePicks::default()
+    } else {
+        serde_json::from_value(e.state.clone()).ok().filter(|x: &EdgePicks| x.inner != Value::Null || !x.picks.is_empty() || !x.seen.is_empty()).unwrap_or_else(|| EdgePicks { inner: e.state.clone(), ..Default::default() })
+    };
+    let is_surface = |s: &Selected| matches!(s.exact, Some(Geo::Surface { .. }));
+    // A surface just added by a click: the click names its edge.
+    if let (Input::Selection, Some(p)) = (&e.input, e.pick) {
+        let new: Vec<&Selected> = e.selection.iter().filter(|s| !st.seen.contains(&s.id)).collect();
+        if let [s] = new.as_slice() {
+            if is_surface(s) {
+                st.picks.push((s.id.clone(), p));
+            }
+        }
+    }
+    st.seen = e.selection.iter().map(|s| s.id.clone()).collect();
+    // The selection the command sees: picked surfaces become their edge curves.
+    let mut sel: Vec<Selected> = Vec::new();
+    for s in &e.selection {
+        let edges: Vec<&Vec3> = st.picks.iter().filter(|(id, _)| id == &s.id).map(|(_, p)| p).collect();
+        if !is_surface(s) || edges.is_empty() {
+            sel.push(s.clone());
+            continue;
+        }
+        let Some(f) = Srf::of(s.exact.as_ref().unwrap()) else { continue };
+        for (k, p) in edges.into_iter().enumerate() {
+            let (dir, at) = nearest_edge(&f, *p);
+            if let Some(c) = om9_addon_geom::surfedit::edge_curve(s.exact.as_ref().unwrap(), dir, at > 0.5) {
+                let g = c.to_geo();
+                let points = nurbs::samples(&g, 64);
+                let closed = c.closed(1e-9);
+                let lo = points.iter().fold([f64::MAX; 3], |a, q| [a[0].min(q[0]), a[1].min(q[1]), a[2].min(q[2])]);
+                let hi = points.iter().fold([f64::MIN; 3], |a, q| [a[0].max(q[0]), a[1].max(q[1]), a[2].max(q[2])]);
+                sel.push(Selected { id: format!("{}#edge{k}", s.id), kind: "curve".into(), name: format!("{} edge", s.name), bbox: [lo, hi], points, closed, exact: Some(g), mesh: None, ..s.clone() });
+            }
+        }
+    }
+    let mut sub = e.clone();
+    sub.selection = sel;
+    sub.state = st.inner.clone();
+    let mut r = inner(&sub);
+    // Edges are not objects: never delete or replace them.
+    r.delete.retain(|id| !id.contains("#edge"));
+    r.replace.retain(|x| !x.id.contains("#edge"));
+    if !r.done {
+        st.inner = r.state.clone();
+        r.state = serde_json::to_value(&st).unwrap_or(Value::Null);
+    }
+    r
+}
 
 fn curves(e: &Event) -> Vec<&Selected> {
     e.selection

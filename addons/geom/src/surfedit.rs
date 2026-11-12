@@ -376,3 +376,26 @@ mod tests {
         }
     }
 }
+
+/// The exact edge curve of an untrimmed surface: `dir` 0 the edge where u is fixed (u = 0, or
+/// u = 1 with `at_end`), 1 where v is fixed.
+pub fn edge_curve(g: &Geo, dir: usize, at_end: bool) -> Option<crate::exact::Nc> {
+    let Geo::Surface { degree, size, points, weights, knots } = g else { return None };
+    let w = |k: usize| weights.get(k).copied().unwrap_or(1.0);
+    let h = |k: usize| {
+        let p = points[k];
+        [p[0] * w(k), p[1] * w(k), p[2] * w(k), w(k)]
+    };
+    let n01 = |k: &[f64]| {
+        let (a, b) = (k[0], *k.last().unwrap());
+        k.iter().map(|v| (v - a) / (b - a)).collect::<Vec<f64>>()
+    };
+    let (nu, nv) = (size[0], size[1]);
+    Some(if dir == 0 {
+        let i = if at_end { nu - 1 } else { 0 };
+        crate::exact::Nc { degree: degree[1], points: (0..nv).map(|j| h(i * nv + j)).collect(), knots: n01(&knots[1]) }
+    } else {
+        let j = if at_end { nv - 1 } else { 0 };
+        crate::exact::Nc { degree: degree[0], points: (0..nu).map(|i| h(i * nv + j)).collect(), knots: n01(&knots[0]) }
+    })
+}

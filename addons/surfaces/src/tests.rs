@@ -1832,3 +1832,44 @@ fn curve_network_no_auto_sort() {
         }
     }
 }
+
+/// Rhino: surface edges stand for curves. Two strips picked near their facing edges (x 4 on
+/// the first, x 6 on the second) loft between those exact edges; EdgeSrf from the same two
+/// edges makes the same ruled surface.
+#[test]
+fn surface_edges_as_curves() {
+    let a = flat("a", 0.0, 4.0, 0.0, 5.0, 0.0);
+    let b = flat("b", 6.0, 10.0, 0.0, 5.0, 2.0);
+    for cmd in [LOFT, EDGE_CURVES] {
+        let mut e = event(cmd, Input::Start, vec![], json!({}));
+        let r = Surfaces::step(&e).unwrap();
+        e.state = r.state;
+        e.input = Input::Selection;
+        e.selection = vec![a.clone()];
+        e.pick = Some([3.9, 2.0, 0.0]);
+        let r = Surfaces::step(&e).unwrap();
+        e.state = r.state;
+        e.selection = vec![a.clone(), b.clone()];
+        e.pick = Some([6.1, 3.0, 2.0]);
+        let r = Surfaces::step(&e).unwrap();
+        e.state = r.state;
+        e.input = Input::Enter;
+        e.pick = None;
+        let mut r = Surfaces::step(&e).unwrap();
+        // Loft asks for options after the curves: Enter again.
+        if !r.done {
+            e.state = r.state;
+            r = Surfaces::step(&e).unwrap();
+        }
+        assert!(r.done, "{cmd}: {:?} {}", r.error, r.prompt);
+        assert!(r.delete.is_empty() && r.replace.is_empty());
+        let s = Srf::of(&r.create[0]).unwrap();
+        // Its edges: the line x 4, z 0 and the line x 6, z 2 (y 0..5), exactly.
+        let ends: Vec<Vec3> = [(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)].iter().map(|(u, v)| s.at_st(*u, *v)).collect();
+        for p in &ends {
+            assert!(((p[0] - 4.0).abs() < 1e-9 && p[2].abs() < 1e-9) || ((p[0] - 6.0).abs() < 1e-9 && (p[2] - 2.0).abs() < 1e-9), "{cmd}: {ends:?}");
+        }
+        let mid = s.at_st(0.5, 0.5);
+        assert!((mid[0] - 5.0).abs() < 1e-6 && (mid[2] - 1.0).abs() < 1e-6, "{cmd}: {mid:?}");
+    }
+}
