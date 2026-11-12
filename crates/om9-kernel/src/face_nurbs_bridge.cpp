@@ -51,7 +51,13 @@ TopoDS_Shape face_nurbs_source(const char* source, size_t length) {
 }
 
 void write_curve(std::ostringstream& out, Handle(Geom_BSplineCurve) curve) {
-  if (curve->IsPeriodic()) curve->SetNotPeriodic();
+  // SetNotPeriodic keeps the periodic knot vector's unclamped ends; Segment over the whole
+  // range clamps them (end knots of multiplicity degree + 1) without moving the curve.
+  if (curve->IsPeriodic()) {
+    const Standard_Real first = curve->FirstParameter(), last = curve->LastParameter();
+    curve->SetNotPeriodic();
+    curve->Segment(first, last);
+  }
   const int poles = curve->NbPoles(), degree = curve->Degree();
   TColStd_Array1OfReal knots(1, poles + degree + 1);
   curve->KnotSequence(knots);
@@ -105,12 +111,28 @@ extern "C" int om9_occt_face_nurbs(const char* source, size_t length, size_t max
       if (!surface->IsKind(STANDARD_TYPE(Geom_BoundedSurface))) {
         Standard_Real u0, u1, v0, v1;
         BRepTools::UVBounds(face, u0, u1, v0, v1);
-        surface = new Geom_RectangularTrimmedSurface(surface, u0, u1, v0, v1);
+        // A direction the face spans for a whole period stays untrimmed (periodic): the
+        // conversion refuses a torus trimmed over both full periods.
+        const bool u_full = surface->IsUPeriodic() && u1 - u0 >= surface->UPeriod() - 1e-9;
+        const bool v_full = surface->IsVPeriodic() && v1 - v0 >= surface->VPeriod() - 1e-9;
+        if (!u_full && !v_full)
+          surface = new Geom_RectangularTrimmedSurface(surface, u0, u1, v0, v1);
+        else if (!v_full)
+          surface = new Geom_RectangularTrimmedSurface(surface, v0, v1, Standard_False);
+        else if (!u_full)
+          surface = new Geom_RectangularTrimmedSurface(surface, u0, u1, Standard_True);
       }
       Handle(Geom_BSplineSurface) bs = GeomConvert::SurfaceToBSplineSurface(surface);
       if (bs.IsNull()) throw std::runtime_error("surface not convertible to NURBS");
-      if (bs->IsUPeriodic()) bs->SetUNotPeriodic();
-      if (bs->IsVPeriodic()) bs->SetVNotPeriodic();
+      if (bs->IsUPeriodic() || bs->IsVPeriodic()) {
+        // As for curves: opening a periodic direction leaves unclamped ends; Segment over the
+        // whole parameter box clamps them.
+        Standard_Real a, b, c, d;
+        bs->Bounds(a, b, c, d);
+        if (bs->IsUPeriodic()) bs->SetUNotPeriodic();
+        if (bs->IsVPeriodic()) bs->SetVNotPeriodic();
+        bs->Segment(a, b, c, d);
+      }
       const int nu = bs->NbUPoles(), nv = bs->NbVPoles(), du = bs->UDegree(), dv = bs->VDegree();
       out << "S " << du << ' ' << dv << ' ' << nu << ' ' << nv << ' '
           << (face.Orientation() == TopAbs_REVERSED ? 1 : 0) << '\n';

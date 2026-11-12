@@ -77,7 +77,7 @@ fn off_surface(f: &FaceNurbs, p: [f64; 3]) -> f64 {
         }
     }
     let mut h = 1.0 / n as f64;
-    for _ in 0..40 {
+    for _ in 0..200 {
         let (mut moved, (s0, t0)) = (false, (best.1, best.2));
         for (ds, dt) in [(h, 0.0), (-h, 0.0), (0.0, h), (0.0, -h)] {
             let (s, t) = ((s0 + ds).clamp(0.0, 1.0), (t0 + dt).clamp(0.0, 1.0));
@@ -89,17 +89,27 @@ fn off_surface(f: &FaceNurbs, p: [f64; 3]) -> f64 {
         }
         if !moved {
             h *= 0.5;
+            if h < 1e-15 {
+                break;
+            }
         }
     }
     best.0
 }
 
-/// Every loop is a closed chain of curves lying on the face.
+/// End knots repeated degree + 1 times (periodic surfaces and closed edges are opened).
+fn clamped(degree: usize, k: &[f64]) -> bool {
+    k[..=degree].iter().all(|v| *v == k[0]) && k[k.len() - degree - 1..].iter().all(|v| *v == k[k.len() - 1])
+}
+
+/// Every surface and edge is clamped, and every loop is a closed chain of curves lying on the face.
 fn check_loops(f: &FaceNurbs, tol: f64) {
+    assert!(clamped(f.degree[0], &f.knots[0]) && clamped(f.degree[1], &f.knots[1]), "surface clamped");
     assert!(!f.loops.is_empty(), "a face has a loop");
     for lp in &f.loops {
         assert!(!lp.is_empty());
         for (i, c) in lp.iter().enumerate() {
+            assert!(clamped(c.degree, &c.knots), "edge clamped");
             let next = &lp[(i + 1) % lp.len()];
             assert!(dist(curve_at(c, 1.0), curve_at(next, 0.0)) < tol, "loop chained");
             for k in 0..=4 {
@@ -173,10 +183,6 @@ fn a_cylinder_side_opens_into_a_clamped_surface_on_the_cylinder() {
         .collect();
     assert_eq!(side.len(), 1, "one curved side");
     let f = side[0];
-    for (dir, k) in [(0, &f.knots[0]), (1, &f.knots[1])] {
-        let d = f.degree[dir];
-        assert!(k[..=d].iter().all(|v| *v == k[0]) && k[k.len() - d - 1..].iter().all(|v| *v == k[k.len() - 1]), "clamped");
-    }
     for i in 0..=24 {
         for j in 0..=4 {
             let p = surface_at(f, i as f64 / 24.0, j as f64 / 4.0);
@@ -184,6 +190,31 @@ fn a_cylinder_side_opens_into_a_clamped_surface_on_the_cylinder() {
         }
     }
     check_loops(f, 1e-7);
+}
+
+#[test]
+fn a_sphere_and_a_torus_open_both_ways_and_stay_on_their_shapes() {
+    let ball = creation::primitive(Primitive::Sphere { radius_mm: 4.0 }, 0.05, &limits()).unwrap();
+    for f in &face_nurbs(&ball, &limits()).unwrap() {
+        for i in 0..=12 {
+            for j in 0..=12 {
+                let p = surface_at(f, i as f64 / 12.0, j as f64 / 12.0);
+                assert!((dist(p, [0.0; 3]) - 4.0).abs() < 1e-9, "{p:?}");
+            }
+        }
+        check_loops(f, 1e-7);
+    }
+    // Ring 10, tube 2 round the z axis: periodic both ways, a single face.
+    let ring = creation::primitive(Primitive::Torus { ring_radius_mm: 10.0, tube_radius_mm: 2.0 }, 0.05, &limits()).unwrap();
+    let faces = face_nurbs(&ring, &limits()).unwrap();
+    assert_eq!(faces.len(), 1);
+    for i in 0..=16 {
+        for j in 0..=16 {
+            let p = surface_at(&faces[0], i as f64 / 16.0, j as f64 / 16.0);
+            assert!(((p[0].hypot(p[1]) - 10.0).hypot(p[2]) - 2.0).abs() < 1e-9, "{p:?}");
+        }
+    }
+    check_loops(&faces[0], 1e-7);
 }
 
 #[test]
