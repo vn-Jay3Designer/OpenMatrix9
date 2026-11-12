@@ -599,8 +599,9 @@ thread_local! {
 }
 
 /// A trimmed surface exactly, for `brep_data` commands: a one-face B-Rep (its underlying
-/// NURBS surface and trim loops from the kernel) or a surface with Rhino trim loops (the
-/// parameter-space polygons, run along the surface). `None` for anything else.
+/// NURBS surface and trim loops from the kernel; a face that is its whole surface goes as the
+/// plain [`Geo::Surface`]) or a surface with Rhino trim loops (the parameter-space polygons,
+/// run along the surface). `None` for anything else.
 fn trimmed_in_world(entity: &Entity, k: f64) -> Option<Geo> {
     let limits = om9_core::budget::Limits::default();
     let placement = &entity.placement;
@@ -671,7 +672,8 @@ fn trimmed_in_world(entity: &Entity, k: f64) -> Option<Geo> {
                     .collect::<Option<Vec<Geo>>>()
             })
             .collect::<Option<Vec<_>>>()?;
-        return Some(Geo::Trimmed { surface: Box::new(surface), loops, display: None });
+        // A face that is its whole surface (no loops) goes as the plain surface.
+        return Some(if loops.is_empty() { surface } else { Geo::Trimmed { surface: Box::new(surface), loops, display: None } });
     }
     None
 }

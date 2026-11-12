@@ -105,7 +105,6 @@ fn clamped(degree: usize, k: &[f64]) -> bool {
 /// Every surface and edge is clamped, and every loop is a closed chain of curves lying on the face.
 fn check_loops(f: &FaceNurbs, tol: f64) {
     assert!(clamped(f.degree[0], &f.knots[0]) && clamped(f.degree[1], &f.knots[1]), "surface clamped");
-    assert!(!f.loops.is_empty(), "a face has a loop");
     for lp in &f.loops {
         assert!(!lp.is_empty());
         for (i, c) in lp.iter().enumerate() {
@@ -120,30 +119,39 @@ fn check_loops(f: &FaceNurbs, tol: f64) {
     }
 }
 
+/// How a loop of a flat face winds round the surface's normal: + counter-clockwise.
+fn winding(f: &FaceNurbs, lp: &[NurbsCurveData]) -> f64 {
+    let o = surface_at(f, 0.0, 0.0);
+    let (a, b) = (surface_at(f, 1.0, 0.0), surface_at(f, 0.0, 1.0));
+    let (u, v) = ([a[0] - o[0], a[1] - o[1], a[2] - o[2]], [b[0] - o[0], b[1] - o[1], b[2] - o[2]]);
+    let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    let pts: Vec<[f64; 3]> = lp.iter().flat_map(|c| (0..8).map(move |k| curve_at(c, k as f64 / 8.0))).collect();
+    let mut s = [0.0; 3];
+    for i in 0..pts.len() {
+        let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+        s = [s[0] + a[1] * b[2] - a[2] * b[1], s[1] + a[2] * b[0] - a[0] * b[2], s[2] + a[0] * b[1] - a[1] * b[0]];
+    }
+    s[0] * n[0] + s[1] * n[1] + s[2] * n[2]
+}
+
 #[test]
-fn box_faces_are_its_six_planes_with_square_loops() {
+fn box_faces_are_its_six_planes_whole() {
     let b = box_brep([10.0, 10.0, 4.0], 0.05, &limits()).unwrap();
     let faces = face_nurbs(&b, &limits()).unwrap();
     assert_eq!(faces.len(), 6);
+    // Each side is its whole plane: no loops, and the planes' areas add up to 2·(100 + 40 + 40).
+    let mut area = 0.0;
     for f in &faces {
-        assert_eq!(f.loops.len(), 1);
-        assert_eq!(f.loops[0].len(), 4);
+        assert!(f.loops.is_empty(), "a box side is its whole surface");
         check_loops(f, 1e-9);
+        let (o, a, b) = (surface_at(f, 0.0, 0.0), surface_at(f, 1.0, 0.0), surface_at(f, 0.0, 1.0));
+        let (u, v) = ([a[0] - o[0], a[1] - o[1], a[2] - o[2]], [b[0] - o[0], b[1] - o[1], b[2] - o[2]]);
+        let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+        area += (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
     }
-    // The loop corners span the box: total polygon area 2·(100 + 40 + 40) = 360.
-    let area: f64 = faces
-        .iter()
-        .map(|f| {
-            let pts: Vec<[f64; 3]> = f.loops[0].iter().map(|c| curve_at(c, 0.0)).collect();
-            let mut s = [0.0; 3];
-            for i in 0..pts.len() {
-                let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
-                s = [s[0] + a[1] * b[2] - a[2] * b[1], s[1] + a[2] * b[0] - a[0] * b[2], s[2] + a[0] * b[1] - a[1] * b[0]];
-            }
-            (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt() / 2.0
-        })
-        .sum();
     assert!((area - 360.0).abs() < 1e-9, "{area}");
+    // Faces whose normal is the surface's flipped are marked (a box has some either way).
+    assert!(faces.iter().any(|f| f.reversed) && faces.iter().any(|f| !f.reversed));
 }
 
 #[test]
@@ -167,6 +175,7 @@ fn a_drilled_face_has_its_hole_as_a_second_loop_on_the_circle() {
                 assert!(((p[0] - 5.0).hypot(p[1] - 5.0) - 2.0).abs() < 1e-7, "{p:?}");
             }
         }
+        assert!(winding(f, &f.loops[0]) > 0.0 && winding(f, &f.loops[1]) < 0.0, "outer anticlockwise, hole clockwise");
         // The outer loop is the square.
         let corners: Vec<[f64; 3]> = f.loops[0].iter().map(|c| curve_at(c, 0.0)).collect();
         assert!(corners.iter().all(|p| (p[0].abs() < 1e-9 || (p[0] - 10.0).abs() < 1e-9) && (p[1].abs() < 1e-9 || (p[1] - 10.0).abs() < 1e-9)), "{corners:?}");
@@ -183,6 +192,7 @@ fn a_cylinder_side_opens_into_a_clamped_surface_on_the_cylinder() {
         .collect();
     assert_eq!(side.len(), 1, "one curved side");
     let f = side[0];
+    assert!(f.loops.is_empty(), "the side is its whole surface (its seam is the surface's)");
     for i in 0..=24 {
         for j in 0..=4 {
             let p = surface_at(f, i as f64 / 24.0, j as f64 / 4.0);
@@ -215,6 +225,21 @@ fn a_sphere_and_a_torus_open_both_ways_and_stay_on_their_shapes() {
         }
     }
     check_loops(&faces[0], 1e-7);
+    // The ring with a quarter cut away (x > 0, z < 0): the trimmed tube's loop runs along the
+    // seam and round both cut circles; its curves meet exactly at the shape's vertices.
+    let block = transform_brep(
+        &box_brep([20.0, 40.0, 5.0], 0.05, &limits()).unwrap(),
+        &Transform([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, -20.0], [0.0, 0.0, 1.0, -5.0], [0.0, 0.0, 0.0, 1.0]]),
+        0.05,
+        &limits(),
+    )
+    .unwrap();
+    let cut = editing::boolean(&ring, &block, BooleanOp::Difference, 0.05, &limits()).unwrap();
+    let faces = face_nurbs(cut.body().expect("a body"), &limits()).unwrap();
+    assert!(faces.iter().any(|f| f.loops.iter().any(|l| l.len() > 4)), "a long loop round the cut");
+    for f in &faces {
+        check_loops(f, 1e-12);
+    }
 }
 
 #[test]
