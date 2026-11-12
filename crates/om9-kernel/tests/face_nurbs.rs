@@ -226,7 +226,7 @@ fn a_sphere_and_a_torus_open_both_ways_and_stay_on_their_shapes() {
     }
     check_loops(&faces[0], 1e-7);
     // The ring with a quarter cut away (x > 0, z < 0): the trimmed tube's loop runs along the
-    // seam and round both cut circles; its curves meet exactly at the shape's vertices.
+    // seam and round both cut circles; its curves meet at the shape's vertices.
     let block = transform_brep(
         &box_brep([20.0, 40.0, 5.0], 0.05, &limits()).unwrap(),
         &Transform([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, -20.0], [0.0, 0.0, 1.0, -5.0], [0.0, 0.0, 0.0, 1.0]]),
@@ -237,8 +237,9 @@ fn a_sphere_and_a_torus_open_both_ways_and_stay_on_their_shapes() {
     let cut = editing::boolean(&ring, &block, BooleanOp::Difference, 0.05, &limits()).unwrap();
     let faces = face_nurbs(cut.body().expect("a body"), &limits()).unwrap();
     assert!(faces.iter().any(|f| f.loops.iter().any(|l| l.len() > 4)), "a long loop round the cut");
+    // (The cut circles are the boolean's intersection curves: on the faces to its tolerance.)
     for f in &faces {
-        check_loops(f, 1e-12);
+        check_loops(f, 1e-6);
     }
 }
 
