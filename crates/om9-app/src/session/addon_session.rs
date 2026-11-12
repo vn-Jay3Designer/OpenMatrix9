@@ -44,6 +44,8 @@ pub struct AddonSession {
     /// The last accepted point (document units), for `@dx,dy` input.
     pub last_point: Option<Point3>,
     selection_seen: u64,
+    /// The subobject picks seen last (a second edge of the same object is a new selection).
+    sub_seen: u64,
     /// The pointer position last sent as a hover event; the UI reports it every frame.
     hover_at: Option<Point3>,
     /// The command reads the triangles of selected meshes (`mesh_data = true`).
@@ -1239,6 +1241,7 @@ impl Controller {
             rubber_from: None,
             last_point: None,
             selection_seen: self.selection_revision,
+            sub_seen: self.sub_revision(),
             hover_at: None,
             mesh_data,
             brep_data,
@@ -1434,10 +1437,13 @@ impl Controller {
         let Some(s) = self.addon_session.as_ref() else {
             return;
         };
-        if s.selection_seen != self.selection_revision {
+        // Subobject picks count only for commands that receive them (`brep_data`).
+        let sub = if s.brep_data { self.sub_revision() } else { s.sub_seen };
+        if s.selection_seen != self.selection_revision || s.sub_seen != sub {
             let rev = self.selection_revision;
             if let Some(s) = self.addon_session.as_mut() {
                 s.selection_seen = rev;
+                s.sub_seen = sub;
             }
             let _ = self.session_step(Input::Selection);
         }
