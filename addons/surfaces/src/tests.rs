@@ -1973,3 +1973,55 @@ fn untrim_restores_the_surface_and_can_keep_the_trims() {
     assert_eq!(r.replace.len(), 1);
     assert_eq!(r.create.len(), 5, "four border lines and the hole");
 }
+
+/// Rhino 5 ExtrudeCrv Solid=Yes: a closed planar curve is capped into a solid (a curve inside
+/// it in its plane is a hole); an open curve still makes a surface. The faces are exact: the
+/// walls are on the circles r 2 and r 1, the caps are planes at z 0 and z 3 bounded by both
+/// circles.
+#[test]
+fn extrude_crv_solid_caps_closed_planar_curves() {
+    let ring = |id: &str, r: f64| exact_sel(id, Geo::Circle { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], radius: r }, true);
+    let open = exact_sel("line", Geo::Line { start: [5.0, 0.0, 0.0], end: [8.0, 0.0, 0.0] }, false);
+    let r = run(EXTRUDE_ALL, vec![ring("outer", 2.0), ring("hole", 1.0), open], json!({"ea_solid": true}), vec![text("3")]);
+    assert_eq!(r.create.len(), 2, "one solid, one surface: {:?}", r.messages);
+    let Some(Geo::Brep { faces, solid, display }) = r.create.iter().find(|g| matches!(g, Geo::Brep { .. })) else { panic!() };
+    assert!(*solid && display.is_some());
+    assert_eq!(faces.len(), 4, "two walls, two caps");
+    let walls: Vec<Srf> = faces.iter().filter_map(Srf::of).collect();
+    assert_eq!(walls.len(), 2);
+    let mut radii: Vec<f64> = walls
+        .iter()
+        .map(|w| {
+            let r0 = { let p = w.at_st(0.3, 0.0); p[0].hypot(p[1]) };
+            for i in 0..=8 {
+                for j in 0..=2 {
+                    let p = w.at_st(i as f64 / 8.0, j as f64 / 2.0);
+                    assert!((p[0].hypot(p[1]) - r0).abs() < 1e-9 && p[2] > -1e-9 && p[2] < 3.0 + 1e-9, "{p:?}");
+                }
+            }
+            r0
+        })
+        .collect();
+    radii.sort_by(f64::total_cmp);
+    assert!((radii[0] - 1.0).abs() < 1e-9 && (radii[1] - 2.0).abs() < 1e-9, "{radii:?}");
+    let caps: Vec<(&Geo, &Vec<Vec<Geo>>)> = faces.iter().filter_map(|f| match f { Geo::Trimmed { surface, loops, .. } => Some((surface.as_ref(), loops)), _ => None }).collect();
+    let mut zs = Vec::new();
+    for (plane, loops) in caps {
+        let s = Srf::of(plane).unwrap();
+        let z = s.at_st(0.0, 0.0)[2];
+        assert!((0..=4).all(|i| (s.at_st(i as f64 / 4.0, 1.0 - i as f64 / 4.0)[2] - z).abs() < 1e-12), "flat");
+        assert_eq!(loops.len(), 2, "outline and hole");
+        for (lp, want) in loops.iter().zip([2.0, 1.0]) {
+            for p in nurbs::samples(&lp[0], 16) {
+                assert!((p[0].hypot(p[1]) - want).abs() < 1e-9 && (p[2] - z).abs() < 1e-12, "{p:?}");
+            }
+        }
+        zs.push(z);
+    }
+    zs.sort_by(f64::total_cmp);
+    assert_eq!(zs, vec![0.0, 3.0]);
+    // Solid=No (the default): three surfaces, no solid.
+    let r = run(EXTRUDE_ALL, vec![ring("outer", 2.0), ring("hole", 1.0)], json!({}), vec![text("3")]);
+    assert_eq!(r.create.len(), 2);
+    assert!(r.create.iter().all(|g| matches!(g, Geo::Surface { .. })));
+}

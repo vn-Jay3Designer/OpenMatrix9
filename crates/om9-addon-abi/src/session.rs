@@ -81,7 +81,8 @@ pub struct Selected {
     /// The exact world definition of a curve or NURBS surface (control points, knots …),
     /// for commands that edit or continue it. Commands with `brep_data = true` also get a
     /// trimmed surface (a surface with trim loops, or a one-face B-Rep) as [`Geo::Trimmed`]:
-    /// its untrimmed NURBS surface and its trim loops as 3D curves, outer loop first.
+    /// its untrimmed NURBS surface and its trim loops as 3D curves, outer loop first; and a
+    /// polysurface or solid as [`Geo::Brep`] (its faces, `solid` when it is closed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exact: Option<Geo>,
 }
@@ -258,6 +259,18 @@ pub enum Geo {
     Trimmed {
         surface: Box<Geo>,
         loops: Vec<Vec<Geo>>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        display: Option<Box<Geo>>,
+    },
+    /// A polysurface or solid: faces (each [`Geo::Trimmed`] or [`Geo::Surface`]) the host
+    /// sews into one B-Rep at the document tolerance. `solid`: they must close into one
+    /// solid (Rhino's Solid=Yes) — the host refuses an open result instead of leaving a
+    /// shell. Commands with `brep_data = true` receive selected polysurfaces and solids this
+    /// way. `display` (a mesh) is what a build without the kernel shows.
+    Brep {
+        faces: Vec<Geo>,
+        #[serde(default)]
+        solid: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         display: Option<Box<Geo>>,
     },
