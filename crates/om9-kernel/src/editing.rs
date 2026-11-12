@@ -2458,6 +2458,46 @@ fn sew_with_orientation(
     .map_err(EditingError::from)
 }
 
+/// Faces made by add-ons — each a NURBS surface with its trim loops, as for
+/// [`crate::creation::trimmed_face`] — sewn at `tolerance_mm` into one body: a closed shell
+/// becomes a solid. With `closed`, anything but exactly one closed solid of positive volume is
+/// refused (a Solid=Yes result never arrives half open).
+pub fn sew_faces(
+    faces: &[(om9_core::geometry::NurbsSurface, Vec<Vec<om9_core::geometry::NurbsCurve>>)],
+    closed: bool,
+    tolerance_mm: f64,
+    deflection_mm: f64,
+    limits: &Limits,
+) -> Result<Brep, EditingError> {
+    positive(tolerance_mm, "sew tolerance")?;
+    if faces.is_empty() {
+        return Err(EditingError::Invalid("a body needs at least one face".into()));
+    }
+    let max = usize::try_from(limits.max_points).unwrap_or(usize::MAX);
+    if faces.len() > max {
+        return Err(EditingError::Budget("face count".into()));
+    }
+    let parts = faces
+        .iter()
+        .map(|(surface, loops)| crate::creation::trimmed_face(surface, loops, deflection_mm, limits))
+        .collect::<Result<Vec<_>, _>>()?;
+    let body = if parts.len() == 1 {
+        parts.into_iter().next().expect("one part")
+    } else {
+        sew_all(&parts, tolerance_mm, deflection_mm, limits)?
+    };
+    if closed {
+        let m = measure(&body, limits)?;
+        if m.solids != 1 || !m.closed || m.naked_edges != 0 || m.volume_mm3 <= 0.0 {
+            return Err(EditingError::Invalid(format!(
+                "the faces do not close into one solid ({} naked edges)",
+                m.naked_edges
+            )));
+        }
+    }
+    Ok(body)
+}
+
 /// Sew a list of parts in order (rejoin). The intermediate result is folded pairwise.
 pub fn sew_all(
     parts: &[Brep],
