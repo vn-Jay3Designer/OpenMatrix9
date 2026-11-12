@@ -22,4 +22,5 @@ Mặt từ lưới đường cong hai hướng (Rhino 5 NetworkSrf): mặt đi q
 |---|---|---|---|
 | `EdgeTolerance=` | Dung sai cạnh (Curve Network, mm) | 0.001 | 0 … 1 |
 | `InteriorTolerance=` | Dung sai bên trong (Curve Network, mm) | 0.001 | 0 … 1 |
+| `NoAutoSort=` | Chọn đường theo thứ tự (NetworkSrf NoAutoSort) | No |  |
 | `CrossingGap=` | Khoảng hở tối đa tại giao điểm (mm) | 0.1 | 0.0001 … 10 |

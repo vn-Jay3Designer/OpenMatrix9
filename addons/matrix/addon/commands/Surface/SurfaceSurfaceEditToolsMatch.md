@@ -20,4 +20,5 @@ Sửa mặt để cạnh của nó khớp cạnh mặt đích như Rhino 5 Match
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
+| `Average=` | Hai mặt cùng đổi, gặp ở giữa (MatchSrf) | No |  |
 | `Continuity=` | Liên tục | tangency | position, tangency, curvature |

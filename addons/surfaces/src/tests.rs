@@ -1372,6 +1372,20 @@ fn match_srf_follows_rhino5() {
     let s = Srf::of(&r.replace[0].geo).unwrap();
     let pts = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5), s.at_st(0.5, 0.0), s.at_st(0.5, 1.0)];
     assert!(pts.iter().any(|p| (p[0] - 4.0).abs() < 1e-6 && p[2].abs() < 1e-6), "the edge moved onto x = 4, z = 0: {pts:?}");
+    // Average=Yes: both change, meeting half way (x 4.25, z 0.5).
+    let mut e = event(MATCH, pt([4.6, 2.0, 1.0]), sel(), json!({}));
+    e.state = json!({"edges": [], "flow": null});
+    let r = Surfaces::step(&e).unwrap();
+    let r = feed(MATCH, &r.state, pt([3.9, 2.0, 0.0]), sel(), json!({}));
+    let r = feed(MATCH, &r.state, opt("Average", None), sel(), json!({}));
+    assert_eq!(r.preview.len(), 2);
+    let r = feed(MATCH, &r.state, Input::Enter, sel(), json!({}));
+    assert!(r.done && r.replace.len() == 2, "{:?}", r.error);
+    for x in &r.replace {
+        let s = Srf::of(&x.geo).unwrap();
+        let pts = [s.at_st(0.0, 0.5), s.at_st(1.0, 0.5), s.at_st(0.5, 0.0), s.at_st(0.5, 1.0)];
+        assert!(pts.iter().any(|p| (p[0] - 4.25).abs() < 1e-6 && (p[2] - 0.5).abs() < 1e-6), "{}: {pts:?}", x.id);
+    }
 }
 
 /// Rhino 5 Split (Isocurve) and SrfSeam: exact pieces and seam, the isocurve following the
@@ -1788,4 +1802,33 @@ fn variable_fillet_handle_options_and_rail_type() {
     let s = Srf::of(&r.create[0]).unwrap();
     let (p, q) = (s.at_st(0.5, 0.0), s.at_st(0.5, 1.0));
     assert!((dist(p, q) - 0.8).abs() < 1e-4, "{}", dist(p, q));
+}
+
+/// Rhino 5 NetworkSrf NoAutoSort: the first direction's curves (Enter), then the second's
+/// (Enter); the surface runs through them in the order picked — the same surface as the
+/// sorted one when they were picked in order.
+#[test]
+fn curve_network_no_auto_sort() {
+    let h = |x: f64, y: f64| 1.5 * (x * 0.4).sin() * (y * 0.3).cos();
+    let mk = |id: &str, pts: Vec<Vec3>| exact_sel(id, om9_addon_geom::interpolate(&pts, 3, false).unwrap(), false);
+    let first: Vec<Selected> = [0.0, 4.0, 9.0].iter().enumerate().map(|(i, x)| mk(&format!("a{i}"), (0..=8).map(|k| { let y = k as f64; [*x, y, h(*x, y)] }).collect())).collect();
+    let second: Vec<Selected> = [0.0, 3.0, 8.0].iter().enumerate().map(|(i, y)| mk(&format!("b{i}"), (0..=9).map(|k| { let x = k as f64; [x, *y, h(x, *y)] }).collect())).collect();
+    let set = json!({"nw_no_auto_sort": true});
+    let r = feed(NETWORK, &Value::Null, Input::Start, vec![], set.clone());
+    assert!(r.prompt.starts_with("Select curves in first direction"), "{}", r.prompt);
+    let r = feed(NETWORK, &r.state, Input::Enter, first.clone(), set.clone());
+    assert!(r.prompt.starts_with("Select curves in second direction"), "{}", r.prompt);
+    let all: Vec<Selected> = first.iter().chain(&second).cloned().collect();
+    let r = feed(NETWORK, &r.state, Input::Enter, all.clone(), set);
+    assert!(r.done, "{:?}", r.error);
+    let auto = run(NETWORK, all, json!({}), vec![Input::Enter]);
+    let (a, b) = (Srf::of(&r.create[0]).unwrap(), Srf::of(&auto.create[0]).unwrap());
+    for i in 0..=10 {
+        for j in 0..=10 {
+            let (u, v) = (i as f64 / 10.0, j as f64 / 10.0);
+            let p = a.at_st(u, v);
+            // Same surface (possibly with u and v named the other way).
+            assert!(dist(p, b.at_st(u, v)) < 1e-6 || dist(p, b.at_st(v, u)) < 1e-6, "{p:?}");
+        }
+    }
 }

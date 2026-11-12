@@ -1280,7 +1280,58 @@ fn patch_fit(e: &Event, cs: &[&Selected]) -> Result<(Vec<Geo>, String), String> 
     ))
 }
 
+/// NetworkSrf NoAutoSort state: the first direction's curves (ids, in the order picked).
+#[derive(Serialize, Deserialize, Default, Clone)]
+struct NetworkState {
+    first: Option<Vec<String>>,
+}
+
+/// Rhino 5 NetworkSrf NoAutoSort: Select curves in first direction (in order, Enter), Select
+/// curves in second direction (in order, Enter); the surface runs through them as picked.
+fn network_in_order(e: &Event) -> Reply {
+    let label = "Curve Network";
+    let mut st: NetworkState = serde_json::from_value(e.state.clone()).unwrap_or_default();
+    if matches!(e.input, Input::Start) {
+        st = NetworkState::default();
+    }
+    let save = |st: &NetworkState| serde_json::to_value(st).unwrap_or(Value::Null);
+    let enter = matches!(e.input, Input::Enter);
+    let picked: Vec<&Selected> = curves(e);
+    match &st.first {
+        None => {
+            if enter && picked.len() >= 2 {
+                st.first = Some(picked.iter().map(|c| c.id.clone()).collect());
+                return Reply::ask("Select curves in second direction. Press Enter when done", save(&st)).want(Want::Objects);
+            }
+            let r = Reply::ask("Select curves in first direction. Press Enter when done", save(&st)).want(Want::Objects);
+            if enter { r.refuse(format!("{label}: select two or more curves")) } else { r }
+        }
+        Some(first) => {
+            let second: Vec<&Selected> = picked.iter().filter(|c| !first.contains(&c.id)).copied().collect();
+            if !enter || second.len() < 2 {
+                let r = Reply::ask("Select curves in second direction. Press Enter when done", save(&st)).want(Want::Objects);
+                return if enter { r.refuse(format!("{label}: select two or more curves")) } else { r };
+            }
+            let a: Option<Vec<Nc>> = first.iter().map(|id| e.selection.iter().find(|s| &s.id == id).and_then(nc_of)).collect();
+            let b: Option<Vec<Nc>> = second.iter().map(|c| nc_of(c)).collect();
+            let (Some(a), Some(b)) = (a, b) else {
+                return Reply::ask("Select curves in second direction. Press Enter when done", save(&st)).want(Want::Objects).refuse(format!("{label}: a curve has no curve data"));
+            };
+            let tol = e.number("nw_edge_tolerance", 0.001).min(e.number("nw_interior_tolerance", 0.001)).max(1e-6);
+            let gap = e.number("nw_cross_tolerance", 0.1).max(tol);
+            match om9_addon_geom::network::network_in_order(&a, &b, tol, gap) {
+                Ok(n) => Reply::finish(vec![exact::surface(&n.rows, n.degree, n.knots)])
+                    .say(format!("{label}: {} × {} curves in the order picked, within {} mm", n.counts[0], n.counts[1], fmt(tol))),
+                Err(why) => Reply::ask("Select curves in first direction. Press Enter when done", save(&NetworkState::default())).want(Want::Objects).refuse(format!("{label}: {why}")),
+            }
+        }
+    }
+}
+
 fn network(e: &Event) -> Reply {
+    if e.flag("nw_no_auto_sort", false) {
+        return network_in_order(e);
+    }
     built(
         e,
         "Curve Network",
@@ -2483,19 +2534,24 @@ fn blend_srf(e: &Event) -> Reply {
     let cont = |k: &str| match e.text(k, "curvature") {
         "position" => "Position",
         "tangency" => "Tangency",
+        "g3" => "G3",
+        "g4" => "G4",
         _ => "Curvature",
     };
+    let kinds = ["Position", "Tangency", "Curvature", "G3", "G4"];
     let flow = Flow::new(label)
         .no_selection()
         .plain()
         .confirm("Press Enter to create the blend, or change an option")
-        .choice("Continuity1", &["Position", "Tangency", "Curvature"], cont("bl_continuity1"))
-        .choice("Continuity2", &["Position", "Tangency", "Curvature"], cont("bl_continuity2"))
+        .choice("Continuity1", &kinds, cont("bl_continuity1"))
+        .choice("Continuity2", &kinds, cont("bl_continuity2"))
         .num("Bulge1", e.number("bl_bulge", 1.0))
         .num("Bulge2", e.number("bl_bulge", 1.0));
     let to_c = |v: &str| match v {
         "Position" => Continuity::Position,
         "Tangency" => Continuity::Tangency,
+        "G3" => Continuity::G3,
+        "G4" => Continuity::G4,
         _ => Continuity::Curvature,
     };
     let (ea, eb) = (&st.edges[0], &st.edges[1]);
@@ -3231,16 +3287,24 @@ fn match_srf(e: &Event) -> Reply {
                 "curvature" => "Curvature",
                 _ => "Tangency",
             },
-        );
+        )
+        .toggle("Average", e.flag("sm_average", false));
     let (ea, eb) = (st.edges[0].clone(), st.edges[1].clone());
     let tol = e.number("sw_tolerance", 0.001).max(1e-6);
-    let make = |c: &Collected| -> Result<Geo, String> {
+    // The changed surface, and with Average=Yes the changed target too.
+    let make = |c: &Collected| -> Result<(Geo, Option<Geo>), String> {
         let cont = match c.opt(&flow, "Continuity") {
             "Position" => Continuity::Position,
             "Curvature" => Continuity::Curvature,
             _ => Continuity::Tangency,
         };
-        matchsrf::match_srf(a.exact.as_ref().unwrap(), Edge { dir: ea.1, at_end: ea.2 }, b.exact.as_ref().unwrap(), Edge { dir: eb.1, at_end: eb.2 }, cont, tol)
+        let (ga, gb) = (a.exact.as_ref().unwrap(), b.exact.as_ref().unwrap());
+        let (e1, e2) = (Edge { dir: ea.1, at_end: ea.2 }, Edge { dir: eb.1, at_end: eb.2 });
+        if c.yes(&flow, "Average") {
+            matchsrf::match_average(ga, e1, gb, e2, cont, tol).map(|(x, y)| (x, Some(y)))
+        } else {
+            matchsrf::match_srf(ga, e1, gb, e2, cont, tol).map(|x| (x, None))
+        }
     };
     let mut sub = e.clone();
     sub.state = st.flow.clone();
@@ -3251,16 +3315,20 @@ fn match_srf(e: &Event) -> Reply {
     let mut r = flow.step(
         &sub,
         &|c, _| match make(c) {
-            Ok(g) => Show { geo: vec![g], ..Default::default() },
+            Ok((g, other)) => Show { geo: std::iter::once(g).chain(other).collect(), ..Default::default() },
             Err(why) => {
                 *failed.borrow_mut() = Some(why);
                 Show::default()
             }
         },
         &|c| {
-            let g = make(c)?;
-            let mut r = Reply::finish(Vec::new()).say(format!("{label}: {}", c.opt(&flow, "Continuity")));
+            let (g, other) = make(c)?;
+            let avg = if other.is_some() { ", average" } else { "" };
+            let mut r = Reply::finish(Vec::new()).say(format!("{label}: {}{avg}", c.opt(&flow, "Continuity")));
             r.replace.push(Replacement { id: a.id.clone(), geo: g });
+            if let Some(o) = other {
+                r.replace.push(Replacement { id: b.id.clone(), geo: o });
+            }
             Ok(r)
         },
     );

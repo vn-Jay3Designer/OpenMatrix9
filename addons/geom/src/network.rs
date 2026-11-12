@@ -251,16 +251,34 @@ pub fn network(curves: &[Nc], tol: f64, cross_tol: f64) -> Result<Network, Strin
     if fb.is_empty() {
         return Err("no curve crosses the others".into());
     }
+    families(fa, fb, false, tol, cross_tol)
+}
+
+/// Rhino 5 NetworkSrf NoAutoSort: the curves of the first direction and of the second, each
+/// in the order picked (the surface runs through them in that order).
+pub fn network_in_order(first: &[Nc], second: &[Nc], tol: f64, cross_tol: f64) -> Result<Network, String> {
+    if first.iter().chain(second).any(|c| c.closed(1e-6)) {
+        return Err("closed curves in a network are not supported yet".into());
+    }
+    families(first.to_vec(), second.to_vec(), true, tol, cross_tol)
+}
+
+fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_tol: f64) -> Result<Network, String> {
+    if fa.len() < 2 || fb.len() < 2 {
+        return Err("the network needs two or more curves in each direction".into());
+    }
     // Order family B along the first A curve, family A along the first B curve.
     let order = |fam: &mut Vec<Nc>, along: &Nc| {
         let mut keyed: Vec<(f64, Nc)> = fam.drain(..).map(|c| (crossing(along, &c).0, c)).collect();
         keyed.sort_by(|x, y| x.0.total_cmp(&y.0));
         fam.extend(keyed.into_iter().map(|k| k.1));
     };
-    let b0 = fb[0].clone();
-    order(&mut fa, &b0);
-    let a0 = fa[0].clone();
-    order(&mut fb, &a0);
+    if !keep_order {
+        let b0 = fb[0].clone();
+        order(&mut fa, &b0);
+        let a0 = fa[0].clone();
+        order(&mut fb, &a0);
+    }
     // Run every A curve the way B is ordered, every B curve the way A is ordered.
     let (m, n) = (fa.len(), fb.len());
     for c in fa.iter_mut() {

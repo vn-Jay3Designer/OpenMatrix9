@@ -97,6 +97,8 @@ pub fn match_srf(g: &Geo, e: Edge, target: &Geo, te: Edge, c: Continuity, tol: f
         Continuity::Position => 1,
         Continuity::Tangency => 2,
         Continuity::Curvature => 3,
+        // Rhino 5 MatchSrf matches up to curvature.
+        Continuity::G3 | Continuity::G4 => return Err("MatchSrf matches up to Curvature".into()),
     };
     let p = r.degree[0];
     if p + 1 < k {
@@ -206,6 +208,63 @@ pub fn match_srf(g: &Geo, e: Edge, target: &Geo, te: Edge, c: Continuity, tol: f
     Ok(exact::surface(&r.rows, r.degree, r.knots))
 }
 
+/// Rhino 5 MatchSrf Average=Yes: both surfaces change to meet half way — the edges meet on
+/// the curve midway between them, crossing along the direction midway between their own
+/// (and, with Curvature, with the average of their curvatures across). Returns the changed
+/// `g` and the changed `other`.
+pub fn match_average(g: &Geo, e: Edge, other: &Geo, oe: Edge, c: Continuity, tol: f64) -> Result<(Geo, Geo), String> {
+    if c.order() > 2 {
+        return Err("MatchSrf matches up to Curvature".into());
+    }
+    let sa = Srf::of(g).ok_or("not a NURBS surface")?;
+    let sb = Srf::of(other).ok_or("the target is not a NURBS surface")?;
+    let (ta, la) = arc_table(&sa, e);
+    let (tb, lb) = arc_table(&sb, oe);
+    let (a0, a1) = (inward(&sa, e, 0.0).0, inward(&sa, e, 1.0).0);
+    let (b0, b1) = (inward(&sb, oe, 0.0).0, inward(&sb, oe, 1.0).0);
+    let flip = dist(a0, b0) + dist(a1, b1) > dist(a0, b1) + dist(a1, b0);
+    let n = 48;
+    let unit = |v: Vec3| {
+        let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt().max(1e-300);
+        (scale(v, 1.0 / l), l)
+    };
+    // Rows across (w = 0, ½, 1) of the two virtual strips: one seen from g (it continues
+    // where the other surface lies), one seen from the other surface.
+    let mut rows_g: Vec<Vec<Vec3>> = vec![Vec::new(); 3];
+    let mut rows_o: Vec<Vec<Vec3>> = vec![Vec::new(); 3];
+    for i in 0..=n {
+        let s = i as f64 / n as f64;
+        let (p, da1, da2) = inward(&sa, e, lookup(&la, &ta, s));
+        let (q, db1, db2) = inward(&sb, oe, lookup(&lb, &tb, if flip { 1.0 - s } else { s }));
+        let mid = scale(add(p, q), 0.5);
+        let ((ua, la1), (ub, lb1)) = (unit(da1), unit(db1));
+        // The crossing direction from g's side into the other's: midway between −ua and ub.
+        let (m, _) = unit(sub(ub, ua));
+        let len = 0.5 * (la1 + lb1);
+        let d = scale(m, len);
+        // Second derivative across, per unit speed squared, averaged (same along the
+        // through-going parameter on both sides).
+        let k = scale(add(scale(db2, 1.0 / (lb1 * lb1)), scale(da2, 1.0 / (la1 * la1))), 0.5 * len * len);
+        let k = if c.order() >= 2 { k } else { [0.0; 3] };
+        // Quadratic across: P0 = mid, P1 = mid + d/2, P2 = mid + d + k/2 → C'(0) = d, C''(0) = k.
+        let strip = |d: Vec3| {
+            let p1 = add(mid, scale(d, 0.5));
+            let p2 = add(add(mid, d), scale(k, 0.5));
+            // Points at w = 0, ½, 1 of the Bézier.
+            [mid, add(add(scale(mid, 0.25), scale(p1, 0.5)), scale(p2, 0.25)), p2]
+        };
+        let (sg, so) = (strip(d), strip(scale(d, -1.0)));
+        for r in 0..3 {
+            rows_g[r].push(sg[r]);
+            rows_o[r].push(so[r]);
+        }
+    }
+    let virt = |rows: &[Vec<Vec3>]| crate::fit::surface_through(rows, [2, 3]).ok_or_else(|| "could not build the average".to_string());
+    let (vg, vo) = (virt(&rows_g)?, virt(&rows_o)?);
+    let edge0 = Edge { dir: 0, at_end: false };
+    Ok((match_srf(g, e, &vg, edge0, c, tol)?, match_srf(other, oe, &vo, edge0, c, tol)?))
+}
+
 /// Poles of a non-rational curve with knots `k` (degree `q`) through `pts` at `params`.
 fn collocate(pts: &[Vec3], params: &[f64], q: usize, k: &[f64]) -> Option<Vec<Vec3>> {
     let n = pts.len();
@@ -286,6 +345,28 @@ mod tests {
             // The far edge is kept.
             let far = s.at_st(1.0, 0.5);
             assert!((far[0] - 8.0).abs() < 1e-9 && (far[2] - 0.2).abs() < 1e-9, "{far:?}");
+        }
+    }
+
+    /// Average=Yes: two flat strips with a 2 mm step between their edges, tilted ±10° —
+    /// both move to meet on the middle line (z = 1), crossing level (tangent to the average).
+    #[test]
+    fn average_meets_half_way() {
+        let t = 10f64.to_radians();
+        let a = bicubic(|u, v| [4.0 * u, 5.0 * v, 4.0 * u * t.tan() - 4.0 * t.tan()]);
+        let b = bicubic(|u, v| [6.0 + 4.0 * u, 5.0 * v, 2.0 - 4.0 * u * t.tan()]);
+        let (ga, gb) = match_average(&a, Edge { dir: 0, at_end: true }, &b, Edge { dir: 0, at_end: false }, Continuity::Tangency, 1e-6).unwrap();
+        let (sa, sb) = (Srf::of(&ga).unwrap(), Srf::of(&gb).unwrap());
+        for j in 0..=10 {
+            let v = j as f64 / 10.0;
+            let (p, q) = (sa.at_st(1.0, v), sb.at_st(0.0, v));
+            assert!(dist(p, q) < 1e-6, "{p:?} {q:?}");
+            assert!((p[0] - 5.0).abs() < 1e-6 && (p[2] - 1.0).abs() < 1e-6, "{p:?}");
+            // Level across at the edge on both (the average of +10° and −10°... seen as one
+            // through-going direction: from a's side up 10°, from b's side down 10° → level).
+            let (pa, pb) = (sa.at_st(1.0 - 1e-5, v), sb.at_st(1e-5, v));
+            assert!(((p[2] - pa[2]) / (p[0] - pa[0])).abs() < 1e-3, "a slope");
+            assert!(((pb[2] - q[2]) / (pb[0] - q[0])).abs() < 1e-3, "b slope");
         }
     }
 }

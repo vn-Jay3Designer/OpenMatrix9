@@ -21,6 +21,6 @@ Mặt chuyển tiếp giữa hai cạnh mặt như Rhino 5 BlendSrf: Position / 
 
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
-| `Continuity1=` | Liên tục đầu 1 (Blend) | curvature | position, tangency, curvature |
-| `Continuity2=` | Liên tục đầu 2 (Blend) | curvature | position, tangency, curvature |
+| `Continuity1=` | Liên tục đầu 1 (Blend) | curvature | position, tangency, curvature, g3, g4 |
+| `Continuity2=` | Liên tục đầu 2 (Blend) | curvature | position, tangency, curvature, g3, g4 |
 | `Bulge=` | Độ phình | 1 | 0.05 … 5 |

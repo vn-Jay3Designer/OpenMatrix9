@@ -496,6 +496,14 @@ max = 1.0
 commands = ["SurfaceCurveNetwork"]
 
 [[settings]]
+key = "nw_no_auto_sort"
+type = "bool"
+option = "NoAutoSort"
+label = "Chọn đường theo thứ tự (NetworkSrf NoAutoSort)"
+default = false
+commands = ["SurfaceCurveNetwork"]
+
+[[settings]]
 key = "nw_cross_tolerance"
 type = "length"
 option = "CrossingGap"
@@ -652,8 +660,8 @@ key = "bl_continuity1"
 type = "enum"
 option = "Continuity1"
 label = "Liên tục đầu 1 (Blend)"
-choices = ["position", "tangency", "curvature"]
-choice_labels = ["Position", "Tangency", "Curvature"]
+choices = ["position", "tangency", "curvature", "g3", "g4"]
+choice_labels = ["Position", "Tangency", "Curvature", "G3", "G4"]
 default = "curvature"
 commands = ["SurfaceBlendSurface"]
 
@@ -662,8 +670,8 @@ key = "bl_continuity2"
 type = "enum"
 option = "Continuity2"
 label = "Liên tục đầu 2 (Blend)"
-choices = ["position", "tangency", "curvature"]
-choice_labels = ["Position", "Tangency", "Curvature"]
+choices = ["position", "tangency", "curvature", "g3", "g4"]
+choice_labels = ["Position", "Tangency", "Curvature", "G3", "G4"]
 default = "curvature"
 commands = ["SurfaceBlendSurface"]
 
@@ -692,6 +700,14 @@ choices = ["RollingBall", "DistFromEdge", "DistBetweenRails"]
 choice_labels = ["RollingBall", "DistFromEdge", "DistBetweenRails"]
 default = "RollingBall"
 commands = ["SurfaceVariableFilletBlendChamferVariableFilletSurfaces"]
+
+[[settings]]
+key = "sm_average"
+type = "bool"
+option = "Average"
+label = "Hai mặt cùng đổi, gặp ở giữa (MatchSrf)"
+default = false
+commands = ["SurfaceSurfaceEditToolsMatch"]
 
 [[settings]]
 key = "fs_trim"
