@@ -144,6 +144,37 @@ fn reparam(c: &Nc, anchors: &[(f64, f64)], grid: &[f64]) -> Option<(Nc, f64)> {
     Some((r, worst))
 }
 
+/// [`reparam`] for a closed curve: shared parameter 0 at its crossing with the first curve
+/// of the other direction, once round to 1; the result is a smooth periodic curve.
+fn reparam_closed(c: &Nc, anchors: &[(f64, f64)], grid: &[f64]) -> Option<(Nc, f64)> {
+    let arc = Arc::of(c);
+    let s0 = arc.s_of(anchors.first()?.1);
+    let mut xs = vec![0.0];
+    let mut ys = vec![0.0];
+    for (t, u) in anchors.iter().skip(1) {
+        xs.push(*t);
+        ys.push((arc.s_of(*u) - s0).rem_euclid(1.0));
+    }
+    xs.push(1.0);
+    ys.push(1.0);
+    let map = |t: f64| arc.u_of((s0 + lookup(&xs, &ys, t)).rem_euclid(1.0));
+    // One period of points (the end is the start again), interpolated periodically.
+    let n = grid.len() - 1;
+    let pcs: Vec<Nc> = grid[..n].iter().map(|t| exact::point_curve(c.eval(map(*t)))).collect();
+    let (rows, knots) = exact::interpolate_across(&pcs, grid, 3, true)?;
+    let degree = knots.iter().take_while(|k| **k == knots[0]).count() - 1;
+    let r = Nc { degree, points: rows.iter().map(|x| x[0]).collect(), knots };
+    let worst = grid
+        .windows(2)
+        .flat_map(|w| [0.25, 0.5, 0.75].map(|f| w[0] + (w[1] - w[0]) * f))
+        .map(|t| {
+            let p = r.eval(t);
+            dist(p, c.eval(local(c, p, map(t))))
+        })
+        .fold(0.0, f64::max);
+    Some((r, worst))
+}
+
 /// The shared grid: the anchors, each gap split into `per` parts.
 fn grid(anchors: &[f64], per: usize) -> Vec<f64> {
     let mut a: Vec<f64> = vec![0.0];
@@ -233,9 +264,6 @@ pub fn network(curves: &[Nc], tol: f64, cross_tol: f64) -> Result<Network, Strin
     if curves.len() < 3 {
         return Err("select at least three curves".into());
     }
-    if curves.iter().any(|c| c.closed(1e-6)) {
-        return Err("closed curves in a network are not supported yet".into());
-    }
     // Families: the curves crossing the first one, and the rest.
     let (mut fa, mut fb): (Vec<Nc>, Vec<Nc>) = (vec![curves[0].clone()], Vec::new());
     for c in &curves[1..] {
@@ -257,15 +285,26 @@ pub fn network(curves: &[Nc], tol: f64, cross_tol: f64) -> Result<Network, Strin
 /// Rhino 5 NetworkSrf NoAutoSort: the curves of the first direction and of the second, each
 /// in the order picked (the surface runs through them in that order).
 pub fn network_in_order(first: &[Nc], second: &[Nc], tol: f64, cross_tol: f64) -> Result<Network, String> {
-    if first.iter().chain(second).any(|c| c.closed(1e-6)) {
-        return Err("closed curves in a network are not supported yet".into());
-    }
     families(first.to_vec(), second.to_vec(), true, tol, cross_tol)
 }
 
 fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_tol: f64) -> Result<Network, String> {
     if fa.len() < 2 || fb.len() < 2 {
         return Err("the network needs two or more curves in each direction".into());
+    }
+    // Closed curves (a ring's rails round the finger): all of one direction, the other open.
+    // The surface then closes round that way (periodic, smooth across the seam).
+    let all_closed = |f: &[Nc]| f.iter().all(|c| c.closed(1e-6));
+    let any_closed = |f: &[Nc]| f.iter().any(|c| c.closed(1e-6));
+    if (any_closed(&fa) && !all_closed(&fa)) || (any_closed(&fb) && !all_closed(&fb)) || (all_closed(&fa) && all_closed(&fb)) {
+        return Err("closed curves must make up one whole direction, the other open".into());
+    }
+    if all_closed(&fa) {
+        std::mem::swap(&mut fa, &mut fb);
+    }
+    let wrap = all_closed(&fb);
+    if wrap && fa.len() < 3 {
+        return Err("a closed network needs three or more curves across the closed ones".into());
     }
     // Order family B along the first A curve, family A along the first B curve.
     let order = |fam: &mut Vec<Nc>, along: &Nc| {
@@ -287,7 +326,15 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
         }
     }
     for c in fb.iter_mut() {
-        if m >= 2 && crossing(c, &fa[0]).0 > crossing(c, &fa[m - 1]).0 {
+        if wrap {
+            // Closed: going on from the first A crossing, the second comes before the last.
+            let arc = Arc::of(c);
+            let at = |i: usize| arc.s_of(crossing(c, &fa[i]).0);
+            let (s0, s1, sl) = (at(0), at(1), at(m - 1));
+            if (s1 - s0).rem_euclid(1.0) > (sl - s0).rem_euclid(1.0) {
+                *c = c.reversed();
+            }
+        } else if m >= 2 && crossing(c, &fa[0]).0 > crossing(c, &fa[m - 1]).0 {
             *c = c.reversed();
         }
     }
@@ -316,7 +363,20 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
     let arcs_a: Vec<Arc> = fa.iter().map(Arc::of).collect();
     let arcs_b: Vec<Arc> = fb.iter().map(Arc::of).collect();
     let mut s_at: Vec<f64> = (0..n).map(|j| (0..m).map(|i| arcs_a[i].s_of(xa[i][j])).sum::<f64>() / m as f64).collect();
-    let mut t_at: Vec<f64> = (0..m).map(|i| (0..n).map(|j| arcs_b[j].s_of(xb[i][j])).sum::<f64>() / n as f64).collect();
+    let mut t_at: Vec<f64> = if wrap {
+        // Round each closed curve from its crossing with the first A curve.
+        (0..m)
+            .map(|i| (0..n).map(|j| (arcs_b[j].s_of(xb[i][j]) - arcs_b[j].s_of(xb[0][j])).rem_euclid(1.0)).sum::<f64>() / n as f64)
+            .collect()
+    } else {
+        (0..m).map(|i| (0..n).map(|j| arcs_b[j].s_of(xb[i][j])).sum::<f64>() / n as f64).collect()
+    };
+    if wrap {
+        t_at[0] = 0.0;
+        if t_at.windows(2).any(|w| w[1] <= w[0]) {
+            return Err("the curves across the closed ones are not in one order round them".into());
+        }
+    }
     // A curve at an end of the other family is the surface edge: pin it there.
     let pin = |v: &mut Vec<f64>| {
         let k = v.len();
@@ -330,7 +390,9 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
         }
     };
     pin(&mut s_at);
-    pin(&mut t_at);
+    if !wrap {
+        pin(&mut t_at);
+    }
     // Re-parameterise each family on one grid, finer until within tol.
     let mut per = 8;
     let (ra, rb) = loop {
@@ -339,7 +401,10 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
             .map(|i| reparam(&fa[i], &(0..n).map(|j| (s_at[j], xa[i][j])).collect::<Vec<_>>(), &gs))
             .collect();
         let rb: Option<Vec<(Nc, f64)>> = (0..n)
-            .map(|j| reparam(&fb[j], &(0..m).map(|i| (t_at[i], xb[i][j])).collect::<Vec<_>>(), &gt))
+            .map(|j| {
+                let anchors: Vec<(f64, f64)> = (0..m).map(|i| (t_at[i], xb[i][j])).collect();
+                if wrap { reparam_closed(&fb[j], &anchors, &gt) } else { reparam(&fb[j], &anchors, &gt) }
+            })
             .collect();
         let (ra, rb) = (ra.ok_or("could not fit the curves")?, rb.ok_or("could not fit the curves")?);
         let worst = ra.iter().chain(&rb).map(|x| x.1).fold(0.0, f64::max);
@@ -350,10 +415,11 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
         per *= 2;
     };
     // The three surfaces (rows along t = across family A, columns along s).
-    let qa = 3.min(m - 1).max(1);
     let qb = 3.min(n - 1).max(1);
+    let t_params: Vec<f64> = if wrap { t_at.iter().copied().chain(std::iter::once(1.0)).collect() } else { t_at.clone() };
     let lu = {
-        let (rows, knots) = exact::interpolate_across(&ra, &t_at, 3, false).ok_or("could not loft the curves")?;
+        let (rows, knots) = exact::interpolate_across(&ra, &t_params, 3, wrap).ok_or("could not loft the curves")?;
+        let qa = knots.iter().take_while(|k| **k == knots[0]).count() - 1;
         Srf { rows, degree: [qa, ra[0].degree], knots: [knots, ra[0].knots.clone()] }
     };
     let lv = {
@@ -366,7 +432,8 @@ fn families(mut fa: Vec<Nc>, mut fb: Vec<Nc>, keep_order: bool, tol: f64, cross_
             .map(|i| through(&xp[i], &s_at))
             .collect::<Option<Vec<_>>>()
             .ok_or("could not fit the crossings")?;
-        let (rows, knots) = exact::interpolate_across(&cols, &t_at, 3, false).ok_or("could not fit the crossings")?;
+        let (rows, knots) = exact::interpolate_across(&cols, &t_params, 3, wrap).ok_or("could not fit the crossings")?;
+        let qa = knots.iter().take_while(|k| **k == knots[0]).count() - 1;
         Srf { rows, degree: [qa, cols[0].degree], knots: [knots, cols[0].knots.clone()] }
     };
     let mut all = [lu, lv, tp];
@@ -446,6 +513,43 @@ mod tests {
                 }
                 assert!(d < 5.0 * tol, "{d}");
             }
+        }
+    }
+
+    /// A closed network (Rhino 5 NetworkSrf with closed rails, as for a ring band): two
+    /// circles (r 9 at z −1, r 10 at z 1) and four slanted lines between them make the cone
+    /// band r = 9.5 + 0.5 z, closed round smoothly.
+    #[test]
+    fn a_closed_network_closes_smoothly() {
+        use std::f64::consts::{FRAC_PI_2, TAU};
+        let circle = |r: f64, z: f64, start: f64| exact::arc([0.0, 0.0, z], [start.cos(), start.sin(), 0.0], [-start.sin(), start.cos(), 0.0], r, TAU);
+        let line = |a: f64| Nc::from_geo(&om9_addon_abi::session::Geo::Line { start: [9.0 * a.cos(), 9.0 * a.sin(), -1.0], end: [10.0 * a.cos(), 10.0 * a.sin(), 1.0] }).unwrap();
+        // Circles seamed in different places; lines in a mixed order.
+        let curves = vec![line(0.0), circle(9.0, -1.0, 0.3), line(2.0 * FRAC_PI_2), line(FRAC_PI_2), circle(10.0, 1.0, 2.0), line(3.0 * FRAC_PI_2)];
+        let n = network(&curves, 1e-5, 0.01).unwrap();
+        let g = exact::surface(&n.rows, n.degree, n.knots.clone());
+        let s = crate::nurbs::Srf::of(&g).unwrap();
+        for i in 0..=40 {
+            for j in 0..=10 {
+                let p = s.at_st(i as f64 / 40.0, j as f64 / 10.0);
+                let want = 9.5 + 0.5 * p[2];
+                assert!((p[0].hypot(p[1]) - want).abs() < 1e-4, "{p:?}");
+            }
+        }
+        // Closed round and smooth across the seam: find which direction closes.
+        let closes = |dir: usize| (0..=8).all(|k| {
+            let t = k as f64 / 8.0;
+            let (a, b) = if dir == 0 { (s.at_st(0.0, t), s.at_st(1.0, t)) } else { (s.at_st(t, 0.0), s.at_st(t, 1.0)) };
+            dist(a, b) < 1e-9
+        });
+        let dir = if closes(0) { 0 } else { assert!(closes(1), "closed round"); 1 };
+        let h = 1e-6;
+        for k in 0..=8 {
+            let t = k as f64 / 8.0;
+            let at = |x: f64| if dir == 0 { s.at_st(x, t) } else { s.at_st(t, x) };
+            let d0 = om9_addon_abi::session::scale(om9_addon_abi::session::sub(at(h), at(0.0)), 1.0 / h);
+            let d1 = om9_addon_abi::session::scale(om9_addon_abi::session::sub(at(1.0), at(1.0 - h)), 1.0 / h);
+            assert!(dist(d0, d1) < 1e-3 * (1.0 + dist(d0, [0.0; 3])), "tangent across the seam {d0:?} {d1:?}");
         }
     }
 }

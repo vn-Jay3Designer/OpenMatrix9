@@ -1409,9 +1409,10 @@ fn network(e: &Event) -> Reply {
             if cs.len() < 3 {
                 return Err("select at least three curves".into());
             }
-            // Open curves: an exact-curve Gordon surface through every curve (Rhino 5
-            // NetworkSrf); the edge / interior tolerance is how closely it follows them.
-            if cs.iter().all(|c| !c.closed) {
+            // An exact-curve Gordon surface through every curve (Rhino 5 NetworkSrf; closed
+            // curves make one direction close round); the edge / interior tolerance is how
+            // closely it follows them.
+            {
                 let ncs: Vec<Nc> = cs.iter().filter_map(|c| nc_of(c)).collect();
                 if ncs.len() == cs.len() {
                     let tol = e.number("nw_edge_tolerance", 0.001).min(e.number("nw_interior_tolerance", 0.001)).max(1e-6);
