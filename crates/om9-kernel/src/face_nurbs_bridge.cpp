@@ -2,6 +2,11 @@
 // Exact NURBS of BRep faces, for add-ons: each face's underlying surface and its trim loops
 // (3D edge curves, outer loop first, edges in wire order and direction). Read-only: the shape
 // is parsed from its canonical source and nothing is built. Written as text through a byte sink.
+#include <Geom2d_Curve.hxx>
+#include <TopoDS_Vertex.hxx>
+#include <gp_Pnt2d.hxx>
+#include <algorithm>
+#include <cmath>
 #include <BRepCheck_Analyzer.hxx>
 #include <BRepTools.hxx>
 #include <BRepTools_WireExplorer.hxx>
@@ -82,10 +87,44 @@ std::vector<Handle(Geom_BSplineCurve)> wire_curves(const TopoDS_Wire& wire, cons
     if (curve.IsNull()) continue;
     Handle(Geom_BSplineCurve) bs = GeomConvert::CurveToBSplineCurve(new Geom_TrimmedCurve(curve, first, last));
     if (bs.IsNull()) throw std::runtime_error("edge curve not convertible to NURBS");
-    if (it.Orientation() == TopAbs_REVERSED) bs->Reverse();
+    // The edge's own orientation in the wire: WireExplorer::Orientation() reports FORWARD for
+    // a hole made of one closed edge that the wire uses reversed.
+    if (edge.Orientation() == TopAbs_REVERSED) bs->Reverse();
+    // End exactly on the edge's vertices (in loop order), so a loop closes and neighbouring
+    // faces meet without the conversion's last digits (a boolean leaves gaps of 1e-7).
+    TopoDS_Vertex first_vertex, last_vertex;
+    TopExp::Vertices(edge, first_vertex, last_vertex, Standard_True);
+    if (!first_vertex.IsNull()) bs->SetPole(1, BRep_Tool::Pnt(first_vertex));
+    if (!last_vertex.IsNull()) bs->SetPole(bs->NbPoles(), BRep_Tool::Pnt(last_vertex));
     out.push_back(bs);
   }
   return out;
+}
+
+// A face bounded only by its surface's own edges — one wire whose edges all run along the
+// parameter box's sides (a box side, a cylinder's side with its seam, a sphere with its poles)
+// — is the whole surface: it gets no loops.
+bool natural_face(const TopoDS_Face& forward, const Handle(Geom_BSplineSurface)& surface) {
+  int wires = 0;
+  for (TopExp_Explorer it(forward, TopAbs_WIRE); it.More(); it.Next()) ++wires;
+  if (wires != 1) return false;
+  Standard_Real u0, u1, v0, v1;
+  surface->Bounds(u0, u1, v0, v1);
+  const double tu = 1e-9 * std::max(1.0, u1 - u0), tv = 1e-9 * std::max(1.0, v1 - v0);
+  const auto side = [](double x, double a, double b, double t) {
+    return std::abs(x - a) < t || std::abs(x - b) < t;
+  };
+  for (TopExp_Explorer it(forward, TopAbs_EDGE); it.More(); it.Next()) {
+    const TopoDS_Edge& edge = TopoDS::Edge(it.Current());
+    Standard_Real f = 0, l = 0;
+    const Handle(Geom2d_Curve) pcurve = BRep_Tool::CurveOnSurface(edge, forward, f, l);
+    if (pcurve.IsNull()) return false;
+    const gp_Pnt2d a = pcurve->Value(f), m = pcurve->Value(0.5 * (f + l)), b = pcurve->Value(l);
+    const bool along_u_side = side(a.X(), u0, u1, tu) && std::abs(m.X() - a.X()) < tu && std::abs(b.X() - a.X()) < tu;
+    const bool along_v_side = side(a.Y(), v0, v1, tv) && std::abs(m.Y() - a.Y()) < tv && std::abs(b.Y() - a.Y()) < tv;
+    if (!along_u_side && !along_v_side) return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -149,18 +188,26 @@ extern "C" int om9_occt_face_nurbs(const char* source, size_t length, size_t max
           out << p.X() << ' ' << p.Y() << ' ' << p.Z() << ' ' << bs->Weight(i, j) << ' ';
         }
       out << '\n';
-      // Loops: the outer wire first, then the holes.
+      // Loops: the outer wire first, then the holes. They run as on the forward face, i.e.
+      // with the surface's own normal (outer counter-clockwise, holes clockwise in its
+      // parameters), as Rhino keeps trim loops; `reversed` says the face's normal is flipped.
+      const TopoDS_Face forward = TopoDS::Face(face.Oriented(TopAbs_FORWARD));
+      if (natural_face(forward, bs)) {
+        out << "W 0\n";
+        if (static_cast<size_t>(out.tellp()) > max_bytes) throw std::length_error("face NURBS exceed the budget");
+        continue;
+      }
       std::vector<TopoDS_Wire> wires;
-      const TopoDS_Wire outer = BRepTools::OuterWire(face);
+      const TopoDS_Wire outer = BRepTools::OuterWire(forward);
       if (!outer.IsNull()) wires.push_back(outer);
-      for (TopExp_Explorer it(face, TopAbs_WIRE); it.More(); it.Next()) {
+      for (TopExp_Explorer it(forward, TopAbs_WIRE); it.More(); it.Next()) {
         const TopoDS_Wire wire = TopoDS::Wire(it.Current());
         if (!outer.IsNull() && wire.IsSame(outer)) continue;
         wires.push_back(wire);
       }
       out << "W " << wires.size() << '\n';
       for (const TopoDS_Wire& wire : wires) {
-        const auto curves = wire_curves(wire, face);
+        const auto curves = wire_curves(wire, forward);
         out << "L " << curves.size() << '\n';
         for (const auto& c : curves) write_curve(out, c);
       }

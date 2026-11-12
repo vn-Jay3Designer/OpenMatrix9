@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: LGPL-2.1-or-later
 //! Exact NURBS of BRep faces, read-only: each face's underlying surface (a bounded one whole,
 //! an unbounded one cut to the face's parameter box) and its trim loops as 3D NURBS curves
-//! (outer loop first, then holes; edges in order and direction round the loop). Used to give
+//! (outer loop first, then holes; edges in order and direction round the loop; none for a face
+//! that is its whole surface). Used to give
 //! add-ons the exact trimmed surfaces they work on (ReTrim, Untrim, edges as input …).
 use crate::KernelError;
 use crate::brep::{BytesContext, byte_bound, native_message, receive_bytes};
@@ -39,7 +40,9 @@ pub struct FaceNurbs {
     pub weights: Vec<f64>,
     /// The face's normal is the surface's reversed.
     pub reversed: bool,
-    /// Outer loop first, then the holes.
+    /// Outer loop first, then the holes; they run round the surface's own normal (outer
+    /// counter-clockwise, holes clockwise in its parameters), whatever `reversed` says. Empty:
+    /// the face is its whole surface (bounded by the surface's own sides, seam and poles).
     pub loops: Vec<Vec<NurbsCurveData>>,
 }
 
