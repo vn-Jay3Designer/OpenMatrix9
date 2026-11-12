@@ -133,3 +133,55 @@ fn solids_read_face_by_face_sew_back_to_their_volume() {
     let cyl = creation::primitive(Primitive::Cylinder { radius_mm: 3.0, height_mm: 5.0 }, 0.05, &l).unwrap();
     check(&cyl, std::f64::consts::PI * 9.0 * 5.0);
 }
+
+/// The rational circle of radius `r` round (0, 0, z): nine poles, degree 2.
+fn circle(r: f64, z: f64) -> NurbsCurve {
+    let h = std::f64::consts::FRAC_1_SQRT_2;
+    let p = [[1.0, 0.0], [1.0, 1.0], [0.0, 1.0], [-1.0, 1.0], [-1.0, 0.0], [-1.0, -1.0], [0.0, -1.0], [1.0, -1.0], [1.0, 0.0]];
+    NurbsCurve {
+        degree: 2,
+        poles: p.iter().map(|q| [q[0] * r, q[1] * r, z]).collect(),
+        weights: (0..9).map(|i| if i % 2 == 1 { h } else { 1.0 }).collect(),
+        knots: vec![0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0],
+        domain: [0.0, 1.0],
+        periodic: false,
+        reversed: false,
+        seam: None,
+    }
+}
+
+/// What an add-on's ExtrudeCrv Solid=Yes sends: the circle swept up (degree 1 across, its
+/// seam two coincident edges) and two planar caps bounded by the circle. They sew into the
+/// cylinder r 2, h 3.
+#[test]
+fn an_extruded_circle_with_its_caps_closes_into_the_cylinder() {
+    let (bottom, top) = (circle(2.0, 0.0), circle(2.0, 3.0));
+    let mut poles = Vec::new();
+    let mut weights = Vec::new();
+    for (a, b) in bottom.poles.iter().zip(&top.poles) {
+        poles.extend([*a, *b]);
+    }
+    for w in &bottom.weights {
+        weights.extend([*w, *w]);
+    }
+    let side = NurbsSurface {
+        degree: [2, 1],
+        size: [9, 2],
+        poles,
+        weights,
+        knots: [bottom.knots.clone(), vec![0.0, 0.0, 1.0, 1.0]],
+        domain: [[0.0, 1.0], [0.0, 1.0]],
+        periodic: [false, false],
+        reversed: false,
+    };
+    let cap = |c: NurbsCurve, z: f64| {
+        let s = surface_kernel::plane([-3.0, -3.0, z], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 6.0, 6.0, &limits()).unwrap();
+        (s, vec![vec![c]])
+    };
+    let faces = vec![(side, Vec::new()), cap(bottom, 0.0), cap(top, 3.0)];
+    let body = sew_faces(&faces, true, 0.01, 0.05, &limits()).unwrap();
+    let m = measure(&body, &limits()).unwrap();
+    assert_eq!(m.solids, 1, "{m:?}");
+    let want = std::f64::consts::PI * 4.0 * 3.0;
+    assert!((m.volume_mm3 - want).abs() < want * 1e-6, "{} vs {want}", m.volume_mm3);
+}
