@@ -1069,7 +1069,12 @@ fn loft(e: &Event) -> Reply {
                 return Err("select two or more sections".into());
             }
             if let Some(g) = loft_exact(e, &picked, &kind, closed_loft) {
-                return Ok((vec![g?], format!("{} sections ({kind})", cs.len())));
+                // SplitAtTangents: a surface per smooth stretch of kinked sections.
+                let g = g?;
+                let parts = if e.flag("loft_split_at_tangents", false) { om9_addon_geom::surfedit::split_at_kinks(&g, 1) } else { vec![g] };
+                let k = parts.len();
+                let pieces = if k > 1 { format!(", {k} surfaces") } else { String::new() };
+                return Ok((parts, format!("{} sections ({kind}){pieces}", cs.len())));
             }
             let closed = cs.iter().all(|c| c.closed);
             let n = 32;
@@ -1831,6 +1836,7 @@ fn revolve(e: &Event) -> Reply {
         .toggle("FullCircle", false)
         .toggle("Deformable", false)
         .num("PointCount", 8.0)
+        .toggle("SplitAtTangents", e.flag("rev_split_at_tangents", false))
         .toggle("DeleteInput", false);
     let profiles: Vec<(String, (usize, Vec<Vec3>, Vec<f64>, Vec<f64>))> = curves(e)
         .iter()
@@ -1872,6 +1878,10 @@ fn revolve(e: &Event) -> Reply {
             .iter()
             .map(|(_, p)| revolve_surface(p.clone(), a, sub(b, a), start, angle.to_radians()))
             .collect();
+        // SplitAtTangents: a surface per smooth stretch of a kinked profile (v runs along it).
+        if c.yes(&flow, "SplitAtTangents") && !c.yes(&flow, "Deformable") {
+            out = out.iter().flat_map(|g| om9_addon_geom::surfedit::split_at_kinks(g, 1)).collect();
+        }
         if c.yes(&flow, "Deformable") {
             let count = (c.num(&flow, "PointCount").round() as usize).max(4);
             out = out

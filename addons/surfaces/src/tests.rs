@@ -1873,3 +1873,25 @@ fn surface_edges_as_curves() {
         assert!((mid[0] - 5.0).abs() < 1e-6 && (mid[2] - 1.0).abs() < 1e-6, "{cmd}: {mid:?}");
     }
 }
+
+/// Rhino 5 SplitAtTangents (Loft, Revolve): an L-shaped profile (a kink) makes one surface
+/// per leg; without it, one surface.
+#[test]
+fn split_at_tangents_cuts_at_kinks() {
+    let l = |id: &str, z: f64| exact_sel(id, Geo::Polyline { points: vec![[5.0, 0.0, z], [7.0, 0.0, z], [7.0, 0.0, z + 2.0]], closed: false }, false);
+    // Revolve the L round z: a flat ring (z 0) and a cylinder (r 7).
+    for (split, want) in [(false, 1), (true, 2)] {
+        let r = run(REVOLVE, vec![l("p", 0.0)], json!({"rev_split_at_tangents": split}), vec![pt([0.0; 3]), pt([0.0, 0.0, 1.0]), Input::Enter]);
+        assert!(r.done, "{:?}", r.error);
+        assert_eq!(r.create.len(), want, "revolve split {split}");
+        if split {
+            let flat = r.create.iter().any(|g| { let s = Srf::of(g).unwrap(); (0..=4).all(|i| s.at_st(i as f64 / 4.0, 0.5)[2].abs() < 1e-9) });
+            let cyl = r.create.iter().any(|g| { let s = Srf::of(g).unwrap(); (0..=4).all(|i| { let p = s.at_st(i as f64 / 4.0, 0.5); (p[0].hypot(p[1]) - 7.0).abs() < 1e-9 }) });
+            assert!(flat && cyl);
+        }
+    }
+    // Loft two L sections (z 0 and z 5, same shape): two flat pieces.
+    let r = run(LOFT, vec![l("a", 0.0), l("b", 5.0)], json!({"loft_split_at_tangents": true}), vec![Input::Enter]);
+    assert!(r.done, "{:?}", r.error);
+    assert_eq!(r.create.len(), 2, "{:?}", r.messages);
+}

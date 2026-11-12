@@ -21,6 +21,7 @@ Mặt qua các đường tiết diện theo thứ tự.
 | Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
 |---|---|---|---|
 | `Style=` | Kiểu loft | normal | normal, loose, tight, straight, uniform |
+| `SplitAtTangents=` | Tách mặt tại chỗ gãy (Loft) | No |  |
 | `Closed=` | Khép kín | No |  |
 | `Seams=` | Đường nối | automatic | automatic, natural |
 | `Simplify=` | Đơn giản hóa | none | none, rebuild, refit |

@@ -1550,6 +1550,22 @@ default = "normal"
 commands = ["SurfaceLoft"]
 
 [[settings]]
+key = "loft_split_at_tangents"
+type = "bool"
+option = "SplitAtTangents"
+label = "Tách mặt tại chỗ gãy (Loft)"
+default = false
+commands = ["SurfaceLoft"]
+
+[[settings]]
+key = "rev_split_at_tangents"
+type = "bool"
+option = "SplitAtTangents"
+label = "Tách mặt tại chỗ gãy (Revolve)"
+default = false
+commands = ["SurfaceRevolve"]
+
+[[settings]]
 key = "loft_closed"
 type = "bool"
 option = "Closed"

@@ -670,6 +670,7 @@ Rectangular = "Vuông góc"
 UseASpacing = "Dùng khoảng A"
 DirectionConstraint = "Ràng buộc hướng"
 DeleteBoundary = "Xoá vật biên"
+SplitAtTangents = "Tách tại chỗ gãy"
 
 [values]
 Automatic = "Tự động"

@@ -399,3 +399,92 @@ pub fn edge_curve(g: &Geo, dir: usize, at_end: bool) -> Option<crate::exact::Nc>
         crate::exact::Nc { degree: degree[0], points: (0..nu).map(|i| h(i * nv + j)).collect(), knots: n01(&knots[0]) }
     })
 }
+
+/// Rhino's SplitAtTangents: `g` cut along direction `dir` (0: at u values, 1: at v values)
+/// wherever it has a crease — a knot of full multiplicity where the surface turns sharply
+/// across it (the kinks of a polycurve section or profile). Exact pieces, in order.
+pub fn split_at_kinks(g: &Geo, dir: usize) -> Vec<Geo> {
+    let Some(s) = crate::nurbs::Srf::of(g) else { return vec![g.clone()] };
+    let Geo::Surface { degree, knots, .. } = g else { return vec![g.clone()] };
+    let k = &knots[dir];
+    let (a, b) = (k[0], *k.last().unwrap());
+    let p = degree[dir];
+    // Interior knots of multiplicity ≥ degree, normalised.
+    let mut cands: Vec<f64> = Vec::new();
+    let mut i = p + 1;
+    while i < k.len() - p - 1 {
+        let v = k[i];
+        let mult = k.iter().filter(|x| (**x - v).abs() < 1e-12).count();
+        if mult >= p && v > a + 1e-12 && v < b - 1e-12 {
+            cands.push((v - a) / (b - a));
+        }
+        i += mult.max(1);
+    }
+    let at = |t: f64, c: f64| if dir == 0 { s.at_st(t, c) } else { s.at_st(c, t) };
+    let creased = |t: f64| {
+        let h = 1e-7;
+        (0..=6).any(|j| {
+            let c = j as f64 / 6.0;
+            let (p0, pl, pr) = (at(t, c), at(t - h, c), at(t + h, c));
+            let (dl, dr) = (om9_addon_abi::session::sub(p0, pl), om9_addon_abi::session::sub(pr, p0));
+            let (nl, nr) = (om9_addon_abi::session::norm(dl), om9_addon_abi::session::norm(dr));
+            nl > 1e-14 && nr > 1e-14 && om9_addon_abi::session::dot(dl, dr) / (nl * nr) < (1e-3f64).cos()
+        })
+    };
+    let kinks: Vec<f64> = cands.into_iter().filter(|t| creased(*t)).collect();
+    if kinks.is_empty() {
+        return vec![g.clone()];
+    }
+    // Cut from the last kink back, so the earlier parameters stay where they are.
+    let mut rest = g.clone();
+    let mut out = Vec::new();
+    let mut hi = 1.0;
+    for t in kinks.iter().rev() {
+        let local = t / hi;
+        match split_at(&rest, dir, local) {
+            Ok((first, second)) => {
+                out.push(second);
+                rest = first;
+                hi = *t;
+            }
+            Err(_) => continue,
+        }
+    }
+    out.push(rest);
+    out.reverse();
+    out
+}
+
+#[cfg(test)]
+mod kink_tests {
+    use super::*;
+
+    /// A loft-like surface over an L-shaped section (a kink at its middle): two pieces, each
+    /// flat.
+    #[test]
+    fn splits_at_the_crease_only() {
+        // Section: (0,0,0) → (2,0,0) → (2,2,0), degree 1; extruded 3 in z (degree 1).
+        let g = Geo::Surface {
+            degree: [1, 1],
+            size: [2, 3],
+            points: vec![[0.0, 0.0, 0.0], [2.0, 0.0, 0.0], [2.0, 2.0, 0.0], [0.0, 0.0, 3.0], [2.0, 0.0, 3.0], [2.0, 2.0, 3.0]],
+            weights: vec![1.0; 6],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 0.5, 1.0, 1.0]],
+        };
+        let parts = split_at_kinks(&g, 1);
+        assert_eq!(parts.len(), 2);
+        let a = crate::nurbs::Srf::of(&parts[0]).unwrap();
+        let b = crate::nurbs::Srf::of(&parts[1]).unwrap();
+        assert!((0..=4).all(|i| a.at_st(0.5, i as f64 / 4.0)[1].abs() < 1e-12), "first leg y = 0");
+        assert!((0..=4).all(|i| (b.at_st(0.5, i as f64 / 4.0)[0] - 2.0).abs() < 1e-12), "second leg x = 2");
+        // A smooth surface stays whole.
+        let flat = Geo::Surface {
+            degree: [1, 1],
+            size: [2, 3],
+            points: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [2.0, 0.0, 0.0], [0.0, 0.0, 3.0], [1.0, 0.0, 3.0], [2.0, 0.0, 3.0]],
+            weights: vec![1.0; 6],
+            knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 0.5, 1.0, 1.0]],
+        };
+        assert_eq!(split_at_kinks(&flat, 1).len(), 1);
+    }
+}
