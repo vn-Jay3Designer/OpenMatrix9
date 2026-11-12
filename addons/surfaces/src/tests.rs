@@ -1210,6 +1210,7 @@ fn fillet_srf_follows_rhino5_picks() {
             weights: vec![1.0; 4],
             knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
         }),
+        sub: Vec::new(),
     };
     let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
     let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
@@ -1271,6 +1272,7 @@ fn chamfer_srf_follows_rhino5() {
             weights: vec![1.0; 4],
             knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
         }),
+        sub: Vec::new(),
     };
     let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
     let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
@@ -1488,6 +1490,7 @@ fn variable_fillet_follows_rhino5_handles() {
             weights: vec![1.0; 4],
             knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
         }),
+        sub: Vec::new(),
     };
     let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
     let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
@@ -1561,6 +1564,7 @@ fn variable_blend_follows_rhino5() {
             weights: vec![1.0; 4],
             knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]],
         }),
+        sub: Vec::new(),
     };
     let floor = surface("floor", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [10.0, 0.0, 0.0], [10.0, 8.0, 0.0]]);
     let wall = surface("wall", vec![[0.0, 0.0, 0.0], [0.0, 8.0, 0.0], [0.0, 0.0, 6.0], [0.0, 8.0, 6.0]]);
@@ -2024,4 +2028,41 @@ fn extrude_crv_solid_caps_closed_planar_curves() {
     let r = run(EXTRUDE_ALL, vec![ring("outer", 2.0), ring("hole", 1.0)], json!({}), vec![text("3")]);
     assert_eq!(r.create.len(), 2);
     assert!(r.create.iter().all(|g| matches!(g, Geo::Surface { .. })));
+}
+
+/// Rhino subobject picks: edges of a polysurface picked with Ctrl+Shift+click (`sub`) stand
+/// for their exact curves. Loft between two picked circular edges is the cylinder between them.
+#[test]
+fn picked_edges_of_a_polysurface_are_curves() {
+    let circle = |z: f64| exact::arc([0.0, 0.0, z], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 2.0, TAU).to_geo();
+    let body = Selected {
+        id: "body".into(),
+        kind: "brep".into(),
+        name: "body".into(),
+        sub: vec![
+            om9_addon_abi::session::SubPick { face: None, edge: Some(3), exact: Some(circle(0.0)) },
+            om9_addon_abi::session::SubPick { face: None, edge: Some(7), exact: Some(circle(5.0)) },
+        ],
+        ..Default::default()
+    };
+    let mut e = event(LOFT, Input::Start, vec![body], json!({}));
+    let mut r = Surfaces::step(&e).unwrap();
+    for _ in 0..3 {
+        if r.done {
+            break;
+        }
+        e.state = r.state.clone();
+        e.input = Input::Enter;
+        r = Surfaces::step(&e).unwrap();
+    }
+    assert!(r.done, "{:?} {}", r.error, r.prompt);
+    assert!(r.delete.is_empty() && r.replace.is_empty(), "the body stays");
+    assert_eq!(r.create.len(), 1);
+    let s = Srf::of(&r.create[0]).unwrap();
+    for i in 0..=12 {
+        for j in 0..=4 {
+            let p = s.at_st(i as f64 / 12.0, j as f64 / 4.0);
+            assert!((p[0].hypot(p[1]) - 2.0).abs() < 1e-9 && p[2] > -1e-9 && p[2] < 5.0 + 1e-9, "{p:?}");
+        }
+    }
 }

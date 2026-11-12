@@ -165,7 +165,9 @@ impl Interactive for Surfaces {
 
 /// Surface edges as curves (Rhino: "Select curves or surface edges"): a click on an
 /// untrimmed surface near one of its edges stands for that edge — the exact isoparametric
-/// curve — in the commands that take curves (Sweep1, Sweep2, Loft, NetworkSrf, EdgeSrf).
+/// curve — in the commands that take curves (Sweep1, Sweep2, Loft, NetworkSrf, EdgeSrf); on a
+/// trimmed surface, the nearest trim edge; and edges of any B-Rep picked with Ctrl+Shift+click
+/// arrive exactly (`Selected.sub`).
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct EdgePicks {
     /// (surface id, the click) for each edge picked.
@@ -198,6 +200,13 @@ fn with_surface_edges(e: &Event, inner: fn(&Event) -> Reply) -> Reply {
     // The selection the command sees: picked surfaces become their edge curves.
     let mut sel: Vec<Selected> = Vec::new();
     for s in &e.selection {
+        // Edges picked with Ctrl+Shift+click (`brep_data`, any surface, polysurface or
+        // solid): the object stands for those edges' exact curves.
+        let picked: Vec<(usize, &Geo)> = s.sub.iter().filter_map(|p| Some((p.edge?, p.exact.as_ref()?))).collect();
+        if !picked.is_empty() {
+            sel.extend(picked.into_iter().map(|(k, g)| edge_selected(s, k, g.clone())));
+            continue;
+        }
         let edges: Vec<&Vec3> = st.picks.iter().filter(|(id, _)| id == &s.id).map(|(_, p)| p).collect();
         if !is_surface(s) || edges.is_empty() {
             sel.push(s.clone());

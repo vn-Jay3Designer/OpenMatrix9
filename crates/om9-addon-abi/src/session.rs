@@ -85,6 +85,26 @@ pub struct Selected {
     /// polysurface or solid as [`Geo::Brep`] (its faces, `solid` when it is closed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exact: Option<Geo>,
+    /// Faces and edges of this object picked with Ctrl+Shift+click (Rhino's subobject
+    /// selection), for commands with `brep_data = true`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sub: Vec<SubPick>,
+}
+
+/// One picked face or edge of a selected B-Rep.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+pub struct SubPick {
+    /// A face: its index among the object's faces (the order of [`Geo::Brep`] faces).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub face: Option<usize>,
+    /// An edge: its index among the object's edges.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edge: Option<usize>,
+    /// Exactly, in world mm: the face ([`Geo::Trimmed`], or [`Geo::Surface`] when it is its
+    /// whole surface) or the edge's curve. `None` when the build has no B-Rep kernel or the
+    /// edge is a pole.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exact: Option<Geo>,
 }
 
 /// Triangles of a selected object in world millimetres.
