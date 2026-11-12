@@ -10,5 +10,6 @@ Như MoveHole Rhino 5: dời lỗ (lấp chỗ cũ, khoét chỗ mới); Copy gi
 
 ## Cách dùng
 
-1. Chọn khối và đường cong của lỗ.
-2. Bấm điểm gốc và điểm đích.
+1. Chọn khối (hoặc khối và đường cong lỗ).
+2. Bấm lên mép lỗ có sẵn.
+3. Bấm điểm dời từ và điểm dời tới.

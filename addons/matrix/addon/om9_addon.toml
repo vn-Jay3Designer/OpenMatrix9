@@ -2180,7 +2180,7 @@ interactive = true
 mesh_data = true
 aliases = ["ArrayHole"]
 summary = "Như ArrayHole Rhino 5: mảng lỗ theo hướng A, B (Rectangular, UseASpacing)."
-steps = ["Chọn khối và đường cong lỗ.", "Gõ số lỗ hướng A, hướng B.", "Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B."]
+steps = ["Chọn khối (hoặc khối và đường cong lỗ).", "Bấm lên mép lỗ có sẵn (Select a hole).", "Gõ số lỗ hướng A, hướng B.", "Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B."]
 
 [[commands]]
 id = "SolidSolidEditToolsHolesArrayHolePolar"
@@ -2190,7 +2190,7 @@ interactive = true
 mesh_data = true
 aliases = ["ArrayHolePolar"]
 summary = "Khoan mảng lỗ tròn quanh tâm."
-steps = ["Chọn khối và đường cong lỗ.", "Bấm tâm, gõ số lỗ và góc."]
+steps = ["Chọn khối (hoặc khối và đường cong lỗ).", "Bấm lên mép lỗ có sẵn.", "Bấm tâm, gõ số lỗ và góc."]
 
 [[commands]]
 id = "SolidSolidEditToolsHolesMoveHole"
@@ -2200,7 +2200,7 @@ interactive = true
 mesh_data = true
 aliases = ["MoveHole"]
 summary = "Như MoveHole Rhino 5: dời lỗ (lấp chỗ cũ, khoét chỗ mới); Copy giữ lỗ cũ."
-steps = ["Chọn khối và đường cong của lỗ.", "Bấm điểm gốc và điểm đích."]
+steps = ["Chọn khối (hoặc khối và đường cong lỗ).", "Bấm lên mép lỗ có sẵn.", "Bấm điểm dời từ và điểm dời tới."]
 
 [[commands]]
 id = "SolidSolidEditToolsFacesMoveFace"
@@ -2209,7 +2209,7 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["MoveFace"]
-summary = "Như MoveFace Rhino 5: dời một mặt của khối (DirectionConstraint None/Normal)."
+summary = "Như MoveFace Rhino 5: dời một mặt của khối (DirectionConstraint None/Normal/ToBoundary, DeleteBoundary)."
 steps = ["Chọn khối.", "Bấm lên mặt cần dời.", "Bấm điểm dời từ, điểm dời tới."]
 
 [[commands]]

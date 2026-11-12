@@ -10,5 +10,6 @@ Khoan mảng lỗ tròn quanh tâm.
 
 ## Cách dùng
 
-1. Chọn khối và đường cong lỗ.
-2. Bấm tâm, gõ số lỗ và góc.
+1. Chọn khối (hoặc khối và đường cong lỗ).
+2. Bấm lên mép lỗ có sẵn.
+3. Bấm tâm, gõ số lỗ và góc.

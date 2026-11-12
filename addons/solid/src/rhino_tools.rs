@@ -227,6 +227,11 @@ fn ray_hit(o: Vec3, dir: Vec3, a: Vec3, b: Vec3, c: Vec3) -> Option<f64> {
     (t > 1e-9).then_some(t)
 }
 
+/// Nearest hit of a ray on a mesh (distance along `dir`).
+pub(crate) fn cast_mesh(m: &SelectedMesh, o: Vec3, dir: Vec3) -> Option<f64> {
+    cast(m, o, dir)
+}
+
 /// Nearest hit of a ray on a mesh.
 fn cast(m: &SelectedMesh, o: Vec3, dir: Vec3) -> Option<f64> {
     m.triangles
@@ -453,4 +458,145 @@ impl OrZero for Vec3 {
             unit(cross(n, a))
         }
     }
+}
+
+/// Rhino 5 hole tools, "Select a hole": the hole whose edge is nearest the click — a loop of
+/// the planar face clicked on (or next to) that is not the face's outer edge. The loop comes
+/// back as points round it (on the face).
+pub(crate) fn pick_hole(m: &SelectedMesh, click: Vec3) -> Option<Vec<Vec3>> {
+    let w = shapes::weld(&to_mesh(m), 1e-7);
+    let tri_n = |t: usize| {
+        let tr = w.triangles[t];
+        shapes::tri_normal(w.vertices[tr[0] as usize], w.vertices[tr[1] as usize], w.vertices[tr[2] as usize])
+    };
+    let size = w.vertices.iter().fold(0.0f64, |s, v| s.max(v[0].abs()).max(v[1].abs()).max(v[2].abs())).max(1.0);
+    // Distance from the click to each triangle.
+    let tri_dist = |t: usize| -> f64 {
+        let tr = w.triangles[t];
+        let (a, b, c) = (w.vertices[tr[0] as usize], w.vertices[tr[1] as usize], w.vertices[tr[2] as usize]);
+        let n = tri_n(t);
+        let foot = sub(click, scale(n, dot(sub(click, a), n)));
+        let inside = [(a, b), (b, c), (c, a)].iter().all(|(x, y)| dot(cross(sub(*y, *x), sub(foot, *x)), n) >= -1e-12);
+        if inside {
+            return dot(sub(click, a), n).abs();
+        }
+        [(a, b), (b, c), (c, a)]
+            .iter()
+            .map(|(x, y)| {
+                let ab = sub(*y, *x);
+                let t = (dot(sub(click, *x), ab) / dot(ab, ab).max(1e-300)).clamp(0.0, 1.0);
+                dist(click, add(*x, scale(ab, t)))
+            })
+            .fold(f64::MAX, f64::min)
+    };
+    let mut near: Vec<(f64, usize)> = (0..w.triangles.len()).map(|t| (tri_dist(t), t)).collect();
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let reach = near.first()?.0 + 0.05 * size;
+    let mut tried = std::collections::HashSet::new();
+    for &(d, seed) in near.iter().take_while(|x| x.0 <= reach) {
+        if tried.contains(&seed) {
+            continue;
+        }
+        // The planar face through the seed: every triangle in its plane facing the same way
+        // (by plane, not by shared edges: boolean results leave T-junctions).
+        let n0 = tri_n(seed);
+        let off0 = dot(w.vertices[w.triangles[seed][0] as usize], n0);
+        let face: Vec<usize> = (0..w.triangles.len())
+            .filter(|t| dot(tri_n(*t), n0) > 1.0 - 1e-9 && w.triangles[*t].iter().all(|v| (dot(w.vertices[*v as usize], n0) - off0).abs() < 1e-7))
+            .collect();
+        tried.extend(face.iter().copied());
+        let _ = d;
+        // Its edge loops: edges used once within the face, chained. Boolean results can
+        // leave T-junctions (a vertex in the middle of a neighbour's edge): edges are split at
+        // the face's vertices lying on them first, so inner edges cancel.
+        let fverts: Vec<u32> = {
+            let mut v: Vec<u32> = face.iter().flat_map(|t| w.triangles[*t]).collect();
+            v.sort_unstable();
+            v.dedup();
+            v
+        };
+        let split = |a: u32, b: u32| -> Vec<u32> {
+            let (pa, pb) = (w.vertices[a as usize], w.vertices[b as usize]);
+            let ab = sub(pb, pa);
+            let l2 = dot(ab, ab);
+            let mut on: Vec<(f64, u32)> = fverts
+                .iter()
+                .filter(|v| **v != a && **v != b)
+                .filter_map(|v| {
+                    let p = w.vertices[*v as usize];
+                    let t = dot(sub(p, pa), ab) / l2.max(1e-300);
+                    (t > 1e-9 && t < 1.0 - 1e-9 && dist(p, add(pa, scale(ab, t))) < 1e-7).then_some((t, *v))
+                })
+                .collect();
+            on.sort_by(|x, y| x.0.total_cmp(&y.0));
+            std::iter::once(a).chain(on.into_iter().map(|x| x.1)).chain(std::iter::once(b)).collect()
+        };
+        let mut count = std::collections::HashMap::<(u32, u32), (u32, u32)>::new();
+        for &t in &face {
+            let tr = w.triangles[t];
+            for k in 0..3 {
+                let chain = split(tr[k], tr[(k + 1) % 3]);
+                for seg in chain.windows(2) {
+                    let (a, b) = (seg[0], seg[1]);
+                    let key = (a.min(b), a.max(b));
+                    if count.remove(&key).is_none() {
+                        count.insert(key, (a, b));
+                    }
+                }
+            }
+        }
+        let mut next: std::collections::HashMap<u32, u32> = count.values().map(|(a, b)| (*a, *b)).collect();
+        let mut loops: Vec<Vec<u32>> = Vec::new();
+        while let Some((&start, _)) = next.iter().next() {
+            let mut lp = vec![start];
+            let mut cur = start;
+            while let Some(nx) = next.remove(&cur) {
+                if nx == start {
+                    break;
+                }
+                lp.push(nx);
+                cur = nx;
+            }
+            // Drop points in the middle of straight runs.
+            let k = lp.len();
+            let lp: Vec<u32> = (0..k)
+                .filter(|i| {
+                    let (p, q, r) = (w.vertices[lp[(i + k - 1) % k] as usize], w.vertices[lp[*i] as usize], w.vertices[lp[(i + 1) % k] as usize]);
+                    norm(cross(sub(q, p), sub(r, q))) > 1e-9 * (dist(p, q) * dist(q, r)).max(1e-300).sqrt().max(1e-12)
+                })
+                .map(|i| lp[i])
+                .collect();
+            if lp.len() >= 3 {
+                loops.push(lp);
+            }
+        }
+        if loops.len() < 2 {
+            continue;
+        }
+        // The outer edge encloses the most area; the rest are holes.
+        let area = |lp: &[u32]| -> f64 {
+            let mut s = [0.0; 3];
+            for i in 0..lp.len() {
+                let (p, q) = (w.vertices[lp[i] as usize], w.vertices[lp[(i + 1) % lp.len()] as usize]);
+                s = add(s, cross(p, q));
+            }
+            dot(s, n0).abs() / 2.0
+        };
+        let outer = (0..loops.len()).max_by(|a, b| area(&loops[*a]).total_cmp(&area(&loops[*b])))?;
+        let loop_dist = |lp: &[u32]| -> f64 {
+            (0..lp.len())
+                .map(|i| {
+                    let (p, q) = (w.vertices[lp[i] as usize], w.vertices[lp[(i + 1) % lp.len()] as usize]);
+                    let ab = sub(q, p);
+                    let t = (dot(sub(click, p), ab) / dot(ab, ab).max(1e-300)).clamp(0.0, 1.0);
+                    dist(click, add(p, scale(ab, t)))
+                })
+                .fold(f64::MAX, f64::min)
+        };
+        let best = (0..loops.len()).filter(|i| *i != outer).min_by(|a, b| loop_dist(&loops[*a]).total_cmp(&loop_dist(&loops[*b])))?;
+        if loop_dist(&loops[best]) <= 0.05 * size {
+            return Some(loops[best].iter().map(|i| w.vertices[*i as usize]).collect());
+        }
+    }
+    None
 }

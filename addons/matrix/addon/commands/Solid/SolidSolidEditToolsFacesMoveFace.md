@@ -1,6 +1,6 @@
 # Move Face
 
-Như MoveFace Rhino 5: dời một mặt của khối (DirectionConstraint None/Normal).
+Như MoveFace Rhino 5: dời một mặt của khối (DirectionConstraint None/Normal/ToBoundary, DeleteBoundary).
 
 - **Mã lệnh:** `SolidSolidEditToolsFacesMoveFace`
 - **Vị trí:** menu Solid, ô số 28

@@ -10,6 +10,7 @@ Như ArrayHole Rhino 5: mảng lỗ theo hướng A, B (Rectangular, UseASpacing
 
 ## Cách dùng
 
-1. Chọn khối và đường cong lỗ.
-2. Gõ số lỗ hướng A, hướng B.
-3. Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B.
+1. Chọn khối (hoặc khối và đường cong lỗ).
+2. Bấm lên mép lỗ có sẵn (Select a hole).
+3. Gõ số lỗ hướng A, hướng B.
+4. Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B.

@@ -517,11 +517,19 @@ fn shell(e: &Event) -> Reply {
 /// Rhino 5 MoveFace: Select face (a click on it), Point to move from, Point to move to;
 /// DirectionConstraint None (any way) / Normal (along the face normal only).
 fn move_face(e: &Event) -> Reply {
-    let flow = Flow::new("Move Face")
-        .point("Select face")
-        .point("Point to move from")
-        .point("Point to move to")
-        .choice("DirectionConstraint", &["None", "Normal"], "None");
+    // DirectionConstraint now (as set so far, or being set by this input).
+    let constraint = match &e.input {
+        Input::Option { name, value: Some(v) } if name.eq_ignore_ascii_case("DirectionConstraint") => v.clone(),
+        _ => load::<Collected>(e).options.get("DirectionConstraint").cloned().unwrap_or_else(|| "None".into()),
+    };
+    let to_boundary = constraint.eq_ignore_ascii_case("ToBoundary");
+    let mut flow = Flow::new("Move Face").point("Select face");
+    if !to_boundary {
+        flow = flow.point("Point to move from").point("Point to move to");
+    }
+    let flow = flow
+        .choice("DirectionConstraint", &["None", "Normal", "ToBoundary"], "None")
+        .toggle("DeleteBoundary", false);
     flow.step(e, &|_, _| Show::default(), &|c| {
         let objs = solids(e);
         let s = objs.first().ok_or("Move Face: select the solid")?;
@@ -538,11 +546,35 @@ fn move_face(e: &Event) -> Reply {
             m.vertices[tr[1] as usize],
             m.vertices[tr[2] as usize],
         );
+        let moving: std::collections::HashSet<u32> = face.iter().flat_map(|&t| m.triangles[t]).collect();
+        if to_boundary {
+            // ToBoundary: each point of the face runs along the face normal (either way) to
+            // the boundary object; the face takes the boundary's shape there.
+            let bound = objs.get(1).ok_or("Move Face: select the boundary object too")?;
+            let bm = bound.mesh.as_ref().unwrap();
+            let mut vertices = m.vertices.clone();
+            for &i in &moving {
+                let p = m.vertices[i as usize];
+                let hit = [n, scale(n, -1.0)]
+                    .iter()
+                    .filter_map(|d| rhino_tools::cast_mesh(bm, p, *d).map(|t| add(p, scale(*d, t))))
+                    .min_by(|a, b| dist(*a, p).total_cmp(&dist(*b, p)))
+                    .ok_or("Move Face: the face does not reach the boundary")?;
+                vertices[i as usize] = hit;
+            }
+            let mut r = Reply::finish(Vec::new()).say(format!("Move Face: {} triangles moved to the boundary", face.len()));
+            r.replace.push(Replacement {
+                id: s.id.clone(),
+                geo: Geo::Mesh { name: s.name.clone(), vertices, triangles: m.triangles.clone(), meta: None, layer: None },
+            });
+            if c.yes(&flow, "DeleteBoundary") {
+                r.delete.push(bound.id.clone());
+            }
+            return Ok(r);
+        }
         let mv = sub(c.p(2).unwrap(), c.p(1).unwrap());
         let mv = if c.opt(&flow, "DirectionConstraint") == "Normal" { scale(n, dot(mv, n)) } else { mv };
         let d = dot(mv, mv).sqrt();
-        let moving: std::collections::HashSet<u32> =
-            face.iter().flat_map(|&t| m.triangles[t]).collect();
         let vertices = m
             .vertices
             .iter()
@@ -1083,6 +1115,9 @@ fn drill(curve: &[Vec3], n: Vec3, depth: f64) -> Option<Mesh> {
 fn holes(e: &Event) -> Reply {
     let cmd = e.command.as_str();
     let n = e.plane.normal();
+    // Rhino 5: "Select a hole" — a click on the edge of a hole in the solid. A closed curve
+    // selected with the solid still names the hole the old way.
+    let by_curve = curves(e).iter().any(|c| c.closed);
     let flow = match cmd {
         MAKE_HOLE => Flow::new("Make Hole"),
         // Rhino 5 ArrayHole: the numbers in the A and B directions, a base point, then the
@@ -1105,14 +1140,20 @@ fn holes(e: &Event) -> Reply {
             .point("Point to move to")
             .toggle("Copy", false),
     };
+    let flow = if by_curve { flow } else { flow.point_first("Select a hole") };
+    let off = usize::from(!by_curve);
     let compute = |c: &Collected| -> Result<(String, Mesh, String), String> {
         let objs = solids(e);
-        let s = objs.first().ok_or("select the solid and the hole curve")?;
+        let s = objs.first().ok_or("select the solid")?;
         let cs = curves(e);
-        let hole = cs
-            .iter()
-            .find(|c| c.closed)
-            .ok_or("select a closed curve for the hole")?;
+        let hole_pts: Vec<Vec3> = match cs.iter().find(|c| c.closed) {
+            Some(h) => h.points.clone(),
+            None => rhino_tools::pick_hole(s.mesh.as_ref().unwrap(), c.p(0).ok_or("select a hole")?)
+                .ok_or("no hole there: click on the edge of a hole in a flat face")?,
+        };
+        let hole = &HoleCurve { points: hole_pts };
+        // Point answers after the hole pick.
+        let c = &c.shifted(off);
         let depth = dist(s.bbox[0], s.bbox[1]) + 1.0;
         let base = to_mesh(s.mesh.as_ref().unwrap());
         let moved = |d: Vec3| -> Vec<Vec3> { hole.points.iter().map(|&p| add(p, d)).collect() };
@@ -1222,6 +1263,11 @@ fn holes(e: &Event) -> Reply {
         let (id, m, msg) = compute(c)?;
         Ok(finish_replace(&id, m, Vec::new(), msg))
     })
+}
+
+/// A hole outline (picked on the solid or a selected closed curve).
+struct HoleCurve {
+    points: Vec<Vec3>,
 }
 
 /// The box of a mesh (used to keep a plug inside the solid it fills).

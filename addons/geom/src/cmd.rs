@@ -165,6 +165,13 @@ impl Collected {
     pub fn pair(&self, spec: &Flow, name: &str) -> (f64, f64) {
         pair(self.opt(spec, name)).unwrap_or((0.0, 0.0))
     }
+    /// The answers after the first `k` (those of steps put first with
+    /// [`Flow::point_first`]), so the later steps keep their own indices.
+    pub fn shifted(&self, k: usize) -> Collected {
+        let mut c = self.clone();
+        c.answers.drain(..k.min(c.answers.len()));
+        c
+    }
     /// The k-th point answer.
     pub fn p(&self, k: usize) -> Option<Vec3> {
         self.answers
@@ -294,6 +301,11 @@ impl Flow {
     }
     pub fn point(mut self, prompt: &str) -> Flow {
         self.needs.push(Need::Point(prompt.to_owned()));
+        self
+    }
+    /// A point step before all the others (a pick that comes first, e.g. "Select a hole").
+    pub fn point_first(mut self, prompt: &str) -> Flow {
+        self.needs.insert(0, Need::Point(prompt.to_owned()));
         self
     }
     pub fn number(mut self, prompt: &str, default: f64) -> Flow {

@@ -444,3 +444,46 @@ fn slab_make_hole_and_rib_follow_rhino5() {
     assert!(r.done, "{:?} {}", r.error, r.prompt);
     assert!((created(&r).volume().abs() - 4.0).abs() < 1e-6, "{}", created(&r).volume());
 }
+
+/// Rhino 5 hole tools by "Select a hole": a click on the edge of a hole already in the solid
+/// (no curve) — ArrayHole, ArrayHolePolar, MoveHole; and MoveFace ToBoundary.
+#[test]
+fn hole_tools_pick_the_hole_and_move_face_to_boundary() {
+    let plate = solid("p", mesh::cuboid([-5.0, -5.0, 0.0], [5.0, 5.0, 1.0]));
+    let hole = closed_curve("h", square([0.0, 0.0, 1.0], 0.5));
+    let holed = run(MAKE_HOLE, vec![plate.clone(), hole], vec![Input::Selection, Input::Enter]);
+    let holed = solid("p", replaced(&holed, 0));
+    assert!((holed.mesh.as_ref().map(|m| to_mesh(m).volume()).unwrap() - 99.0).abs() < 1e-6);
+    // The hole is found from a click on its edge (on the top face).
+    let found = rhino_tools::pick_hole(holed.mesh.as_ref().unwrap(), [0.5, 0.1, 1.0]).expect("the hole");
+    assert_eq!(found.len(), 4, "{found:?}");
+    assert!(found.iter().all(|p| (p[2] - 1.0).abs() < 1e-9 && (p[0].abs() - 0.5).abs() < 1e-9 && (p[1].abs() - 0.5).abs() < 1e-9));
+    // A click on the outer edge is not a hole.
+    assert!(rhino_tools::pick_hole(holed.mesh.as_ref().unwrap(), [5.0, 0.0, 1.0]).is_none());
+    // ArrayHole from the picked hole: 3 × 1, 2 mm apart → two more holes (97).
+    let r = run(ARRAY_HOLE, vec![holed.clone()], vec![Input::Selection, pt([0.5, 0.1, 1.0]), num(3.0), num(1.0), pt([0.0; 3]), pt([2.0, 0.0, 0.0]), pt([0.0, 2.0, 0.0])]);
+    assert!((replaced(&r, 0).volume() - 97.0).abs() < 1e-6, "{}", replaced(&r, 0).volume());
+    // ArrayHolePolar round (0, 2): 4 holes, the first is the existing one → 96.
+    let r = run(ARRAY_HOLE_POLAR, vec![holed.clone()], vec![Input::Selection, pt([0.5, 0.1, 1.0]), pt([0.0, 2.0, 0.0]), num(4.0), num(360.0)]);
+    assert!((replaced(&r, 0).volume() - 96.0).abs() < 1e-6, "{}", replaced(&r, 0).volume());
+    // MoveHole: 3 mm in x → still 99, and the old place filled (a click there finds nothing).
+    let r = run(MOVE_HOLE, vec![holed.clone()], vec![Input::Selection, pt([0.5, 0.1, 1.0]), pt([0.0; 3]), pt([3.0, 0.0, 0.0])]);
+    let moved = replaced(&r, 0);
+    assert!((moved.volume() - 99.0).abs() < 1e-6, "{}", moved.volume());
+    let sm = solid("q", moved);
+    let again = rhino_tools::pick_hole(sm.mesh.as_ref().unwrap(), [3.5, 0.1, 1.0]).expect("the moved hole");
+    assert!(again.iter().all(|p| (p[0] - 3.0).abs() <= 0.5 + 1e-9));
+    // MoveFace ToBoundary: the top of a 10 × 10 × 1 plate up to a slab whose bottom is at z 4:
+    // 10 × 10 × 4 = 400.
+    let roof = solid("roof", mesh::cuboid([-20.0, -20.0, 4.0], [20.0, 20.0, 5.0]));
+    let mut e = event(MOVE_FACE, Input::Start, vec![plate.clone(), roof.clone()], json!({}));
+    let mut r = Solids::step(&e).unwrap();
+    for i in [Input::Selection, Input::Option { name: "DirectionConstraint".into(), value: Some("ToBoundary".into()) }, pt([0.0, 0.0, 1.0])] {
+        e.state = r.state.clone();
+        e.input = i;
+        r = Solids::step(&e).unwrap();
+        assert!(r.error.is_none(), "{:?} {}", r.error, r.prompt);
+    }
+    assert!(r.done, "{}", r.prompt);
+    assert!((replaced(&r, 0).volume() - 400.0).abs() < 1e-6, "{}", replaced(&r, 0).volume());
+}
