@@ -237,8 +237,9 @@ fn a_sphere_and_a_torus_open_both_ways_and_stay_on_their_shapes() {
     let cut = editing::boolean(&ring, &block, BooleanOp::Difference, 0.05, &limits()).unwrap();
     let faces = face_nurbs(cut.body().expect("a body"), &limits()).unwrap();
     assert!(faces.iter().any(|f| f.loops.iter().any(|l| l.len() > 4)), "a long loop round the cut");
+    // (The cut circles are the boolean's intersection curves: on the faces to its tolerance.)
     for f in &faces {
-        check_loops(f, 1e-9);
+        check_loops(f, 1e-6);
     }
 }
 
