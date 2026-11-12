@@ -1,6 +1,6 @@
 # Move Hole
 
-Dời lỗ: lấp chỗ cũ (theo đường cong lỗ) và khoan ở chỗ mới.
+Như MoveHole Rhino 5: dời lỗ (lấp chỗ cũ, khoét chỗ mới); Copy giữ lỗ cũ.
 
 - **Mã lệnh:** `SolidSolidEditToolsHolesMoveHole`
 - **Vị trí:** menu Solid, ô số 27

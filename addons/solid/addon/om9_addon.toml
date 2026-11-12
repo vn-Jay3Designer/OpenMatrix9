@@ -244,8 +244,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Rib"]
-summary = "Tạo gân (vách) từ đường cong hở và gộp vào khối."
-steps = ["Chọn khối và đường cong.", "Gõ chiều cao và độ dày."]
+summary = "Như Rib Rhino 5: làm dày đường cong phẳng rồi kéo tới mặt biên (Offset InCurvePlane/NormalToCurvePlane, Distance, Mode Straight/Tapered, DraftAngle)."
+steps = ["Chọn đường cong phẳng và mặt biên (mặt hoặc khối).", "Đổi tuỳ chọn nếu cần, Enter."]
 
 [[commands]]
 id = "SolidSlab"
@@ -254,8 +254,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["Slab"]
-summary = "Tạo tấm dày theo đường cong (kín hoặc hở)."
-steps = ["Chọn đường cong (và khối nếu muốn gộp).", "Gõ chiều cao và độ dày."]
+summary = "Như Slab Rhino 5: offset đường cong (góc vát) rồi đùn lên (Distance, ThroughPoint, BothSides)."
+steps = ["Chọn đường cong.", "Bấm phía offset.", "Chiều cao (gõ hoặc bấm)."]
 
 [[commands]]
 id = "SolidSolidEditToolsHolesMakeHole"
@@ -264,8 +264,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["MakeHole"]
-summary = "Khoan lỗ xuyên khối theo đường cong kín."
-steps = ["Chọn khối và đường cong kín.", "Enter."]
+summary = "Như MakeHole Rhino 5: khoét lỗ theo đường cong kín, tới điểm sâu hoặc xuyên qua (Direction, BothSides, DeleteInput)."
+steps = ["Chọn các đường cong kín và khối.", "Bấm điểm độ sâu, gõ độ sâu, hoặc Enter để khoét xuyên."]
 
 [[commands]]
 id = "SolidSolidEditToolsHolesArrayHole"
@@ -274,8 +274,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["ArrayHole"]
-summary = "Khoan mảng lỗ theo lưới."
-steps = ["Chọn khối và đường cong lỗ.", "Gõ số lỗ X, Y và khoảng cách X, Y."]
+summary = "Như ArrayHole Rhino 5: mảng lỗ theo hướng A, B (Rectangular, UseASpacing)."
+steps = ["Chọn khối và đường cong lỗ.", "Gõ số lỗ hướng A, hướng B.", "Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B."]
 
 [[commands]]
 id = "SolidSolidEditToolsHolesArrayHolePolar"
@@ -294,7 +294,7 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["MoveHole"]
-summary = "Dời lỗ: lấp chỗ cũ (theo đường cong lỗ) và khoan ở chỗ mới."
+summary = "Như MoveHole Rhino 5: dời lỗ (lấp chỗ cũ, khoét chỗ mới); Copy giữ lỗ cũ."
 steps = ["Chọn khối và đường cong của lỗ.", "Bấm điểm gốc và điểm đích."]
 
 [[commands]]
@@ -304,8 +304,8 @@ handler = "om9_addon_session"
 interactive = true
 mesh_data = true
 aliases = ["MoveFace"]
-summary = "Dời một mặt phẳng của khối theo pháp tuyến."
-steps = ["Chọn khối.", "Bấm lên mặt (nhìn từ trên CPlane).", "Gõ khoảng dời."]
+summary = "Như MoveFace Rhino 5: dời một mặt của khối (DirectionConstraint None/Normal)."
+steps = ["Chọn khối.", "Bấm lên mặt cần dời.", "Bấm điểm dời từ, điểm dời tới."]
 
 [[commands]]
 id = "SolidShell"
@@ -368,3 +368,34 @@ min = 0.0
 max = 5.0
 step = 0.05
 commands = ["SolidText"]
+
+[[settings]]
+key = "sl_distance"
+type = "length"
+option = "Distance"
+label = "Khoảng offset (Slab)"
+default = 1.0
+commands = ["SolidSlab"]
+
+[[settings]]
+key = "sl_height"
+type = "length"
+label = "Chiều cao (Slab)"
+default = 1.0
+commands = ["SolidSlab"]
+
+[[settings]]
+key = "rb_distance"
+type = "length"
+option = "Distance"
+label = "Độ dày gân (Rib)"
+default = 1.0
+commands = ["SolidRib"]
+
+[[settings]]
+key = "rb_draft_angle"
+type = "angle"
+option = "DraftAngle"
+label = "Góc vát (Rib, Tapered)"
+default = 0.0
+commands = ["SolidRib"]

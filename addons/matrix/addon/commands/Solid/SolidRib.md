@@ -1,6 +1,6 @@
 # Rib
 
-Tạo gân (vách) từ đường cong hở và gộp vào khối.
+Như Rib Rhino 5: làm dày đường cong phẳng rồi kéo tới mặt biên (Offset InCurvePlane/NormalToCurvePlane, Distance, Mode Straight/Tapered, DraftAngle).
 
 - **Mã lệnh:** `SolidRib`
 - **Vị trí:** menu Solid, ô số 22
@@ -10,5 +10,13 @@ Tạo gân (vách) từ đường cong hở và gộp vào khối.
 
 ## Cách dùng
 
-1. Chọn khối và đường cong.
-2. Gõ chiều cao và độ dày.
+1. Chọn đường cong phẳng và mặt biên (mặt hoặc khối).
+2. Đổi tuỳ chọn nếu cần, Enter.
+
+## Tuỳ chọn (lệnh phụ)
+
+
+| Dòng lệnh | Ý nghĩa | Mặc định | Khoảng |
+|---|---|---|---|
+| `Distance=` | Độ dày gân (Rib) | 1 |  |
+| `DraftAngle=` | Góc vát (Rib, Tapered) | 0 |  |

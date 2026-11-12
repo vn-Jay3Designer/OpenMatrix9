@@ -1,6 +1,6 @@
 # Array Hole
 
-Khoan mảng lỗ theo lưới.
+Như ArrayHole Rhino 5: mảng lỗ theo hướng A, B (Rectangular, UseASpacing).
 
 - **Mã lệnh:** `SolidSolidEditToolsHolesArrayHole`
 - **Vị trí:** menu Solid, ô số 25
@@ -11,4 +11,5 @@ Khoan mảng lỗ theo lưới.
 ## Cách dùng
 
 1. Chọn khối và đường cong lỗ.
-2. Gõ số lỗ X, Y và khoảng cách X, Y.
+2. Gõ số lỗ hướng A, hướng B.
+3. Bấm điểm gốc, hướng-khoảng A, hướng-khoảng B.
