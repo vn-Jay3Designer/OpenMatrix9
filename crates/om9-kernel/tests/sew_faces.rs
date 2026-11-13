@@ -185,3 +185,31 @@ fn an_extruded_circle_with_its_caps_closes_into_the_cylinder() {
     let want = std::f64::consts::PI * 4.0 * 3.0;
     assert!((m.volume_mm3 - want).abs() < want * 1e-6, "{} vs {want}", m.volume_mm3);
 }
+
+/// Many faces sew in one pass: a 60 × 60 plate with 6 × 6 holes read face by face (42 faces)
+/// sews back to its volume quickly (folding pairwise took seconds and grew with the square of
+/// the face count).
+#[test]
+fn many_faces_sew_back_in_one_pass() {
+    let l = limits();
+    let mut plate = box_brep([60.0, 60.0, 4.0], 0.05, &l).unwrap();
+    for i in 0..6 {
+        for j in 0..6 {
+            let pin = creation::primitive(Primitive::Cylinder { radius_mm: 2.0, height_mm: 4.0 }, 0.05, &l).unwrap();
+            let at = Transform([[1.0, 0.0, 0.0, 5.0 + 10.0 * i as f64], [0.0, 1.0, 0.0, 5.0 + 10.0 * j as f64], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]);
+            let pin = transform_brep(&pin, &at, 0.05, &l).unwrap();
+            plate = editing::boolean(&plate, &pin, BooleanOp::Difference, 0.05, &l).unwrap().body().expect("a body").clone();
+        }
+    }
+    let faces: Vec<Face> = face_nurbs(&plate, &l).unwrap().iter().map(to_core).collect();
+    assert_eq!(faces.len(), 42);
+    let t = std::time::Instant::now();
+    let body = sew_faces(&faces, true, 0.01, 0.05, &l).unwrap();
+    let took = t.elapsed();
+    let m = measure(&body, &l).unwrap();
+    let want = 60.0 * 60.0 * 4.0 - 36.0 * std::f64::consts::PI * 4.0 * 4.0;
+    assert_eq!((m.solids, m.faces), (1, 42), "{m:?}");
+    assert!((m.volume_mm3 - want).abs() < want * 1e-6, "{} vs {want}", m.volume_mm3);
+    eprintln!("sew_faces: 42 faces in {took:?}");
+    assert!(took.as_secs_f64() < 10.0, "{took:?}");
+}

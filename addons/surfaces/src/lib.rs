@@ -110,54 +110,12 @@ impl Interactive for Surfaces {
         REFIT,
     ];
     fn step(e: &Event) -> Result<Reply, String> {
-        Ok(match e.command.as_str() {
-            SWEEP1 | PROFILE_SWEEP | FOUR_PROFILE_SWEEP => with_surface_edges(e, sweep1),
-            SWEEP2 => with_surface_edges(e, sweep2),
-            MULTI_RAIL => multi_rail(e),
-            PLANAR => planar(e),
-            PLANE => plane(e),
-            REBUILD => rebuild(e),
-            BLEND => blend_srf(e),
-            VAR_BLEND => variable_fillet(e),
-            LOFT => with_surface_edges(e, loft),
-            NETWORK => with_surface_edges(e, network),
-            SHRINK => shrink(e),
-            EDGE_CURVES => with_surface_edges(e, patch),
-            PATCH => patch(e),
-            UNTRIM => untrim(e),
-            EXTRUDE_ALL => extrude_all(e),
-            REVOLVE => revolve(e),
-            RAIL_REVOLVE => rail_revolve(e),
-            TWEEN => tween(e),
-            FILLET | CHAMFER => fillet_srf(e),
-            VAR_FILLET | VAR_CHAMFER => variable_fillet(e),
-            OFFSET => offset_srf(e),
-            VAR_OFFSET => variable_offset(e),
-            MERGE => merge(e),
-            MATCH => match_srf(e),
-            DRAPE => drape(e),
-            HEIGHTFIELD => heightfield(e),
-            SPLIT_ISO => split(e),
-            EXTEND => extend(e),
-            EXTRUDE_NORMAL => {
-                // The Fin state names its curve / surface; the mesh path's state is empty.
-                let fin_state = e.state.get("curve").is_some() || e.state.get("surface").is_some();
-                let started = e.state.is_null() || matches!(e.input, Input::Start);
-                let exact = e.selection.iter().any(|s| matches!(s.exact, Some(Geo::Surface { .. })));
-                if fin_state || (started && (exact || e.selection.is_empty())) {
-                    fin_cmd(e)
-                } else {
-                    extrude_normal(e)
-                }
-            }
-            UNROLL | SMASH => unroll(e),
-            SOFT_EDIT => soft_edit(e),
-            CUTTING_PLANE => cutting_plane(e),
-            SEAM => seam(e),
-            SET_TANGENT => set_tangent(e),
-            REFIT => refit(e),
-            other => return Err(format!("unknown command {other}")),
-        })
+        // Pointer moves of commands whose preview does not follow the pointer reuse the
+        // previous move's reply when nothing else changed (see `om9_addon_geom::memo`).
+        if STEADY_PREVIEW.contains(&e.command.as_str()) {
+            return om9_addon_geom::memo::steady_hover(e, dispatch);
+        }
+        dispatch(e)
     }
 }
 
@@ -4723,3 +4681,58 @@ pub fn srf_points(g: &Geo, n: usize) -> Vec<Vec3> {
 
 #[cfg(test)]
 mod tests;
+
+/// Commands whose reply to a pointer move never reads the pointer (their preview follows their
+/// state only): checked in their code, which matches no `Input::Hover` point.
+const STEADY_PREVIEW: &[&str] = &[SWEEP1, SWEEP2, PROFILE_SWEEP, FOUR_PROFILE_SWEEP, MULTI_RAIL, LOFT, NETWORK, PATCH, REFIT, UNROLL, VAR_FILLET, VAR_BLEND, VAR_CHAMFER];
+
+fn dispatch(e: &Event) -> Result<Reply, String> {
+    Ok(match e.command.as_str() {
+        SWEEP1 | PROFILE_SWEEP | FOUR_PROFILE_SWEEP => with_surface_edges(e, sweep1),
+        SWEEP2 => with_surface_edges(e, sweep2),
+        MULTI_RAIL => multi_rail(e),
+        PLANAR => planar(e),
+        PLANE => plane(e),
+        REBUILD => rebuild(e),
+        BLEND => blend_srf(e),
+        VAR_BLEND => variable_fillet(e),
+        LOFT => with_surface_edges(e, loft),
+        NETWORK => with_surface_edges(e, network),
+        SHRINK => shrink(e),
+        EDGE_CURVES => with_surface_edges(e, patch),
+        PATCH => patch(e),
+        UNTRIM => untrim(e),
+        EXTRUDE_ALL => extrude_all(e),
+        REVOLVE => revolve(e),
+        RAIL_REVOLVE => rail_revolve(e),
+        TWEEN => tween(e),
+        FILLET | CHAMFER => fillet_srf(e),
+        VAR_FILLET | VAR_CHAMFER => variable_fillet(e),
+        OFFSET => offset_srf(e),
+        VAR_OFFSET => variable_offset(e),
+        MERGE => merge(e),
+        MATCH => match_srf(e),
+        DRAPE => drape(e),
+        HEIGHTFIELD => heightfield(e),
+        SPLIT_ISO => split(e),
+        EXTEND => extend(e),
+        EXTRUDE_NORMAL => {
+            // The Fin state names its curve / surface; the mesh path's state is empty.
+            let fin_state = e.state.get("curve").is_some() || e.state.get("surface").is_some();
+            let started = e.state.is_null() || matches!(e.input, Input::Start);
+            let exact = e.selection.iter().any(|s| matches!(s.exact, Some(Geo::Surface { .. })));
+            if fin_state || (started && (exact || e.selection.is_empty())) {
+                fin_cmd(e)
+            } else {
+                extrude_normal(e)
+            }
+        }
+        UNROLL | SMASH => unroll(e),
+        SOFT_EDIT => soft_edit(e),
+        CUTTING_PLANE => cutting_plane(e),
+        SEAM => seam(e),
+        SET_TANGENT => set_tangent(e),
+        REFIT => refit(e),
+        other => return Err(format!("unknown command {other}")),
+    })
+}

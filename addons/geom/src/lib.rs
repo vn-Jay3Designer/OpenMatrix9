@@ -18,6 +18,7 @@ pub mod fit;
 pub mod gems;
 pub mod interp;
 pub mod join;
+pub mod memo;
 pub mod mesh;
 pub mod nurbs;
 pub mod path;
