@@ -12,7 +12,7 @@ use om9_addon_abi::session::{
 use om9_addon_geom::pick::CurveRef;
 use om9_addon_geom::cmd::{Collected, Flow, Show, load, save};
 use om9_addon_geom::nurbs::{self, Srf};
-use om9_addon_geom::path::{Path, Target};
+use om9_addon_geom::path::Target;
 use om9_addon_geom::{Piece, composite_quadratic, interpolate, mesh, section, shapes};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -221,22 +221,6 @@ fn replace(label: &str, items: Vec<(String, Geo)>) -> Result<Reply, String> {
         .map(|(id, geo)| Replacement { id, geo })
         .collect();
     Ok(r)
-}
-
-/// Resample a polyline to `n` points evenly by arc length.
-fn resample(points: &[Vec3], closed: bool, n: usize) -> Vec<Vec3> {
-    let Some(p) = Path::new(points, closed) else {
-        return points.to_vec();
-    };
-    let n = n.max(2);
-    let len = p.length();
-    if closed {
-        (0..n).map(|i| p.at(len * i as f64 / n as f64)).collect()
-    } else {
-        (0..n)
-            .map(|i| p.at(len * i as f64 / (n - 1) as f64))
-            .collect()
-    }
 }
 
 // ---- curves from views, projections ---------------------------------------------------------
@@ -897,11 +881,75 @@ struct Clicks {
     on_surface: bool,
     #[serde(default)]
     on_mesh: bool,
+    /// Continue curves: the end picked was the start (decided at the pick).
+    #[serde(default)]
+    from_start: Option<bool>,
     /// Sketch (Rhino 5): `Closed=Yes` closes the stroke, `Planar=Yes` keeps it flat.
     #[serde(default)]
     closed: bool,
     #[serde(default)]
     planar: bool,
+}
+
+/// The curve continued through `points` from its end (`from_start`: from its start, the curve
+/// then runs the other way). The existing part keeps its exact shape:
+/// - interpolated (ContinueInterpCrv): a new piece through the points, tangent to the curve at
+///   its end, joined to it;
+/// - control points (ContinueCrv): the points are control points of a new piece that leaves
+///   the end along the curve's tangent (a polyline just gets the points).
+fn continued(s: &Selected, from_start: bool, points: &[Vec3], interp: bool) -> Option<Geo> {
+    let mut old = match &s.exact {
+        Some(g) => g.clone(),
+        None => interpolate(&dense(s, 300), 3, false)?,
+    };
+    if from_start {
+        old = om9_addon_geom::join::reverse(&old)?;
+    }
+    let end = om9_addon_geom::eval_geo(&old, 1.0)?;
+    if interp {
+        let before = om9_addon_geom::eval_geo(&old, 1.0 - 1e-6)?;
+        let t = om9_abi_unit(om9_addon_abi::session::sub(end, before))?;
+        let mut pts = vec![end];
+        pts.extend_from_slice(points);
+        let piece = om9_addon_geom::interp::interpolate(
+            &pts,
+            3,
+            om9_addon_geom::interp::Knots::Chord,
+            Some(t),
+            None,
+            om9_addon_geom::interp::Closing::Open,
+        )?;
+        return om9_addon_geom::join::join(&[old, piece], 1e-6);
+    }
+    // Control points.
+    if let Geo::Polyline { points: p0, closed: false } = &old {
+        let mut p = p0.clone();
+        p.extend_from_slice(points);
+        return Some(Geo::Polyline { points: p, closed: false });
+    }
+    if let Geo::Line { start, end } = &old {
+        let mut p = vec![*start, *end];
+        p.extend_from_slice(points);
+        return Some(Geo::Polyline { points: p, closed: false });
+    }
+    // A curve: the new control points make a piece that leaves the end along the curve's
+    // tangent (one extra control point on it), joined to the unchanged curve.
+    let before = om9_addon_geom::eval_geo(&old, 1.0 - 1e-6)?;
+    let t = om9_abi_unit(om9_addon_abi::session::sub(end, before))?;
+    let reach = om9_addon_abi::session::dist(end, points[0]) / 3.0;
+    let mut poles = vec![end, om9_addon_abi::session::add(end, om9_addon_abi::session::scale(t, reach))];
+    poles.extend_from_slice(points);
+    let degree = match &old {
+        Geo::Nurbs { degree, .. } => (*degree).clamp(2, 3),
+        _ => 3,
+    };
+    let piece = om9_addon_geom::control_curve(&poles, degree.min(poles.len() - 1))?;
+    om9_addon_geom::join::join(&[old, piece], 1e-6)
+}
+
+fn om9_abi_unit(v: Vec3) -> Option<Vec3> {
+    let l = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
+    (l > 1e-15).then(|| [v[0] / l, v[1] / l, v[2] / l])
 }
 
 fn continue_curve(e: &Event) -> Reply {
@@ -916,6 +964,16 @@ fn continue_curve(e: &Event) -> Reply {
     let Some(s) = cs.first() else {
         return ask_objects("Select curve to continue near end".to_owned());
     };
+    if s.closed {
+        return ask_objects("Select curve to continue near end".to_owned()).refuse("Select an open curve");
+    }
+    // Which end: decided where the curve was picked, kept for the later clicks.
+    if st.from_start.is_none()
+        && let Some((_, Some(t))) = om9_addon_geom::pick::CurveRef::picked(e, &[])
+    {
+        st.from_start = Some(t < 0.5);
+    }
+    let from_start = st.from_start.unwrap_or(false);
     match &e.input {
         Input::Point { point } => st.points.push(*point),
         Input::Undo => {
@@ -923,27 +981,7 @@ fn continue_curve(e: &Event) -> Reply {
         }
         Input::Enter if !st.points.is_empty() => {
             // Continue from the end picked (the start: the curve runs backwards first).
-            let from_start = om9_addon_geom::pick::CurveRef::picked(e, &[])
-                .and_then(|c| c.1)
-                .is_some_and(|t| t < 0.5);
-            let g = if interp {
-                let mut pts = resample(&dense(s, 300), false, 16);
-                if from_start {
-                    pts.reverse();
-                }
-                pts.extend(&st.points);
-                smooth(&pts, false)
-            } else {
-                let (degree, mut poles) = match &s.exact {
-                    Some(Geo::Nurbs { degree, points, .. }) => (*degree, points.clone()),
-                    _ => (3, resample(&s.points, false, 8)),
-                };
-                if from_start {
-                    poles.reverse();
-                }
-                poles.extend(&st.points);
-                om9_addon_geom::control_curve(&poles, degree)
-            };
+            let g = continued(s, from_start, &st.points, interp);
             return match g {
                 Some(g) => {
                     let mut r = Reply::finish(Vec::new())
@@ -959,9 +997,6 @@ fn continue_curve(e: &Event) -> Reply {
         }
         _ => {}
     }
-    let from_start = om9_addon_geom::pick::CurveRef::picked(e, &[])
-        .and_then(|c| c.1)
-        .is_some_and(|t| t < 0.5);
     let ends = dense(s, 50);
     let last = st
         .points
@@ -976,6 +1011,132 @@ fn continue_curve(e: &Event) -> Reply {
         .with_options(opts)
         .want(Want::Point)
         .rubber(Some(last))
+}
+
+/// The exact edges of a surface, trimmed surface or polysurface (`brep_data`): untrimmed
+/// boundaries without poles and seams counted twice, trim loop curves, shared polysurface edges
+/// once.
+fn exact_edges(g: &Geo) -> Vec<Geo> {
+    let mut out: Vec<Geo> = Vec::new();
+    let mid = |c: &Geo| om9_addon_geom::eval_geo(c, 0.5);
+    let len = |c: &Geo| om9_addon_geom::join::length(c);
+    let push = |c: Geo, out: &mut Vec<Geo>| {
+        if len(&c) < 1e-6 {
+            return; // a pole
+        }
+        let (Some(m), Some(a), Some(b)) = (mid(&c), om9_addon_geom::eval_geo(&c, 0.0), om9_addon_geom::eval_geo(&c, 1.0)) else { return };
+        // The same edge again (a seam, or the edge two faces share).
+        let same = out.iter().any(|o| {
+            let (Some(om), Some(oa), Some(ob)) = (mid(o), om9_addon_geom::eval_geo(o, 0.0), om9_addon_geom::eval_geo(o, 1.0)) else { return false };
+            dist(om, m) < 1e-6 && ((dist(oa, a) < 1e-6 && dist(ob, b) < 1e-6) || (dist(oa, b) < 1e-6 && dist(ob, a) < 1e-6))
+        });
+        if !same {
+            out.push(c);
+        }
+    };
+    match g {
+        Geo::Surface { .. } => {
+            for dir in 0..2 {
+                for at_end in [false, true] {
+                    if let Some(c) = om9_addon_geom::surfedit::edge_curve(g, dir, at_end) {
+                        push(c.to_geo(), &mut out);
+                    }
+                }
+            }
+        }
+        Geo::Trimmed { loops, .. } => {
+            for c in loops.iter().flatten() {
+                push(c.clone(), &mut out);
+            }
+        }
+        Geo::Brep { faces, .. } => {
+            for f in faces {
+                for c in exact_edges(f) {
+                    push(c, &mut out);
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+#[derive(Default, Serialize, Deserialize)]
+struct EdgeClicks {
+    /// (object id, click) for each edge picked.
+    #[serde(default)]
+    picks: Vec<(String, Vec3)>,
+}
+
+/// Rhino DupEdge: "Select edges to duplicate". A click near an edge of a surface or
+/// polysurface picks that edge (Ctrl+Shift+click edges work too); Enter makes exact copies.
+/// Objects selected before the command with no edge picked give all their edges (meshes:
+/// their sharp and open edges).
+fn dup_edge(e: &Event) -> Reply {
+    let mut st: EdgeClicks = load(e);
+    let prompt = "Select edges to duplicate. Press Enter when done";
+    if let (Input::Selection, Some(p)) = (&e.input, e.pick) {
+        // The object the click landed on: the one nearest the click.
+        let near = e
+            .selection
+            .iter()
+            .filter_map(|s| {
+                let edges = exact_edges(s.exact.as_ref()?);
+                let d = edges
+                    .iter()
+                    .flat_map(|c| nurbs::samples(c, 64))
+                    .map(|q| dist(q, p))
+                    .fold(f64::MAX, f64::min);
+                Some((d, s.id.clone()))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0));
+        if let Some((_, id)) = near {
+            st.picks.push((id, p));
+        }
+    }
+    if !matches!(e.input, Input::Enter) {
+        let n = st.picks.len() + e.selection.iter().map(|s| s.sub.iter().filter(|x| x.edge.is_some()).count()).sum::<usize>();
+        let text = if n == 0 { prompt.to_owned() } else { format!("Select edges to duplicate ({n} selected). Press Enter when done") };
+        return Reply::ask(text, save(&st)).want(Want::Objects);
+    }
+    let mut out: Vec<Geo> = Vec::new();
+    for s in &e.selection {
+        // Ctrl+Shift+click edges: exactly those.
+        let subs: Vec<Geo> = s.sub.iter().filter(|x| x.edge.is_some()).filter_map(|x| x.exact.clone()).collect();
+        if !subs.is_empty() {
+            out.extend(subs);
+            continue;
+        }
+        let clicks: Vec<Vec3> = st.picks.iter().filter(|(id, _)| id == &s.id).map(|(_, p)| *p).collect();
+        let edges = s.exact.as_ref().map(exact_edges).unwrap_or_default();
+        if !clicks.is_empty() && !edges.is_empty() {
+            for p in clicks {
+                let best = edges
+                    .iter()
+                    .map(|c| (nurbs::samples(c, 128).into_iter().map(|q| dist(q, p)).fold(f64::MAX, f64::min), c))
+                    .min_by(|a, b| a.0.total_cmp(&b.0));
+                if let Some((_, c)) = best
+                    && !out.contains(c)
+                {
+                    out.push(c.clone());
+                }
+            }
+            continue;
+        }
+        if !edges.is_empty() {
+            out.extend(edges);
+        } else if let Some(m) = s.mesh.as_ref() {
+            // A mesh: its sharp and open edges.
+            for [a, b] in section::feature_edges(m, 30.0, false) {
+                out.push(Geo::Line { start: a, end: b });
+            }
+        }
+    }
+    if out.is_empty() {
+        return Reply::ask(prompt, save(&st)).want(Want::Objects).refuse("Duplicate Edge: select edges");
+    }
+    let n = out.len();
+    Reply::finish(out).say(format!("Duplicate Edge: {n} curves"))
 }
 
 /// Curves from meshes and surfaces: Duplicate Edge (sharp edges and borders), Duplicate
@@ -1257,7 +1418,8 @@ fn dispatch(e: &Event) -> Result<Reply, String> {
         CURVE_BOOLEAN => regions::curve_boolean(e),
         TWEEN => edit::tween(e),
         MEAN => edit::mean(e),
-        DUP_EDGE | DUP_BORDER | SILHOUETTE | WIREFRAME => from_objects(e),
+        DUP_EDGE => dup_edge(e),
+        DUP_BORDER | SILHOUETTE | WIREFRAME => from_objects(e),
         CROSS_SECTION => sections::csec(e),
         SKETCH | SKETCH_SRF | SKETCH_MESH | POLY_ON_SRF | INTERP_ON_SRF => draw_on(e),
         TO_LINES => edit::convert(e),

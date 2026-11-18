@@ -1261,3 +1261,234 @@ fn mean_curve_is_halfway() {
     let r3 = step_rec(&e).unwrap();
     assert!(r3.done && r3.create.len() == 1, "{:?} {:?}", r3.prompt, r3.error);
 }
+
+
+/// A rounded rectangle (lines and quarter arcs joined, as OM9 sends a polycurve: one exact
+/// NURBS with kinks) offsets exactly, with few points: out by 1 the corners grow to r = 2, in
+/// by 1.5 they shrink away and the sides meet square.
+#[test]
+fn offset_of_a_rounded_rectangle_is_exact_and_light() {
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let (w, h, r) = (10.0, 6.0, 1.0);
+    let arc = |c: Vec3, a0: f64| Geo::Arc { center: c, x: [a0.cos(), a0.sin(), 0.0], y: [-a0.sin(), a0.cos(), 0.0], radius: r, angle: FRAC_PI_2 };
+    let ln = |a: Vec3, b: Vec3| Geo::Line { start: a, end: b };
+    let parts = vec![
+        ln([r, 0.0, 0.0], [w - r, 0.0, 0.0]),
+        arc([w - r, r, 0.0], -FRAC_PI_2),
+        ln([w, r, 0.0], [w, h - r, 0.0]),
+        arc([w - r, h - r, 0.0], 0.0),
+        ln([w - r, h, 0.0], [r, h, 0.0]),
+        arc([r, h - r, 0.0], FRAC_PI_2),
+        ln([0.0, h - r, 0.0], [0.0, r, 0.0]),
+        arc([r, r, 0.0], PI),
+    ];
+    let exact = om9_addon_geom::join::join(&parts, 1e-9).unwrap();
+    let rect = curve("rr", exact, true);
+    // Signed distance to a rounded rectangle centred at (w/2, h/2) with half sizes and radius.
+    let sd = |p: Vec3, hw: f64, hh: f64, rr: f64| {
+        let qx = (p[0] - w / 2.0).abs() - (hw - rr);
+        let qy = (p[1] - h / 2.0).abs() - (hh - rr);
+        qx.max(0.0).hypot(qy.max(0.0)) + qx.max(qy).min(0.0) - rr
+    };
+    for (side, dist_, hw, hh, rr) in [([20.0, 3.0, 0.0], 1.0, 6.0, 4.0, 2.0), ([5.0, 3.0, 0.0], 1.5, 3.5, 1.5, 0.0)] {
+        let r = run(OFFSET, vec![rect.clone()], vec![
+            Input::Option { name: "Distance".into(), value: Some(dist_.to_string()) },
+            pt(side),
+        ]);
+        assert!(r.done && r.create.len() == 1, "{:?} {:?}", r.prompt, r.error);
+        let g = &r.create[0];
+        let n = match g {
+            Geo::Nurbs { points, .. } | Geo::Polyline { points, .. } => points.len(),
+            other => panic!("{other:?}"),
+        };
+        assert!(n <= 20, "{n} control points (was ~257 from samples)");
+        for p in nurbs::samples(g, 400) {
+            let e = sd(p, hw, hh, rr);
+            assert!(e.abs() < 1e-6, "offset {dist_}: {e} off at {p:?}");
+        }
+    }
+}
+
+
+/// FitCrv (Refit to Tolerance) keeps kinks sharper than AngleTolerance: a closed square stays
+/// four lines (was ~571 points and outside the tolerance), an L of a line and an arc keeps its
+/// corner and few points.
+#[test]
+fn fit_keeps_kinks_and_few_points() {
+    let sq = [[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0]];
+    let square = curve("sq", Geo::Polyline { points: sq.to_vec(), closed: true }, true);
+    let r = run(REFIT, vec![square], vec![Input::Enter]);
+    assert!(r.done, "{:?} {:?}", r.prompt, r.error);
+    let g = r.replace.first().map(|x| x.geo.clone()).or_else(|| r.create.first().cloned()).unwrap();
+    let n = match &g {
+        Geo::Polyline { points, .. } => points.len(),
+        Geo::Nurbs { points, .. } => points.len(),
+        other => panic!("{other:?}"),
+    };
+    assert!(n <= 5, "{n} points for a square");
+    for c in sq {
+        assert!(nurbs::samples(&g, 400).iter().any(|p| dist(*p, c) < 1e-9), "corner {c:?} kept");
+    }
+    // A line then a half circle (a kink where they meet at 90°).
+    let parts = vec![
+        Geo::Line { start: [0.0, 0.0, 0.0], end: [10.0, 0.0, 0.0] },
+        Geo::Arc { center: [10.0, 3.0, 0.0], x: [0.0, -1.0, 0.0], y: [-1.0, 0.0, 0.0], radius: 3.0, angle: std::f64::consts::PI },
+    ];
+    let joined = om9_addon_geom::join::join(&parts, 1e-9).unwrap();
+    let el = curve("el", joined.clone(), false);
+    let r = run(REFIT, vec![el], vec![Input::Enter]);
+    let g = r.replace.first().map(|x| x.geo.clone()).or_else(|| r.create.first().cloned()).unwrap();
+    let Geo::Nurbs { points, .. } = &g else { panic!("{g:?}") };
+    assert!(points.len() <= 24, "{} points", points.len());
+    assert!(points.iter().any(|p| dist(*p, [10.0, 0.0, 0.0]) < 1e-9), "kink kept as a control point");
+    // Within FittingTolerance of the original (its points against the fitted samples).
+    let fitted = nurbs::samples(&g, 4000);
+    for p in nurbs::samples(&joined, 200) {
+        let near = fitted.iter().map(|q| dist(*q, p)).fold(f64::MAX, f64::min);
+        assert!(near < 0.001 + 0.02, "{near} at {p:?}");
+    }
+}
+
+
+/// Continue Interp / Control Point Curve keep the existing curve exactly (Rhino): an arc stays
+/// on its circle, a wavy interpolated curve keeps every point; the new part starts at the end
+/// (tangent for the interpolated one).
+#[test]
+fn continue_keeps_the_existing_curve() {
+    let arc = curve("a", Geo::Arc { center: [0.0; 3], x: [1.0, 0.0, 0.0], y: [0.0, 1.0, 0.0], radius: 10.0, angle: std::f64::consts::FRAC_PI_2 }, false);
+    for cmd in [CONTINUE_INTERP, CONTINUE_CURVE] {
+        let mut e = event(cmd, Input::Start, vec![arc.clone()]);
+        e.pick = Some([0.0, 10.0, 0.0]); // near the arc's end
+        let mut r = step_rec(&e).unwrap();
+        for i in [pt([-5.0, 12.0, 0.0]), pt([-10.0, 10.0, 0.0]), Input::Enter] {
+            e.state = r.state.clone();
+            e.input = i;
+            e.pick = None;
+            r = step_rec(&e).unwrap();
+        }
+        assert!(r.done, "{cmd}: {} {:?}", r.prompt, r.error);
+        let g = &r.replace[0].geo;
+        let pts = nurbs::samples(g, 2000);
+        // The old quarter circle is still there, point for point.
+        for k in 0..=20 {
+            let a = std::f64::consts::FRAC_PI_2 * k as f64 / 20.0;
+            let p = [10.0 * a.cos(), 10.0 * a.sin(), 0.0];
+            let near = pts.iter().map(|q| dist(*q, p)).fold(f64::MAX, f64::min);
+            assert!(near < 0.02, "{cmd}: lost the arc at {p:?} by {near}");
+        }
+        assert!(dist(*pts.last().unwrap(), [-10.0, 10.0, 0.0]) < 1e-6, "{cmd}: ends at the last point");
+        // Every curve point off the old arc lies past its end (x < 0 side), none moved inside.
+        let Geo::Nurbs { points, .. } = g else { panic!("{g:?}") };
+        assert!(points.len() < 20, "{cmd}: {} points", points.len());
+    }
+}
+
+
+/// Match Curve on a polyline changes only its end segment: the other corners stay put
+/// (they were rounded by refitting the whole curve).
+#[test]
+fn match_keeps_a_polylines_other_corners() {
+    let pl = curve("pl", Geo::Polyline { points: vec![[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [5.0, 5.0, 0.0], [10.0, 5.0, 0.0]], closed: false }, false);
+    let target = curve("t", Geo::Line { start: [12.0, 8.0, 0.0], end: [20.0, 8.0, 0.0] }, false);
+    let mut e = event(MATCH, Input::Start, vec![]);
+    let mut r = step_rec(&e).unwrap();
+    for (sel, pick) in [(vec![pl.clone()], [10.0, 5.0, 0.0]), (vec![pl.clone(), target.clone()], [12.0, 8.0, 0.0])] {
+        e.state = r.state.clone();
+        e.input = Input::Selection;
+        e.selection = sel;
+        e.pick = Some(pick);
+        r = step_rec(&e).unwrap();
+    }
+    e.state = r.state.clone();
+    e.input = Input::Enter;
+    e.pick = None;
+    let r = step_rec(&e).unwrap();
+    assert!(r.done, "{} {:?}", r.prompt, r.error);
+    let g = &r.replace[0].geo;
+    let pts = nurbs::samples(g, 3000);
+    let Geo::Nurbs { points: poles, .. } = g else { panic!("{g:?}") };
+    assert!(poles.len() <= 14, "{} control points", poles.len());
+    for c in [[0.0, 0.0, 0.0], [5.0, 0.0, 0.0], [5.0, 5.0, 0.0]] {
+        let near = pts.iter().map(|q| dist(*q, c)).fold(f64::MAX, f64::min);
+        assert!(near < 1e-6, "corner {c:?} moved ({near})");
+    }
+    // Two straight sides untouched: their middles are on the curve.
+    for m in [[2.5, 0.0, 0.0], [5.0, 2.5, 0.0]] {
+        let near = pts.iter().map(|q| dist(*q, m)).fold(f64::MAX, f64::min);
+        let q = pts.iter().min_by(|a, b| dist(**a, m).total_cmp(&dist(**b, m))).unwrap();
+        assert!(near < 0.01, "{m:?} ({near}) nearest {q:?} geo {g:?}");
+    }
+    assert!(pts.iter().any(|q| dist(*q, [12.0, 8.0, 0.0]) < 1e-6), "meets the other curve");
+}
+
+
+/// Soft Edit Curve on a closed square moves only the corners within Distance: the far ones stay
+/// (the whole square was refitted and rounded).
+#[test]
+fn soft_edit_keeps_far_corners_of_a_polyline() {
+    let sq = curve("sq", Geo::Polyline { points: vec![[0.0, 0.0, 0.0], [10.0, 0.0, 0.0], [10.0, 10.0, 0.0], [0.0, 10.0, 0.0]], closed: true }, true);
+    let mut e = event(SOFT_EDIT, Input::Start, vec![]);
+    let mut r = step_rec(&e).unwrap();
+    let steps = vec![
+        (Input::Selection, vec![sq.clone()], Some([10.0, 0.0, 0.0])),
+        (Input::Option { name: "Distance".into(), value: Some("6".into()) }, vec![sq.clone()], None),
+        (pt([10.0, 0.0, 0.0]), vec![sq.clone()], None),
+        (pt([11.0, -1.0, 0.0]), vec![sq.clone()], None),
+    ];
+    for (i, sel, pick) in steps {
+        e.state = r.state.clone();
+        e.input = i;
+        e.selection = sel;
+        e.pick = pick;
+        r = step_rec(&e).unwrap();
+    }
+    if !r.done {
+        e.state = r.state.clone();
+        e.input = Input::Enter;
+        r = step_rec(&e).unwrap();
+    }
+    assert!(r.done, "{} {:?}", r.prompt, r.error);
+    let g = r.replace.first().map(|x| x.geo.clone()).or_else(|| r.create.first().cloned()).unwrap();
+    let Geo::Nurbs { degree, points, .. } = &g else { panic!("{g:?}") };
+    assert_eq!(*degree, 1, "still straight segments");
+    assert!(points.iter().any(|p| dist(*p, [11.0, -1.0, 0.0]) < 1e-6), "the corner moved to the target: {points:?}");
+    for far in [[10.0, 10.0, 0.0], [0.0, 10.0, 0.0]] {
+        assert!(points.iter().any(|p| dist(*p, far) < 1e-9), "{far:?} stayed: {points:?}");
+    }
+}
+
+
+/// Rhino DupEdge: a click near an edge of a surface picks that edge exactly; a polysurface box
+/// gives its 12 edges once each when picked whole.
+#[test]
+fn dup_edge_picks_the_clicked_edge() {
+    let plane = Geo::Surface { degree: [1, 1], size: [2, 2], points: vec![[0.0, 0.0, 0.0], [0.0, 4.0, 0.0], [6.0, 0.0, 0.0], [6.0, 4.0, 0.0]], weights: vec![], knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]] };
+    let srf = curve("s", plane.clone(), false);
+    let mut srf = srf;
+    srf.kind = "surface".into();
+    let mut e = event(DUP_EDGE, Input::Start, vec![]);
+    let r = step_rec(&e).unwrap();
+    e.state = r.state;
+    e.input = Input::Selection;
+    e.selection = vec![srf.clone()];
+    e.pick = Some([3.0, 0.1, 0.0]); // near the edge y = 0
+    let r = step_rec(&e).unwrap();
+    assert!(r.prompt.contains("1 selected"), "{}", r.prompt);
+    e.state = r.state;
+    e.input = Input::Enter;
+    e.pick = None;
+    let r = step_rec(&e).unwrap();
+    assert!(r.done && r.create.len() == 1, "{} {:?} {:?}", r.prompt, r.error, r.create.len());
+    let pts = nurbs::samples(&r.create[0], 10);
+    assert!(pts.iter().all(|p| p[1].abs() < 1e-12), "the y = 0 edge: {pts:?}");
+    assert!((om9_addon_geom::join::length(&r.create[0]) - 6.0).abs() < 1e-9);
+    // A box as a polysurface, selected whole: 12 edges, each once.
+    let face = |o: Vec3, u: Vec3, v: Vec3| Geo::Surface { degree: [1, 1], size: [2, 2], points: vec![o, add(o, v), add(o, u), add(add(o, u), v)], weights: vec![], knots: [vec![0.0, 0.0, 1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]] };
+    let (x, y, z) = ([2.0, 0.0, 0.0], [0.0, 2.0, 0.0], [0.0, 0.0, 2.0]);
+    let o = [0.0; 3];
+    let faces = vec![face(o, x, y), face(z, x, y), face(o, x, z), face(y, x, z), face(o, y, z), face(x, y, z)];
+    let mut b = curve("b", Geo::Brep { faces, solid: true, display: None }, false);
+    b.kind = "solid".into();
+    let r = run(DUP_EDGE, vec![b], vec![Input::Enter]);
+    assert_eq!(r.create.len(), 12, "a box has 12 edges");
+}

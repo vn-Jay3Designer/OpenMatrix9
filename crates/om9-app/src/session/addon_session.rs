@@ -914,12 +914,27 @@ fn exact_in_world(g: &Geometry, placement: &Transform, k: f64) -> Option<Geo> {
                 }
             }
         }
-        Geometry::Curve(Curve::Nurbs(n)) => Geo::Nurbs {
-            degree: n.degree,
-            points: n.poles.iter().map(|q| p(*q)).collect::<Option<_>>()?,
-            weights: n.weights.clone(),
-            knots: n.knots.clone(),
-        },
+        Geometry::Curve(Curve::Nurbs(n)) => {
+            let g = Geo::Nurbs {
+                degree: n.degree,
+                points: n.poles.iter().map(|q| p(*q)).collect::<Option<_>>()?,
+                weights: n.weights.clone(),
+                knots: n.knots.clone(),
+            };
+            // A reversed curve runs from its last pole: sent the way it runs.
+            if n.reversed { super::addon_polycurve::reversed(g) } else { g }
+        }
+        // Joined curves (a polyline drawn as lines, a rounded rectangle …): one exact NURBS
+        // with a kink at each joint, so add-ons keep the corners and the exact arcs instead of
+        // a dense sample polyline.
+        Geometry::Curve(Curve::Polycurve { segments, reversed }) => {
+            let parts: Vec<Geo> = segments
+                .iter()
+                .map(|c| exact_in_world(&Geometry::Curve(c.clone()), placement, k))
+                .collect::<Option<_>>()?;
+            let joined = super::addon_polycurve::joined(&parts)?;
+            if *reversed { super::addon_polycurve::reversed(joined) } else { joined }
+        }
         Geometry::Surface(srf) => Geo::Surface {
             degree: srf.degree,
             size: srf.size,

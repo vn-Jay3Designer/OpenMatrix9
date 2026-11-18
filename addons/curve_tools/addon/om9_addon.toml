@@ -30,8 +30,8 @@ handler = "om9_addon_session"
 interactive = true
 aliases = ["FitCrv", "Refit"]
 summary = "Làm lại đường cong với ít điểm điều khiển nhất mà vẫn nằm trong dung sai (Rhino FitCrv)."
-steps = ["Select curves to fit, Enter.", "Chỉnh DeleteInput, Degree, FittingTolerance; Enter."]
-options = ["DeleteInput=Yes.", "Degree=3.", "FittingTolerance=0.001."]
+steps = ["Select curves to fit, Enter.", "Chỉnh DeleteInput, Degree, AngleTolerance, FittingTolerance; Enter."]
+options = ["DeleteInput=Yes.", "Degree=3.", "AngleTolerance=1: góc gãy lớn hơn số độ này được giữ nguyên, các đoạn giữa hai góc được làm lại riêng (đoạn thẳng vẫn là đoạn thẳng).", "FittingTolerance=0.001."]
 
 [[commands]]
 id = "CurveBlendCurvesBlendCurves"
@@ -337,9 +337,10 @@ label = "Duplicate Edge"
 handler = "om9_addon_session"
 interactive = true
 mesh_data = true
+brep_data = true
 aliases = ["DupEdge"]
-summary = "Sao chép cạnh của mặt/khối/lưới thành đường cong (Rhino DupEdge)."
-steps = ["Select edges to duplicate, Enter."]
+summary = "Sao chép cạnh của mặt/khối/lưới thành đường cong chính xác (Rhino DupEdge)."
+steps = ["Bấm gần cạnh cần sao chép (hoặc Ctrl+Shift+bấm cạnh), bấm thêm cạnh khác nếu cần, Enter.", "Chọn sẵn cả vật rồi Enter: lấy mọi cạnh của vật (mỗi cạnh một lần)."]
 
 [[commands]]
 id = "CurveCurveFromObjectsDuplicateBorder"

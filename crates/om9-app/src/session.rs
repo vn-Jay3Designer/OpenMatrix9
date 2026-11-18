@@ -4814,6 +4814,7 @@ mod incremental_scene_memory_tests {
     }
 }
 mod angle_isocurve;
+pub mod addon_polycurve;
 mod select_kind;
 pub mod annotation;
 mod apply_crv;

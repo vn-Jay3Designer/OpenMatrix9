@@ -282,6 +282,22 @@ fn matched(
 ) -> Option<Geo> {
     let g = a.geo();
     let g = if at_end { join::reverse(&g)? } else { g };
+    // A curve with kinks (a polyline, lines and arcs joined): only the piece up to the first
+    // kink changes; the rest keeps its corners and exact shape (Rhino moves only the end).
+    let as_ref = CurveRef { exact: Some(g.clone()), closed: false, ..a.clone() };
+    if let Some(&k) = crate::edit::kinks(&as_ref, 1f64.to_radians())
+        .iter()
+        .filter(|t| **t > 1e-9 && **t < 1.0 - 1e-9)
+        .min_by(|x, y| x.total_cmp(y))
+    {
+        let end_piece = join::sub_geo(&g, 0.0, k)?;
+        let rest = join::sub_geo(&g, k, 1.0)?;
+        let piece_ref = CurveRef { exact: Some(end_piece), ..as_ref.clone() };
+        // The kink stays where it is.
+        let moved = matched(&piece_ref, false, target, cont, Some(Continuity::Position))?;
+        let out = join::join(&[moved, rest], 1e-6)?;
+        return if at_end { join::reverse(&out) } else { Some(out) };
+    }
     // A non-rational NURBS to work on.
     let (p, mut pts, mut kv) = match &g {
         Geo::Nurbs {
@@ -291,6 +307,18 @@ fn matched(
             knots,
         } if *degree >= 3 && weights.iter().all(|w| (w - 1.0).abs() < 1e-12) => {
             (*degree, points.clone(), knots.clone())
+        }
+        // A line or a low-degree non-rational curve: raised to degree 3 exactly.
+        _ if om9_addon_geom::exact::Nc::from_geo(&g).is_some_and(|nc| {
+            nc.degree < 3 && nc.points.iter().all(|q| (q[3] - 1.0).abs() < 1e-12)
+        }) =>
+        {
+            let nc = om9_addon_geom::exact::Nc::from_geo(&g)?;
+            let up = nc.elevate(3 - nc.degree);
+            match up.to_geo() {
+                Geo::Nurbs { degree, points, knots, .. } => (degree, points, knots),
+                _ => return None,
+            }
         }
         _ => {
             let n = 24;

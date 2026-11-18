@@ -282,14 +282,124 @@ fn rebuild_flow(e: &Event) -> Reply {
     r
 }
 
+/// The fewest points (degree `degree`) that keep `cv` within `tol`.
+fn fit_whole(cv: &CurveRef, degree: usize, tol: f64) -> Option<Geo> {
+    let samples = even(cv, 600);
+    let mut count = degree + 1 + usize::from(cv.closed) * degree;
+    let mut best = None;
+    while count <= 600 {
+        if let Some(g) = interp::fit(&samples, count, degree, cv.closed) {
+            let ok = deviation(cv, &g) <= tol;
+            best = Some(g);
+            if ok {
+                break;
+            }
+        }
+        count += (count / 4).max(1);
+    }
+    best
+}
+
+/// Normalized parameters where the curve turns more than `angle` (radians): polyline
+/// vertices and full-multiplicity NURBS knots whose tangents differ that much. For a closed
+/// curve its start counts too when it is a kink.
+pub(crate) fn kinks(cv: &CurveRef, angle: f64) -> Vec<f64> {
+    let Some(g) = cv.exact.as_ref() else { return Vec::new() };
+    let candidates: Vec<f64> = match g {
+        Geo::Polyline { points, closed } => {
+            let n = points.len() + usize::from(*closed);
+            if n < 3 {
+                return Vec::new();
+            }
+            (0..n - 1).map(|i| i as f64 / (n - 1) as f64).collect()
+        }
+        Geo::Nurbs { degree, knots, .. } if *degree >= 1 => {
+            let p = *degree;
+            let (a, b) = (knots[p], knots[knots.len() - p - 1]);
+            let mut out = vec![0.0];
+            let mut i = p + 1;
+            while i < knots.len() - p - 1 {
+                let mut m = 1;
+                while i + m < knots.len() - p - 1 && (knots[i + m] - knots[i]).abs() < 1e-12 {
+                    m += 1;
+                }
+                if m >= p {
+                    out.push((knots[i] - a) / (b - a));
+                }
+                i += m;
+            }
+            out
+        }
+        _ => return Vec::new(),
+    };
+    let h = 1e-6;
+    candidates
+        .into_iter()
+        .filter(|&t| {
+            let (before, after) = if t <= 0.0 {
+                if !cv.closed {
+                    return false;
+                }
+                (1.0 - h, h)
+            } else {
+                (t - h, t + h)
+            };
+            let tangent = |u: f64| -> Option<Vec3> {
+                let (p, q) = (om9_addon_geom::eval_geo(g, u - h * 0.5)?, om9_addon_geom::eval_geo(g, u + h * 0.5)?);
+                let d = sub(q, p);
+                let l = (d[0] * d[0] + d[1] * d[1] + d[2] * d[2]).sqrt();
+                (l > 1e-15).then(|| scale(d, 1.0 / l))
+            };
+            match (tangent(before), tangent(after)) {
+                (Some(a), Some(b)) => dot(a, b).clamp(-1.0, 1.0).acos() > angle,
+                _ => false,
+            }
+        })
+        .collect()
+}
+
+/// FitCrv between kinks: each piece fitted alone (a straight piece is a line), joined with the
+/// kinks kept.
+fn fit_between_kinks(cv: &CurveRef, kinks: &[f64], degree: usize, tol: f64) -> Option<Geo> {
+    let g = cv.exact.as_ref()?;
+    let mut cuts: Vec<f64> = kinks.to_vec();
+    let ranges: Vec<(f64, f64)> = if cv.closed {
+        // From kink to kink round the loop.
+        cuts.sort_by(f64::total_cmp);
+        (0..cuts.len()).map(|i| (cuts[i], if i + 1 < cuts.len() { cuts[i + 1] } else { cuts[0] })).collect()
+    } else {
+        cuts.retain(|t| *t > 1e-9 && *t < 1.0 - 1e-9);
+        cuts.insert(0, 0.0);
+        cuts.push(1.0);
+        cuts.windows(2).map(|w| (w[0], w[1])).collect()
+    };
+    let mut pieces = Vec::new();
+    for (a, b) in ranges {
+        let part = om9_addon_geom::join::sub_geo(g, a, b)?;
+        let pr = CurveRef { exact: Some(part.clone()), closed: false, ..cv.clone() };
+        let (s0, s1) = (pr.at(0.0), pr.at(1.0));
+        let straight = (0..=32).all(|i| {
+            let p = pr.at(i as f64 / 32.0);
+            let d = sub(s1, s0);
+            let l2 = dot(d, d).max(1e-300);
+            let t = dot(sub(p, s0), d) / l2;
+            dist(p, add(s0, scale(d, t))) <= tol
+        });
+        pieces.push(if straight { Geo::Line { start: s0, end: s1 } } else { fit_whole(&pr, degree, tol)? });
+    }
+    om9_addon_geom::join::join(&pieces, 1e-6)
+}
+
 pub(crate) fn fit_curve(e: &Event) -> Reply {
     let flow = Flow::new("FitCrv")
         .select_prompt("Select curves to fit")
         .confirm("Fit. Press Enter when done")
         .toggle("DeleteInput", true)
         .num("Degree", 3.0)
+        .num("AngleTolerance", 1.0)
         .num("FittingTolerance", 0.001);
     let make = |c: &Collected| -> Result<Vec<(String, Geo)>, String> {
+        let angle_tol = c.num(&flow, "AngleTolerance").max(0.0).to_radians();
         let degree = c.num(&flow, "Degree").round() as usize;
         if !(1..=11).contains(&degree) {
             return Err("Degree is a whole number from 1 to 11".into());
@@ -300,20 +410,16 @@ pub(crate) fn fit_curve(e: &Event) -> Reply {
         }
         let mut out = Vec::new();
         for cv in CurveRef::all(e) {
-            let samples = even(&cv, 600);
-            let mut count = degree + 1 + usize::from(cv.closed) * degree;
-            let mut best = None;
-            while count <= 600 {
-                if let Some(g) = interp::fit(&samples, count, degree, cv.closed) {
-                    let ok = deviation(&cv, &g) <= tol;
-                    best = Some(g);
-                    if ok {
-                        break;
-                    }
-                }
-                count += (count / 4).max(1);
+            // Rhino's AngleTolerance: kinks sharper than it stay kinks; the pieces between them
+            // are fitted on their own (straight pieces stay lines) and joined again.
+            let kinks = kinks(&cv, angle_tol);
+            if !kinks.is_empty()
+                && let Some(g) = fit_between_kinks(&cv, &kinks, degree, tol)
+            {
+                out.push((cv.id.clone(), g));
+                continue;
             }
-            out.push((cv.id.clone(), best.ok_or("FitCrv failed")?));
+            out.push((cv.id.clone(), fit_whole(&cv, degree, tol).ok_or("FitCrv failed")?));
         }
         Ok(out)
     };

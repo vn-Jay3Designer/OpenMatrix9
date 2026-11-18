@@ -1995,3 +1995,70 @@ fn rebuild_window_picture() {
     om9_app::ui_replay::screenshot(&mut app, size, 1.0, 40, &out).unwrap();
     eprintln!("screenshot: {} ({})", out.display(), app.controller.prompt_text());
 }
+
+/// A rounded rectangle drawn as joined lines and arcs (an OM9 polycurve) reaches add-ons as one
+/// exact curve: Offset gives an exact rounded rectangle with a few control points, and Refit
+/// keeps its four straight sides.
+#[test]
+fn polycurves_reach_addons_exactly() {
+    use om9_core::model::Entity;
+    use std::f64::consts::{FRAC_PI_2, PI};
+    let tmp = std::env::temp_dir().join(format!("om9-app-polycurve-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let feats = features();
+    let names: Vec<FeatureName> = feats.iter().map(|(id, c)| FeatureName { id, command: c.as_deref() }).collect();
+    let (w, h, r) = (10.0, 6.0, 1.0);
+    let line = |a: [f64; 3], b: [f64; 3]| Curve::Line { start: a, end: b, domain: [0.0, 1.0] };
+    let arc = |c: [f64; 3], a0: f64| Curve::Circle {
+        center: c,
+        x: [1.0, 0.0, 0.0],
+        y: [0.0, 1.0, 0.0],
+        radius: r,
+        domain: [a0, a0 + FRAC_PI_2],
+        angle_domain: Some([a0, a0 + FRAC_PI_2]),
+    };
+    let rect = Curve::Polycurve {
+        segments: vec![
+            line([r, 0.0, 0.0], [w - r, 0.0, 0.0]),
+            arc([w - r, r, 0.0], -FRAC_PI_2),
+            line([w, r, 0.0], [w, h - r, 0.0]),
+            arc([w - r, h - r, 0.0], 0.0),
+            line([w - r, h, 0.0], [r, h, 0.0]),
+            arc([r, h - r, 0.0], FRAC_PI_2),
+            line([0.0, h - r, 0.0], [0.0, r, 0.0]),
+            arc([r, r, 0.0], PI),
+        ],
+        reversed: false,
+    };
+    let mut doc = Document::new("polycurve");
+    let ent = Entity::new("Rounded rectangle", Geometry::Curve(rect), None);
+    let id = ent.id;
+    doc.entities.insert(id, ent);
+    let mut c = Controller::new(doc, Limits::default()).unwrap();
+    c.attach_addons(host(&tmp), &names);
+    c.clear_selection();
+    c.submit("Offset").unwrap();
+    c.select_root(Some(id), c.addon_collects_objects()).unwrap();
+    c.note_session_pick(Some([5.0, 0.0, 0.0]));
+    c.refresh_addon_session();
+    c.submit("Distance=1").unwrap();
+    let before: Vec<_> = c.document().entities.keys().copied().collect();
+    c.session_point([20.0, 3.0, 0.0]).unwrap();
+    for _ in 0..2 {
+        if c.addon_session().is_some() {
+            c.submit("").unwrap();
+        }
+    }
+    let new: Vec<_> = c.document().entities.iter().filter(|(k, _)| !before.contains(k)).map(|(_, e)| e.geometry.clone()).collect();
+    assert_eq!(new.len(), 1, "{}", c.prompt_text());
+    let Geometry::Curve(Curve::Nurbs(n)) = &new[0] else { panic!("{:?}", new[0]) };
+    assert!(n.poles.len() <= 20, "{} control points", n.poles.len());
+    // Outward by 1: the rounded rectangle 12 × 8 with r = 2 (poles of the straight sides on it).
+    for p in &n.poles {
+        let qx = (p[0] - w / 2.0).abs() - (w / 2.0 + 1.0 - 2.0);
+        let qy = (p[1] - h / 2.0).abs() - (h / 2.0 + 1.0 - 2.0);
+        assert!(qx.max(qy) <= 2.0 + 1e-9, "pole {p:?} outside the offset outline");
+    }
+    fs::remove_dir_all(&tmp).unwrap();
+}

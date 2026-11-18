@@ -887,7 +887,24 @@ pub(crate) fn soft_edit(e: &Event) -> Reply {
         }
         // Work on control points: the curve as a NURBS (refitted when it is not one).
         let g = match cv.geo() {
-            g @ Geo::Nurbs { degree, .. } if degree >= 2 => g,
+            g @ Geo::Nurbs { degree, .. } if degree >= 1 && !matches!(&g, Geo::Nurbs { points, .. } if points.len() < 3) => g,
+            // A polyline: its vertices are its control points (degree 1, knots by length), so
+            // the corners away from the edit stay where they are.
+            Geo::Polyline { points, closed } if points.len() + usize::from(closed) >= 3 => {
+                let mut p = points.clone();
+                if closed {
+                    p.push(p[0]);
+                }
+                let mut k = vec![0.0, 0.0];
+                let mut acc = 0.0;
+                for w in p.windows(2) {
+                    acc += dist(w[0], w[1]);
+                    k.push(acc);
+                }
+                k.push(acc);
+                let knots: Vec<f64> = k.iter().map(|x| x / acc.max(1e-300)).collect();
+                Geo::Nurbs { degree: 1, points: p, weights: Vec::new(), knots }
+            }
             _ => {
                 let pts: Vec<Vec3> = (0..=200).map(|i| cv.at(i as f64 / 200.0)).collect();
                 let pts = if cv.closed { pts[..200].to_vec() } else { pts };

@@ -11,10 +11,11 @@ Làm lại đường cong với ít điểm điều khiển nhất mà vẫn n�
 ## Cách dùng
 
 1. Select curves to fit, Enter.
-2. Chỉnh DeleteInput, Degree, FittingTolerance; Enter.
+2. Chỉnh DeleteInput, Degree, AngleTolerance, FittingTolerance; Enter.
 
 ## Tuỳ chọn (lệnh phụ)
 
 - DeleteInput=Yes.
 - Degree=3.
+- AngleTolerance=1: góc gãy lớn hơn số độ này được giữ nguyên, các đoạn giữa hai góc được làm lại riêng (đoạn thẳng vẫn là đoạn thẳng).
 - FittingTolerance=0.001.
