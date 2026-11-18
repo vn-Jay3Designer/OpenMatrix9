@@ -34,7 +34,8 @@ pub const EXACT_PREVIEW_TRIANGLES: usize = 5_000;
 
 /// Whether the pointer moved enough to preview again.
 pub fn hover_changed(prev: Option<Vec3>, current: Vec3) -> bool {
-    prev.is_none_or(|p| dist(p, current) >= HOVER_EPSILON_MM)
+    // A NaN position never counts as a move, and never blocks the next real one.
+    current.iter().all(|v| v.is_finite()) && prev.is_none_or(|p| !(dist(p, current) < HOVER_EPSILON_MM))
 }
 
 /// A 4×4 row-major matrix the host can draw: finite, last row (0, 0, 0, 1) and its 3×3 part
@@ -46,7 +47,9 @@ pub fn is_valid_preview_matrix(m: &[f64; 16]) -> bool {
     let a = |r: usize, c: usize| m[r * 4 + c];
     let det = a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1)) - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
         + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0));
-    det.abs() > 1e-12
+    // Relative to the matrix's own scale: a uniform scale of 1e-4 is still a valid preview.
+    let scale = (0..3).flat_map(|r| (0..3).map(move |c| (r, c))).map(|(r, c)| a(r, c).abs()).fold(0.0, f64::max);
+    scale > 0.0 && det.abs() > 1e-12 * scale.powi(3)
 }
 
 /// At most `segments` segments along a polyline, by length; a single segment is cut into
@@ -175,11 +178,15 @@ mod tests {
         assert!(hover_changed(None, [0.0; 3]));
         assert!(!hover_changed(Some([0.0; 3]), [5e-5, 0.0, 0.0]));
         assert!(hover_changed(Some([0.0; 3]), [2e-4, 0.0, 0.0]));
+        assert!(!hover_changed(None, [f64::NAN, 0.0, 0.0]), "a NaN position is no move");
+        assert!(hover_changed(Some([f64::NAN; 3]), [1.0, 0.0, 0.0]), "nor blocks the next one");
         let id = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
         assert!(is_valid_preview_matrix(&id));
         let mut flat = id;
         flat[10] = 0.0;
         assert!(!is_valid_preview_matrix(&flat), "singular");
+        let tiny: [f64; 16] = std::array::from_fn(|i| if i == 15 { 1.0 } else if i % 5 == 0 { 1e-4 } else { 0.0 });
+        assert!(is_valid_preview_matrix(&tiny), "a small uniform scale is not singular");
         let mut nan = id;
         nan[3] = f64::NAN;
         assert!(!is_valid_preview_matrix(&nan));

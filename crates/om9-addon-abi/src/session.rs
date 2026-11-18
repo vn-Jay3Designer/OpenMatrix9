@@ -557,6 +557,10 @@ pub const SELECTION_KEY: &str = "om9.selection_key";
 /// the host then sends the selection again.
 pub const SELECTION_CACHE_MISS: &str = "om9: selection cache miss";
 
+/// Setting sent (with no other meaning) when the host ends a command without `done` (Escape,
+/// an error): the add-on drops the selection it keeps and runs no step.
+pub const SELECTION_RELEASE: &str = "om9.selection_release";
+
 std::thread_local! {
     /// The last keyed selection (moved in and out of each event, never copied per step).
     static SELECTION_CACHE: std::cell::RefCell<Option<(u64, Vec<Selected>)>> = const { std::cell::RefCell::new(None) };
@@ -576,6 +580,10 @@ pub fn session_json<T: Interactive>(input: &[u8]) -> (i32, Vec<u8>) {
             Ok(e) => e,
             Err(e) => return Err((crate::INVOKE_BAD_INPUT, format!("event: {e}"))),
         };
+        if event.settings.contains_key(SELECTION_RELEASE) {
+            SELECTION_CACHE.with(|c| c.borrow_mut().take());
+            return Ok(Reply::default());
+        }
         if !T::accepts(&event.command) {
             return Err((
                 crate::INVOKE_ERROR,
@@ -596,9 +604,10 @@ pub fn session_json<T: Interactive>(input: &[u8]) -> (i32, Vec<u8>) {
             }
         }
         let reply = T::step(&event).map_err(|e| (crate::INVOKE_ERROR, e));
-        // Kept while the command runs; a finished command lets it go.
+        // Kept while the command runs; a finished or failed step lets it go (the host cancels
+        // the command after an error and would never ask for it again).
         if let Some(key) = key
-            && !matches!(&reply, Ok(r) if r.done)
+            && matches!(&reply, Ok(r) if !r.done)
         {
             let sel = std::mem::take(&mut event.selection);
             SELECTION_CACHE.with(|c| *c.borrow_mut() = Some((key, sel)));
@@ -900,6 +909,68 @@ mod tests {
         let min: Event =
             serde_json::from_str(r#"{"command":"X","input":{"kind":"enter"}}"#).unwrap();
         assert_eq!(min.input, Input::Enter);
+    }
+
+    /// Counts the selection it gets; `fail` in the state makes the step fail, Enter finishes.
+    struct Counter;
+    impl Interactive for Counter {
+        const SESSION_COMMANDS: &'static [&'static str] = &["Count"];
+        fn step(e: &Event) -> Result<Reply, String> {
+            if e.state == serde_json::json!("fail") {
+                return Err("failed".into());
+            }
+            let mut r = Reply::ask("n", Value::from(e.selection.len()));
+            r.done = e.input == Input::Enter;
+            Ok(r)
+        }
+    }
+
+    fn count(key: u64, n: usize, state: Value, input: Input, release: bool) -> Result<Reply, String> {
+        let mut settings = BTreeMap::new();
+        settings.insert(SELECTION_KEY.to_owned(), Value::from(key));
+        if release {
+            settings.insert(SELECTION_RELEASE.to_owned(), Value::Bool(true));
+        }
+        let e = Event {
+            command: "Count".into(),
+            input,
+            state,
+            plane: Plane::default(),
+            selection: (0..n).map(|i| Selected { id: i.to_string(), ..Default::default() }).collect(),
+            pick: None,
+            settings,
+        };
+        let (code, out) = session_json::<Counter>(&serde_json::to_vec(&e).unwrap());
+        if code == crate::INVOKE_OK {
+            Ok(serde_json::from_slice(&out).unwrap())
+        } else {
+            Err(String::from_utf8_lossy(&out).into_owned())
+        }
+    }
+
+    #[test]
+    fn the_kept_selection_is_reused_and_released() {
+        let hover = || Input::Hover { point: [0.0; 3] };
+        // Kept after a step, reused by the next one with the same key.
+        let r = count(7, 3, Value::Null, Input::Start, false).unwrap();
+        assert!(r.selection_cached);
+        assert_eq!(count(7, 0, Value::Null, hover(), false).unwrap().state, Value::from(3));
+        // Another key misses.
+        assert!(count(8, 0, Value::Null, hover(), false).unwrap_err().contains(SELECTION_CACHE_MISS));
+        // A failed step lets it go.
+        count(7, 3, Value::Null, Input::Start, false).unwrap();
+        assert!(count(7, 0, Value::from("fail"), hover(), false).is_err());
+        assert!(count(7, 0, Value::Null, hover(), false).unwrap_err().contains(SELECTION_CACHE_MISS));
+        // So does the host's release (Escape), without running a step.
+        count(7, 3, Value::Null, Input::Start, false).unwrap();
+        let r = count(7, 0, Value::from("fail"), Input::Selection, true).unwrap();
+        assert!(!r.selection_cached && !r.done);
+        assert!(count(7, 0, Value::Null, hover(), false).unwrap_err().contains(SELECTION_CACHE_MISS));
+        // And a finished command.
+        count(7, 3, Value::Null, Input::Start, false).unwrap();
+        let r = count(7, 0, Value::Null, Input::Enter, false).unwrap();
+        assert!(r.done && !r.selection_cached && r.state == Value::from(3));
+        assert!(count(7, 0, Value::Null, hover(), false).unwrap_err().contains(SELECTION_CACHE_MISS));
     }
 
     #[test]

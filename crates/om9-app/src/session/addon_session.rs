@@ -963,7 +963,9 @@ fn valid_preview_matrix(m: &[f64; 16]) -> bool {
     let a = |r: usize, c: usize| m[r * 4 + c];
     let det = a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1)) - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
         + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0));
-    det.abs() > 1e-12
+    // Relative to the matrix's own scale: a uniform scale of 1e-4 is still a valid preview.
+    let scale = (0..3).flat_map(|r| (0..3).map(move |c| (r, c))).map(|(r, c)| a(r, c).abs()).fold(0.0, f64::max);
+    scale > 0.0 && det.abs() > 1e-12 * scale.powi(3)
 }
 
 /// A world gem record back into the object's own frame (inverse of [`gem_in_world`]).
@@ -1197,6 +1199,17 @@ impl Controller {
         self.selection.len().hash(&mut h);
         k.to_bits().hash(&mut h);
         (mesh_data, brep_data).hash(&mut h);
+        // A display rebuild keeps the epoch and may reuse the object table's address: the
+        // geometry revisions and display buffers of each selected object tell it apart.
+        // One straight pass with a cheap fold (about 0.1 ms for 20 000 objects); a change to any
+        // object only costs one resend.
+        let mut f: u64 = 0xcbf2_9ce4_8422_2325;
+        for object in &scene.objects {
+            for x in [object.leaf_generation, object.leaf_geometry_revision, std::ptr::from_ref(object.buffers.as_ref()) as usize as u64] {
+                f = (f ^ x).wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        f.hash(&mut h);
         Some(h.finish())
     }
 
@@ -1300,35 +1313,50 @@ impl Controller {
             PreviewShape::Curve(p) => p.len().saturating_sub(1),
             PreviewShape::Box(_) => 12,
         };
-        let total: usize = shapes.iter().map(cost).sum::<usize>() * transforms.len();
-        // Every object when it fits, else every n-th one plus the whole selection's box.
-        let stride = total.div_ceil(PREVIEW_SEGMENT_BUDGET).max(1);
-        if stride > 1 {
-            let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
-            for sh in shapes.iter() {
-                let pts: &[Point3] = match sh {
-                    PreviewShape::Curve(p) => p,
-                    PreviewShape::Box(b) => b,
-                };
-                for p in pts {
-                    for i in 0..3 {
-                        lo[i] = lo[i].min(p[i]);
-                        hi[i] = hi[i].max(p[i]);
-                    }
+        let draw = |sh: &PreviewShape, t: &Transform, out: &mut Vec<[Point3; 2]>| match sh {
+            PreviewShape::Curve(pts) => {
+                let w: Vec<Point3> = pts.iter().filter_map(|p| t.point(*p).ok()).collect();
+                out.extend(w.windows(2).map(|x| [x[0], x[1]]));
+            }
+            PreviewShape::Box([lo, hi]) => box_lines(*lo, *hi, t, out),
+        };
+        let per_copy: usize = shapes.iter().map(cost).sum::<usize>().max(1);
+        if per_copy.saturating_mul(transforms.len()) <= PREVIEW_SEGMENT_BUDGET {
+            for t in &transforms {
+                for sh in shapes.iter() {
+                    draw(sh, t, &mut lines);
                 }
             }
-            for t in &transforms {
-                box_lines(lo, hi, t, &mut lines);
+            return lines;
+        }
+        // Too much to draw: evenly spread copies (an array of 10 000), each with the whole
+        // selection's box, then evenly spread objects, never past the budget.
+        let n = (PREVIEW_SEGMENT_BUDGET / (per_copy + 12)).clamp(1, transforms.len());
+        let copies: Vec<&Transform> = (0..n).map(|i| &transforms[i * transforms.len() / n]).collect();
+        let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+        for sh in shapes.iter() {
+            let pts: &[Point3] = match sh {
+                PreviewShape::Curve(p) => p,
+                PreviewShape::Box(b) => b,
+            };
+            for p in pts {
+                for i in 0..3 {
+                    lo[i] = lo[i].min(p[i]);
+                    hi[i] = hi[i].max(p[i]);
+                }
             }
         }
+        for t in &copies {
+            box_lines(lo, hi, t, &mut lines);
+        }
+        let room = PREVIEW_SEGMENT_BUDGET.saturating_sub(lines.len()).max(1);
+        let stride = (per_copy * copies.len()).div_ceil(room).max(1);
+        // The stride is by count; an object that would pass the budget is skipped, so a run of
+        // long curves cannot push it over.
         for sh in shapes.iter().step_by(stride) {
-            for t in &transforms {
-                match sh {
-                    PreviewShape::Curve(pts) => {
-                        let w: Vec<Point3> = pts.iter().filter_map(|p| t.point(*p).ok()).collect();
-                        lines.extend(w.windows(2).map(|x| [x[0], x[1]]));
-                    }
-                    PreviewShape::Box([lo, hi]) => box_lines(*lo, *hi, t, &mut lines),
+            for t in &copies {
+                if lines.len() + cost(sh) <= PREVIEW_SEGMENT_BUDGET {
+                    draw(sh, t, &mut lines);
                 }
             }
         }
@@ -1431,6 +1459,14 @@ impl Controller {
         // is sent again. With 20 000 stones that was most of the cost of every step.
         let key = if self.addon_selection_reuse { self.selection_key(k, session.mesh_data, session.brep_data) } else { None };
         let reuse = key.is_some() && session.sel_key == key;
+        let selection = if reuse {
+            Vec::new()
+        } else {
+            self.session_selection(k, session.mesh_data, session.brep_data)
+        };
+        // Nothing to keep (a selected id with no scene object yet): no key, or the add-on would
+        // read the empty selection as "use the kept one".
+        let key = if reuse || !selection.is_empty() { key } else { None };
         let mut settings: std::collections::BTreeMap<String, Value> = settings;
         if let Some(key) = key {
             settings.insert(s::SELECTION_KEY.into(), Value::from(key));
@@ -1444,11 +1480,7 @@ impl Controller {
                 x: plane.x,
                 y: plane.y,
             },
-            selection: if reuse {
-                Vec::new()
-            } else {
-                self.session_selection(k, session.mesh_data, session.brep_data)
-            },
+            selection,
             pick: session.pick.map(|p| mm(p, k)),
             settings,
         };
@@ -1570,7 +1602,8 @@ impl Controller {
         let k = self.document().page_unit.factor();
         if let Some(s) = self.addon_session.as_mut()
             && matches!(s.reply.want, Want::Point | Want::Number)
-            && s.hover_at.is_none_or(|h| s::dist(mm(h, k), mm(point, k)) >= HOVER_EPSILON_MM)
+            && point.iter().all(|v| v.is_finite())
+            && s.hover_at.is_none_or(|h| !(s::dist(mm(h, k), mm(point, k)) < HOVER_EPSILON_MM))
         {
             s.hover_at = Some(point);
             let k = self.document().page_unit.factor();
@@ -1743,6 +1776,9 @@ impl Controller {
     pub fn cancel_addon_session(&mut self) -> bool {
         match self.addon_session.take() {
             Some(s) => {
+                if s.sel_key.is_some() {
+                    self.release_addon_selection(&s.code);
+                }
                 self.events.emit(
                     crate::command_events::EventKind::Finished,
                     &s.code,
@@ -1752,6 +1788,29 @@ impl Controller {
                 true
             }
             None => false,
+        }
+    }
+
+    /// Let the add-on drop the selection it keeps for a command that ends without `done`
+    /// (Escape, an error): with 20 000 stones that is hundreds of MB.
+    fn release_addon_selection(&self, code: &str) {
+        let mut settings = std::collections::BTreeMap::new();
+        settings.insert(s::SELECTION_RELEASE.to_owned(), Value::Bool(true));
+        let event = Event {
+            command: code.to_owned(),
+            input: Input::Selection,
+            state: Value::Null,
+            plane: s::Plane::default(),
+            selection: Vec::new(),
+            pick: None,
+            settings,
+        };
+        if let (Some(host), Ok(bytes)) = (self.addons.clone(), serde_json::to_vec(&event))
+            && let Ok(mut host) = host.lock()
+        {
+            // Best effort. Only sent after the add-on said it keeps the selection, so it reads
+            // the release flag and runs no step.
+            let _ = host.session(code, &bytes);
         }
     }
 

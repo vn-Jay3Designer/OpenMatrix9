@@ -2330,6 +2330,35 @@ fn curves_scene(n: usize) -> Document {
     doc
 }
 
+/// The transform preview never passes its 30 000-segment budget: long curves mixed with stones,
+/// and a polar array of 10 000 copies of one stone or one curve.
+#[test]
+fn transform_previews_stay_within_the_segment_budget() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-budget-{}", std::process::id()));
+    let mut mixed = stones(600, 3);
+    for (id, e) in curves_scene(600).entities {
+        mixed.entities.insert(id, e);
+    }
+    let hover = || vec!["~1,2,0", "~3,1,0", "~2,2,0"];
+    let mut c = doc_controller(mixed, &tmp);
+    let (previews, _, _) = drive(&mut c, "TopIconMove", &[vec!["@0,0,0"], hover(), vec!["@5,3,0"]].concat());
+    for p in &previews {
+        assert!(!p.is_empty() && p.len() <= 30_000, "mixed: {} lines", p.len());
+    }
+    assert!(drive_errors().is_empty(), "{:?}", drive_errors());
+    for doc in [stones(1, 3), curves_scene(1)] {
+        let mut c = doc_controller(doc, &tmp);
+        let (previews, _, _) = drive(&mut c, "TransformArrayPolar", &[vec!["@0,0,0", "10000"], hover(), vec![""]].concat());
+        assert!(!previews.is_empty());
+        for p in &previews {
+            assert!(!p.is_empty() && p.len() <= 30_000, "array: {} lines", p.len());
+        }
+        // Committing 10 000 copies may meet the document's point budget (a core limit).
+        assert!(drive_errors().iter().all(|e| e.contains("Budget")), "{:?}", drive_errors());
+    }
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 /// Release only (`cargo test --release … -- --ignored --nocapture`, `OM9_BENCH_OUT=<file.md>`):
 /// the whole round trip of a pointer move (om9-app → JSON → add-on → preview) for Move, Bend
 /// (and Rotate, Polar Array, Stretch) on 500 curves, 200 stones × 1 922 triangles and 20 000
