@@ -17,7 +17,7 @@ use om9_addon_abi::session::{
     Want, add, apply, compose, cross, dist, dot, fmt, mirror, norm, rotation, scale, scale_about,
     sub, translation, unit,
 };
-use om9_addon_geom::cmd::{Collected, Flow, Show, deform_selection, deformed};
+use om9_addon_geom::cmd::{Collected, Flow, Show, deform_selection};
 use om9_addon_geom::gems::PlacedGem;
 use om9_addon_geom::mesh::{self, Frame};
 use om9_addon_geom::path::{Path, Target, frame_matrix};
@@ -191,26 +191,12 @@ fn finish_deform(e: &Event, label: &str, f: &dyn Fn(Vec3) -> Vec3) -> Result<Rep
     Ok(r)
 }
 
-/// The deformed selection as preview wires (meshes and curves).
+/// The deformed selection as a light preview (`preview_opt`): the real shape for a small
+/// selection, otherwise coarse curves and deformed boxes for at most 256 objects. The exact
+/// deformation runs only when the command finishes.
 fn show_deform(e: &Event, f: &dyn Fn(Vec3) -> Vec3) -> Show {
-    let mut geo = Vec::new();
-    for s in e.selection.iter().take(50) {
-        if let Some(g) = deformed(s, f) {
-            match g {
-                Geo::Mesh {
-                    vertices,
-                    triangles,
-                    ..
-                } if triangles.len() > 20_000 => {
-                    // Big meshes preview as their deformed box corners only.
-                    let _ = (vertices, triangles);
-                }
-                g => geo.push(g),
-            }
-        }
-    }
     Show {
-        geo,
+        geo: om9_addon_geom::preview_opt::preview_deformed_selection(&e.selection, f),
         ..Default::default()
     }
 }

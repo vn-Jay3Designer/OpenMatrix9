@@ -455,6 +455,11 @@ pub struct Reply {
     /// options ("Maximum deviation: 0.012").
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub notes: Vec<(String, String)>,
+    /// The add-on keeps the selection of this step under the event's
+    /// [`SELECTION_KEY`]: the host may send the next steps with the same key and no selection
+    /// (pointer moves over a large selection), set by [`session_json`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub selection_cached: bool,
 }
 
 /// New geometry for one selected object.
@@ -538,15 +543,36 @@ pub trait Interactive {
 }
 
 /// Largest event or reply accepted across the boundary.
-pub const MAX_JSON: usize = 64 << 20;
+/// Largest event or reply (bytes). A selection of 20 000 stones with their triangles (the
+/// host sends at most 2 million) is about 120 MB of JSON, once per command: the selection is
+/// then kept by the add-on (see [`SELECTION_KEY`]).
+pub const MAX_JSON: usize = 256 << 20;
+
+/// Settings key of the selection's key (a number the host derives from what is selected and
+/// the scene). An event that carries it and an empty selection means "the selection of the
+/// last step with this key" (see [`Reply::selection_cached`]); commands never see the key.
+pub const SELECTION_KEY: &str = "om9.selection_key";
+
+/// The error an add-on answers when it no longer holds the selection a keyed event refers to;
+/// the host then sends the selection again.
+pub const SELECTION_CACHE_MISS: &str = "om9: selection cache miss";
+
+std::thread_local! {
+    /// The last keyed selection (moved in and out of each event, never copied per step).
+    static SELECTION_CACHE: std::cell::RefCell<Option<(u64, Vec<Selected>)>> = const { std::cell::RefCell::new(None) };
+}
 
 /// Body of the exported `om9_addon_session`: JSON in, JSON out, panics caught.
+///
+/// A pointer move over a large selection (20 000 stones) would otherwise send and parse every
+/// object, with its triangles, on each move: a keyed event without a selection takes the
+/// selection kept from the last keyed step instead.
 pub fn session_json<T: Interactive>(input: &[u8]) -> (i32, Vec<u8>) {
     if input.len() > MAX_JSON {
         return (crate::INVOKE_BAD_INPUT, b"\"event too large\"".to_vec());
     }
     let result = std::panic::catch_unwind(|| {
-        let event: Event = match serde_json::from_slice(input) {
+        let mut event: Event = match serde_json::from_slice(input) {
             Ok(e) => e,
             Err(e) => return Err((crate::INVOKE_BAD_INPUT, format!("event: {e}"))),
         };
@@ -556,7 +582,31 @@ pub fn session_json<T: Interactive>(input: &[u8]) -> (i32, Vec<u8>) {
                 format!("lệnh {} không tương tác", event.command),
             ));
         }
-        T::step(&event).map_err(|e| (crate::INVOKE_ERROR, e))
+        let key = event.settings.remove(SELECTION_KEY).and_then(|v| v.as_u64());
+        if let Some(key) = key
+            && event.selection.is_empty()
+        {
+            let cached = SELECTION_CACHE.with(|c| match c.borrow_mut().take() {
+                Some((k, sel)) if k == key => Some(sel),
+                _ => None,
+            });
+            match cached {
+                Some(sel) => event.selection = sel,
+                None => return Err((crate::INVOKE_ERROR, SELECTION_CACHE_MISS.to_owned())),
+            }
+        }
+        let reply = T::step(&event).map_err(|e| (crate::INVOKE_ERROR, e));
+        // Kept while the command runs; a finished command lets it go.
+        if let Some(key) = key
+            && !matches!(&reply, Ok(r) if r.done)
+        {
+            let sel = std::mem::take(&mut event.selection);
+            SELECTION_CACHE.with(|c| *c.borrow_mut() = Some((key, sel)));
+        }
+        reply.map(|mut r| {
+            r.selection_cached = key.is_some() && !r.done;
+            r
+        })
     });
     match result {
         Ok(Ok(reply)) => match serde_json::to_vec(&reply) {

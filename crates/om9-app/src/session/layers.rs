@@ -266,14 +266,17 @@ impl Controller {
     }
     /// Selection in pick order, then any remaining ids in stable set order.
     pub fn selected_ordered(&self) -> Vec<ObjectId> {
-        let mut ordered: Vec<ObjectId> = self
-            .selection_order
-            .iter()
-            .filter(|id| self.selection.contains(id))
-            .copied()
-            .collect();
+        let mut ordered: Vec<ObjectId> = Vec::with_capacity(self.selection.len());
+        // A set of the ids already placed: 20 000 selected objects stay linear (a `contains`
+        // on the vector was quadratic, ~100 ms per call).
+        let mut placed = std::collections::BTreeSet::new();
+        for id in &self.selection_order {
+            if self.selection.contains(id) && placed.insert(*id) {
+                ordered.push(*id);
+            }
+        }
         for id in &self.selection {
-            if !ordered.contains(id) {
+            if placed.insert(*id) {
                 ordered.push(*id);
             }
         }

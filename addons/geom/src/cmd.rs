@@ -657,7 +657,8 @@ impl Flow {
             .want(want)
             .preview(shown.geo)
             .rubber(shown.rubber.or_else(|| c.points().last().copied()));
-        r.preview_transforms = shown.transforms;
+        // Only matrices the host can draw (finite, affine, not flat).
+        r.preview_transforms = shown.transforms.into_iter().filter(crate::preview_opt::is_valid_preview_matrix).collect();
         match error {
             Some(why) => r.refuse(why),
             None => r,

@@ -111,8 +111,10 @@ pub trait Runtime: Send {
     }
 }
 
-/// Largest JSON step accepted in either direction.
-pub const MAX_SESSION_JSON: usize = 64 << 20;
+/// Largest JSON step accepted in either direction: a selection of 20 000 stones with their
+/// triangles, or their deformed meshes coming back, is about 120 MB once per command (the
+/// add-on keeps the selection between steps). Same as the add-on side's `MAX_JSON`.
+pub const MAX_SESSION_JSON: usize = 256 << 20;
 
 /// Runtime cho add-on `library`: không chạy mã, host tự đăng ký assets.
 pub struct DataRuntime;

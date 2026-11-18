@@ -17,6 +17,7 @@ pub mod exact;
 pub mod fit;
 pub mod gems;
 pub mod interp;
+pub mod preview_opt;
 pub mod join;
 pub mod memo;
 pub mod mesh;

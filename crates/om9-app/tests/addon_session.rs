@@ -1995,3 +1995,403 @@ fn rebuild_window_picture() {
     om9_app::ui_replay::screenshot(&mut app, size, 1.0, 40, &out).unwrap();
     eprintln!("screenshot: {} ({})", out.display(), app.controller.prompt_text());
 }
+
+/// Many stones as meshes (a pavé): `n` grids of `side`×`side` vertices (2·(side−1)² triangles).
+fn stones(n: usize, side: usize) -> Document {
+    let mut doc = Document::new("stones");
+    let layer = doc.current_layer;
+    let per_row = (n as f64).sqrt().ceil() as usize;
+    for k in 0..n {
+        let (ox, oy) = ((k % per_row) as f64 * 1.2, (k / per_row) as f64 * 1.2);
+        let h = 1.0 / (side - 1) as f64;
+        let vertices: Vec<[f64; 3]> = (0..side * side)
+            .map(|i| {
+                let (u, v) = ((i % side) as f64 * h, (i / side) as f64 * h);
+                [ox + u, oy + v, 0.3 * (u * (1.0 - u) + v * (1.0 - v))]
+            })
+            .collect();
+        let mut faces = Vec::new();
+        for j in 0..side - 1 {
+            for i in 0..side - 1 {
+                let a = (j * side + i) as u32;
+                let s = side as u32;
+                faces.push(vec![a, a + 1, a + s + 1]);
+                faces.push(vec![a, a + s + 1, a + s]);
+            }
+        }
+        let m = om9_core::geometry::Mesh { vertices, faces, normals: vec![], colors: vec![], corner_uvs: vec![] };
+        let e = om9_core::model::Entity::new("Stone", Geometry::Mesh(m), layer);
+        doc.entities.insert(e.id, e);
+    }
+    doc
+}
+
+fn stone_controller(n: usize, side: usize, tmp: &Path) -> Controller {
+    doc_controller(stones(n, side), tmp)
+}
+
+/// A controller on `doc` with the add-ons, the desktop app's limits and everything selected.
+fn doc_controller(doc: Document, tmp: &Path) -> Controller {
+    let feats = features();
+    let names: Vec<FeatureName> = feats.iter().map(|(id, c)| FeatureName { id, command: c.as_deref() }).collect();
+    // The desktop app's limits (from this machine's memory), as a real file opens with.
+    let mut c = Controller::new(doc, om9_app::document_limits()).unwrap();
+    // A fresh add-on folder each time (one install per folder).
+    static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let dir = tmp.join(format!("run{}", RUNS.fetch_add(1, std::sync::atomic::Ordering::SeqCst)));
+    fs::create_dir_all(&dir).unwrap();
+    c.attach_addons(host(&dir), &names);
+    let ids: Vec<_> = c.document().entities.keys().copied().collect();
+    c.select_objects(&ids).unwrap();
+    c
+}
+
+/// Pointer moves reuse the selection the add-on keeps (nothing sent again), the preview is
+/// the same, a lost cache is refilled, and the result is the same as without any pointer move:
+/// Stretch on 40 stones (its end follows the pointer).
+#[test]
+fn hover_reuses_the_kept_selection_and_changes_no_result() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-hover-cache-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let run = |hovers: bool, evict: bool| -> (Vec<String>, usize) {
+        let mut c = stone_controller(40, 6, &tmp);
+        c.run_addon_command("TransformStretch").unwrap();
+        c.refresh_addon_session();
+        c.session_point([0.0, 0.0, 0.0]).unwrap();
+        c.session_point([4.0, 0.0, 0.0]).unwrap();
+        let mut previews = 0;
+        if hovers {
+            for i in 0..5 {
+                if evict && i == 2 {
+                    // Another keyed event in the add-on drops what it kept: the next move must
+                    // send the selection again by itself.
+                    let other = serde_json::json!({"command": "TransformStretch", "input": "start", "settings": {"om9.selection_key": 1u64}, "selection": []});
+                    let _ = om9_addon_abi::session::session_json::<om9_matrix::Matrix>(&serde_json::to_vec(&other).unwrap());
+                }
+                c.session_hover([3.0 + i as f64, 2.0, 0.0]);
+                previews = c.addon_session().unwrap().hover_lines.len();
+                assert!(previews > 0, "move {i}: a preview");
+            }
+        }
+        c.session_point([6.0, 0.0, 0.0]).unwrap();
+        while c.addon_session().is_some() {
+            c.submit("").unwrap();
+        }
+        // Compared as text in a fixed order (entity ids differ between runs).
+        let mut g: Vec<String> = c.document().entities.values().map(|e| format!("{:?}", e.geometry)).collect();
+        g.sort();
+        (g, previews)
+    };
+    let (plain, _) = run(false, false);
+    let (moved, n) = run(true, false);
+    let (evicted, _) = run(true, true);
+    assert!(n > 0);
+    assert_eq!(plain.len(), 40);
+    assert!(plain == moved, "pointer moves change no result");
+    assert!(plain == evicted, "a refilled cache changes no result");
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
+
+/// Every point of every object (mesh vertices, curve and surface poles, points), by object id.
+fn coordinates(c: &Controller) -> std::collections::BTreeMap<String, Vec<[f64; 3]>> {
+    use om9_core::geometry::Curve as C;
+    fn curve_pts(c: &C, out: &mut Vec<[f64; 3]>) {
+        match c {
+            C::Line { start, end, .. } => out.extend([*start, *end]),
+            C::Circle { center, x, y, radius, .. } => out.extend([*center, *x, *y, [*radius, 0.0, 0.0]]),
+            C::Nurbs(n) => {
+                out.extend(n.poles.iter().copied());
+                out.extend(n.weights.iter().map(|w| [*w, 0.0, 0.0]));
+            }
+            C::Polycurve { segments, .. } => segments.iter().for_each(|s| curve_pts(s, out)),
+        }
+    }
+    c.document()
+        .entities
+        .iter()
+        .map(|(id, e)| {
+            let mut pts = Vec::new();
+            match &e.geometry {
+                Geometry::Mesh(m) => pts.extend(m.vertices.iter().copied()),
+                Geometry::Curve(cv) => curve_pts(cv, &mut pts),
+                Geometry::Surface(s) => pts.extend(s.poles.iter().copied()),
+                Geometry::Point(p) => pts.push(*p),
+                _ => {}
+            }
+            // The placement too (a Move may only change it).
+            let t = e.placement.0;
+            pts.extend((0..3).map(|i| [t[i][0], t[i][1], t[i][2]]));
+            pts.push([t[0][3], t[1][3], t[2][3]]);
+            (id.to_string(), pts)
+        })
+        .collect()
+}
+
+/// Largest coordinate difference between two documents. Objects kept from the start are
+/// matched by id; new ones (copies get new ids each run) by their points in order.
+fn max_difference(a: &std::collections::BTreeMap<String, Vec<[f64; 3]>>, b: &std::collections::BTreeMap<String, Vec<[f64; 3]>>) -> f64 {
+    if a.len() != b.len() {
+        return f64::INFINITY;
+    }
+    let diff = |pa: &Vec<[f64; 3]>, pb: &Vec<[f64; 3]>| -> f64 {
+        if pa.len() != pb.len() {
+            return f64::INFINITY;
+        }
+        pa.iter().zip(pb).flat_map(|(p, q)| (0..3).map(move |i| (p[i] - q[i]).abs())).fold(0.0, f64::max)
+    };
+    let mut worst = 0.0f64;
+    let (mut ra, mut rb) = (Vec::new(), Vec::new());
+    for (id, pa) in a {
+        match b.get(id) {
+            Some(pb) => worst = worst.max(diff(pa, pb)),
+            None => ra.push(pa.clone()),
+        }
+    }
+    for (id, pb) in b {
+        if !a.contains_key(id) {
+            rb.push(pb.clone());
+        }
+    }
+    let key = |v: &Vec<[f64; 3]>| v.iter().map(|p| format!("{:.6},{:.6},{:.6};", p[0], p[1], p[2])).collect::<String>();
+    ra.sort_by_key(key);
+    rb.sort_by_key(key);
+    for (pa, pb) in ra.iter().zip(&rb) {
+        worst = worst.max(diff(pa, pb));
+    }
+    worst
+}
+
+/// Run `code` on everything selected: `steps` are "@x,y,z" clicks, "~x,y,z" pointer moves
+/// (their preview lines are recorded), "" Enter, other text typed. Returns the recorded
+/// previews, the hover times (ms) and the document's points after the command.
+fn drive(c: &mut Controller, code: &str, steps: &[&str]) -> (Vec<Vec<[[f64; 3]; 2]>>, Vec<f64>, std::collections::BTreeMap<String, Vec<[f64; 3]>>) {
+    let ids: Vec<_> = c.document().entities.keys().copied().collect();
+    c.select_objects(&ids).unwrap();
+    c.run_addon_command(code).unwrap();
+    c.refresh_addon_session();
+    let mut previews = Vec::new();
+    let mut times = Vec::new();
+    let mut errors: Vec<String> = Vec::new();
+    let v3 = |p: &str| -> [f64; 3] {
+        let v: Vec<f64> = p.split(',').map(|x| x.parse().unwrap()).collect();
+        [v[0], v[1], v[2]]
+    };
+    for st in steps {
+        if let Some(p) = st.strip_prefix('~') {
+            let t = std::time::Instant::now();
+            c.session_hover(v3(p));
+            times.push(t.elapsed().as_secs_f64() * 1e3);
+            let s = c.addon_session();
+            let mut lines: Vec<[[f64; 3]; 2]> = s.map(|s| s.hover_lines.clone()).unwrap_or_default();
+            lines.extend(c.addon_builder().map(|b| b.preview.edges.clone()).unwrap_or_default());
+            previews.push(lines);
+        } else if let Some(p) = st.strip_prefix('@') {
+            if let Err(e) = c.session_point(v3(p)) {
+                errors.push(format!("{e:?}"));
+            }
+        } else if c.addon_session().is_some() || c.addon_builder().is_some() {
+            if let Err(e) = c.submit(st) {
+                errors.push(format!("{e:?}"));
+            }
+        }
+    }
+    // Enter until the command is over.
+    for _ in 0..3 {
+        if c.addon_session().is_some() || c.addon_builder().is_some() {
+            let _ = c.submit("");
+        }
+    }
+    ERRORS.with(|x| *x.borrow_mut() = errors);
+    (previews, times, coordinates(c))
+}
+
+std::thread_local! {
+    /// The errors of the last [`drive`] (refused steps).
+    static ERRORS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+fn drive_errors() -> Vec<String> {
+    ERRORS.with(|x| x.borrow().clone())
+}
+
+/// A wavy surface as a mesh (what OrientOnSurface, Splop and GemOnSurface stand objects on),
+/// a NURBS patch (ExtractIsocurve) and three small boxes to place.
+fn surface_scene() -> Document {
+    let mut doc = Document::new("surface");
+    let layer = doc.current_layer;
+    let n = 41usize;
+    let vertices: Vec<[f64; 3]> = (0..n * n)
+        .map(|i| {
+            let (x, y) = ((i % n) as f64 * 0.5 - 10.0, (i / n) as f64 * 0.5 - 10.0);
+            [x, y, 1.5 * (x * 0.3).sin() * (y * 0.25).cos()]
+        })
+        .collect();
+    let mut faces = Vec::new();
+    for j in 0..n - 1 {
+        for i in 0..n - 1 {
+            let a = (j * n + i) as u32;
+            faces.push(vec![a, a + 1, a + n as u32 + 1]);
+            faces.push(vec![a, a + n as u32 + 1, a + n as u32]);
+        }
+    }
+    let wavy = om9_core::model::Entity::new("Surface", Geometry::Mesh(om9_core::geometry::Mesh { vertices, faces, normals: vec![], colors: vec![], corner_uvs: vec![] }), layer);
+    doc.entities.insert(wavy.id, wavy);
+    for k in 0..3 {
+        let o = [k as f64 * 2.0, 12.0, 0.0];
+        let v: Vec<[f64; 3]> = (0..8).map(|i| [o[0] + (i & 1) as f64 * 0.8, o[1] + ((i >> 1) & 1) as f64 * 0.8, o[2] + ((i >> 2) & 1) as f64 * 0.5]).collect();
+        let f = vec![vec![0, 2, 3, 1], vec![4, 5, 7, 6], vec![0, 1, 5, 4], vec![2, 6, 7, 3], vec![0, 4, 6, 2], vec![1, 3, 7, 5]];
+        let b = om9_core::model::Entity::new("Box", Geometry::Mesh(om9_core::geometry::Mesh { vertices: v, faces: f, normals: vec![], colors: vec![], corner_uvs: vec![] }), layer);
+        doc.entities.insert(b.id, b);
+    }
+    doc
+}
+
+/// Only the wavy surface (Gem on Surface places stones on the selected surface).
+fn surface_only_scene() -> Document {
+    let mut doc = surface_scene();
+    doc.entities.retain(|_, e| e.label != "Box");
+    doc
+}
+
+fn patch_scene() -> Document {
+    let mut doc = Document::new("patch");
+    let layer = doc.current_layer;
+    let poles: Vec<[f64; 3]> = (0..16).map(|i| [(i / 4) as f64 * 3.0, (i % 4) as f64 * 3.0, if (i / 4 == 1 || i / 4 == 2) && (i % 4 == 1 || i % 4 == 2) { 2.0 } else { 0.0 }]).collect();
+    let srf = om9_core::geometry::NurbsSurface {
+        degree: [3, 3],
+        size: [4, 4],
+        poles,
+        weights: vec![1.0; 16],
+        knots: [vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0], vec![0.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]],
+        domain: [[0.0, 1.0], [0.0, 1.0]],
+        periodic: [false, false],
+        reversed: false,
+    };
+    let e = om9_core::model::Entity::new("Patch", Geometry::Surface(srf), layer);
+    doc.entities.insert(e.id, e);
+    doc
+}
+
+/// Gemini check 2 and 3: the commands that land on a surface while the pointer moves
+/// (OrientOnSurface, Splop, GemOnSurface, ExtractIsocurve) show the very same preview, and give
+/// the very same result after Enter, whether the add-on reuses the selection it keeps (plan B)
+/// or gets everything again at every step (before). Plan B never drops the meshes: the add-on
+/// keeps the full selection, triangles included.
+#[test]
+fn surface_previews_and_results_match_without_reuse() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-plan-b-surface-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let cases: [(&str, fn() -> Document, &[&str]); 4] = [
+        ("TransformOrientOnSurface", surface_scene, &["~1,1,0", "~3,-2,0", "~-4,5,0", "@2,2,0", "~5,5,0", "@-3,4,0", ""]),
+        ("TransformSplop", surface_scene, &["~1,1,0", "~3,-2,0", "~-4,5,0", "@2,2,0", "", ""]),
+        ("BuilderGemOnSurface", surface_only_scene, &["~1,1,0.429499798651003", "~3,-2,1.031151054222833", "@2,2,0.7432805825311978", "~-5,4,-0.8084232620311197", "@-5,4,-0.8084232620311197", ""]),
+        ("CurveCurveFromObjectsExtractIsocurve", patch_scene, &["~2,3,0", "~6,4,0", "@4,5,0", "~7,2,0", ""]),
+    ];
+    let mut report = Vec::new();
+    for (code, scene, steps) in cases {
+        let doc = scene();
+        let mut a = doc_controller(doc.clone(), &tmp);
+        let (pa, _, ra) = drive(&mut a, code, steps);
+        assert!(drive_errors().is_empty(), "{code}: {:?}", drive_errors());
+        let mut b = doc_controller(doc, &tmp);
+        b.set_addon_selection_reuse(false);
+        let (pb, _, rb) = drive(&mut b, code, steps);
+        let shown: Vec<usize> = pa.iter().map(Vec::len).collect();
+        report.push(format!("{code}: preview lines per move {shown:?}, objects after {}", ra.len()));
+        assert!(pa == pb, "{code}: the previews differ ({:?} vs {:?})", shown, pb.iter().map(Vec::len).collect::<Vec<_>>());
+        let diff = max_difference(&ra, &rb);
+        assert!(diff <= 1e-9, "{code}: results differ by {diff}");
+        // Splop draws no preview while the pointer moves (it never did): only its result counts.
+        if code != "TransformSplop" {
+            assert!(pa.iter().any(|l| !l.is_empty()), "{code}: some preview while the pointer moves ({report:?})");
+        }
+    }
+    eprintln!("{}", report.join("\n"));
+    fs::remove_dir_all(&tmp).unwrap();
+}
+
+/// 500 curves (12-pole cubics).
+fn curves_scene(n: usize) -> Document {
+    let mut doc = Document::new("curves");
+    let layer = doc.current_layer;
+    for k in 0..n {
+        let y = k as f64 * 0.1;
+        let poles: Vec<[f64; 3]> = (0..12).map(|i| [i as f64, y + 0.3 * (i as f64 * 0.7).sin(), 0.0]).collect();
+        let mut knots = vec![0.0; 4];
+        knots.extend((1..9).map(|i| i as f64 / 9.0));
+        knots.extend([1.0; 4]);
+        let c = Curve::Nurbs(om9_core::geometry::NurbsCurve { degree: 3, poles, weights: vec![1.0; 12], knots, domain: [0.0, 1.0], periodic: false, reversed: false, seam: None });
+        let e = om9_core::model::Entity::new("Curve", Geometry::Curve(c), layer);
+        doc.entities.insert(e.id, e);
+    }
+    doc
+}
+
+/// Release only (`cargo test --release … -- --ignored --nocapture`, `OM9_BENCH_OUT=<file.md>`):
+/// the whole round trip of a pointer move (om9-app → JSON → add-on → preview) for Move, Bend
+/// (and Rotate, Polar Array, Stretch) on 500 curves, 200 stones × 1 922 triangles and 20 000
+/// stones × 98 triangles, with plan B and without it (the whole selection at every step), and
+/// the largest coordinate difference between the two results after the command.
+#[test]
+#[ignore]
+fn plan_b_benchmark() {
+    let tmp = std::env::temp_dir().join(format!("om9-app-plan-b-bench-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).unwrap();
+    let levels: [(&str, Document); 3] = [
+        ("(a) 500 curves", curves_scene(500)),
+        ("(b) 200 stones x 1922 tris", stones(200, 32)),
+        ("(c) 20000 stones x 98 tris", stones(20_000, 8)),
+    ];
+    let moves: Vec<String> = (0..30).map(|i| format!("~{},{},0", 10.0 + i as f64 * 0.73, 5.0 + i as f64 * 0.31)).collect();
+    let mut rows = vec![
+        "| Level | Command | Plan B hover median (ms) | Plan B hover max (ms) | Before hover median (ms) | Before hover max (ms) | Plan B command total (ms) | Before command total (ms) | Max coordinate difference B vs before (mm) |".to_owned(),
+        "|---|---|---|---|---|---|---|---|---|".to_owned(),
+    ];
+    for (label, doc) in levels {
+        let commands: [(&str, Vec<String>); 5] = [
+            ("TopIconMove", [vec!["@0,0,0".to_owned()], moves.clone(), vec!["@5,3,0".to_owned()]].concat()),
+            ("TransformBend", [vec!["@0,0,0".to_owned(), "@100,0,0".to_owned()], moves.clone(), vec!["45".to_owned()]].concat()),
+            ("TopIconRotate", [vec!["@0,0,0".to_owned(), "@10,0,0".to_owned()], moves.clone(), vec!["@0,10,0".to_owned()]].concat()),
+            ("TransformArrayPolar", [vec!["@0,0,0".to_owned(), "3".to_owned()], moves.clone(), vec!["".to_owned()]].concat()),
+            ("TransformStretch", [vec!["@0,0,0".to_owned(), "@100,0,0".to_owned()], moves.clone(), vec!["@120,0,0".to_owned()]].concat()),
+        ];
+        for (code, steps) in &commands {
+            let steps: Vec<&str> = steps.iter().map(String::as_str).collect();
+            let stat = |mut t: Vec<f64>| -> (f64, f64) {
+                t.sort_by(f64::total_cmp);
+                (t[t.len() / 2], t[t.len() - 1])
+            };
+            let mut b = doc_controller(doc.clone(), &tmp);
+            let t0 = std::time::Instant::now();
+            let (_, tb, rb) = drive(&mut b, code, &steps);
+            let total_b = t0.elapsed().as_secs_f64() * 1e3;
+            let err_b = drive_errors();
+            drop(b);
+            let mut old = doc_controller(doc.clone(), &tmp);
+            old.set_addon_selection_reuse(false);
+            let t0 = std::time::Instant::now();
+            let (_, to, ro) = drive(&mut old, code, &steps);
+            let total_o = t0.elapsed().as_secs_f64() * 1e3;
+            let err_o = drive_errors();
+            drop(old);
+            let (mb, xb) = stat(tb);
+            let (mo, xo) = stat(to);
+            let diff = max_difference(&rb, &ro);
+            let note = if err_b.is_empty() && err_o.is_empty() { String::new() } else { format!(" — refused: B {err_b:?}, before {err_o:?}") };
+            rows.push(format!("| {label} | {code} | {mb:.2} | {xb:.2} | {mo:.2} | {xo:.2} | {total_b:.0} | {total_o:.0} | {diff:e}{note} |"));
+            assert_eq!(err_b, err_o, "{label} {code}: the same steps refused with and without plan B");
+            eprintln!("{}", rows.last().unwrap());
+            assert!(diff <= 1e-9, "{label} {code}: results differ by {diff}");
+            assert!(mb < 16.0 && xb < 33.0, "{label} {code}: plan B hover {mb:.2} / {xb:.2} ms");
+        }
+    }
+    let table = rows.join("\n");
+    if let Some(out) = std::env::var_os("OM9_BENCH_OUT") {
+        fs::write(out, format!("{table}\n")).unwrap();
+    }
+    fs::remove_dir_all(&tmp).unwrap();
+}

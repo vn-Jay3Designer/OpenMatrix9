@@ -58,7 +58,31 @@ pub struct AddonSession {
     /// Where the last selecting click landed (document units): Fillet, Extend, Match … read
     /// which part of a curve was picked.
     pick: Option<Point3>,
+    /// The selection key the add-on keeps the selection under (it answered
+    /// `selection_cached`): pointer moves then send no selection.
+    sel_key: Option<u64>,
+    /// What stands for each selected object in a Move/Rotate/Array preview (decimated curve
+    /// points, or a box), built once per selection key.
+    preview_shapes: Option<(u64, std::sync::Arc<Vec<PreviewShape>>)>,
 }
+
+/// One selected object drawn under a preview transform.
+#[derive(Debug, Clone)]
+pub(super) enum PreviewShape {
+    /// Curve points (document units), at most [`PREVIEW_CURVE_POINTS`].
+    Curve(Vec<Point3>),
+    /// A mesh, solid or point cloud as its bounding box (document units).
+    Box([Point3; 2]),
+}
+
+/// Points kept per curve in a transform preview.
+const PREVIEW_CURVE_POINTS: usize = 64;
+/// Segments drawn at most for the selection under the preview transforms (all viewports draw
+/// them every frame): beyond it, objects are drawn evenly sampled and the whole selection's
+/// box is always drawn.
+const PREVIEW_SEGMENT_BUDGET: usize = 30_000;
+/// Pointer moves shorter than this (mm) do not step the command again.
+const HOVER_EPSILON_MM: f64 = 1e-4;
 
 impl AddonSession {
     /// `Close=No`, `Length`, `Undo` … as shown above the command line, in the interface
@@ -931,6 +955,17 @@ fn exact_in_world(g: &Geometry, placement: &Transform, k: f64) -> Option<Geo> {
     })
 }
 
+/// A preview matrix that can be drawn: finite, and its 3×3 part not singular.
+fn valid_preview_matrix(m: &[f64; 16]) -> bool {
+    if !m.iter().all(|v| v.is_finite()) {
+        return false;
+    }
+    let a = |r: usize, c: usize| m[r * 4 + c];
+    let det = a(0, 0) * (a(1, 1) * a(2, 2) - a(1, 2) * a(2, 1)) - a(0, 1) * (a(1, 0) * a(2, 2) - a(1, 2) * a(2, 0))
+        + a(0, 2) * (a(1, 0) * a(2, 1) - a(1, 1) * a(2, 0));
+    det.abs() > 1e-12
+}
+
 /// A world gem record back into the object's own frame (inverse of [`gem_in_world`]).
 fn record_in_local(mut g: Value, placement: &Transform, k: f64) -> Result<Value> {
     let m = placement.0;
@@ -1143,40 +1178,73 @@ impl Controller {
         out
     }
 
-    /// Lines (document units) of the selection under each transform, for Move/Rotate previews.
-    fn transformed_selection_lines(&self, matrices: &[[f64; 16]], k: f64) -> Vec<[Point3; 2]> {
-        use om9_scene::scene::RenderBuffers;
-        let mut lines = Vec::new();
-        // Most commands preview no transform: skip the walk over the scene.
-        if matrices.is_empty() || self.selection.is_empty() {
-            return lines;
+    /// The key of what is selected now (objects in pick order, sub-picks, the scene's
+    /// generation, the page unit and what the command reads): equal keys mean the add-on may
+    /// reuse the selection it keeps. `None` when nothing is selected.
+    fn selection_key(&self, k: f64, mesh_data: bool, brep_data: bool) -> Option<u64> {
+        use std::hash::{Hash, Hasher};
+        if self.selection.is_empty() {
+            return None;
         }
-        let Some(scene) = self.scene.as_ref() else {
-            return lines;
-        };
-        let transforms: Vec<Transform> = matrices
-            .iter()
-            .filter_map(|m| to_transform(m, k).ok())
-            .collect();
+        let scene = self.scene.as_ref()?;
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        scene.epoch.hash(&mut h);
+        (scene.objects.as_ptr() as usize, scene.objects.len()).hash(&mut h);
+        // Any change of the selection (or of its order) bumps its revision: no walk over the
+        // selected ids is needed.
+        self.selection_revision.hash(&mut h);
+        self.sub_revision().hash(&mut h);
+        self.selection.len().hash(&mut h);
+        k.to_bits().hash(&mut h);
+        (mesh_data, brep_data).hash(&mut h);
+        Some(h.finish())
+    }
+
+    /// Build (once per selection key) what stands for each selected object in a transform
+    /// preview.
+    fn ensure_preview_shapes(&mut self, k: f64, key: Option<u64>) {
+        let key = key.unwrap_or(0);
+        if self
+            .addon_session
+            .as_ref()
+            .and_then(|s| s.preview_shapes.as_ref())
+            .is_some_and(|(have, _)| *have == key && key != 0)
+        {
+            return;
+        }
+        let shapes = std::sync::Arc::new(self.preview_shapes_now());
+        let _ = k;
+        if let Some(s) = self.addon_session.as_mut() {
+            s.preview_shapes = Some((key, shapes));
+        }
+    }
+
+    fn preview_shapes_now(&self) -> Vec<PreviewShape> {
+        use om9_scene::scene::RenderBuffers;
+        let mut out = Vec::new();
+        let Some(scene) = self.scene.as_ref() else { return out };
         for object in self.selected_scene_objects(scene) {
-            if lines.len() > 200_000 {
-                continue;
-            }
-            let Ok(display) = object.display_transform() else {
-                continue;
-            };
-            let world: Vec<Point3> = match object.buffers.as_ref() {
-                RenderBuffers::Curve { points, .. } => points
-                    .iter()
-                    .filter_map(|p| display.point(*p).ok())
-                    .collect(),
-                RenderBuffers::Points { points, .. }
-                | RenderBuffers::Mesh {
-                    vertices: points, ..
-                } => {
-                    // Bounding box edges stand for a mesh or a point cloud.
+            let Ok(display) = object.display_transform() else { continue };
+            match object.buffers.as_ref() {
+                RenderBuffers::Curve { points, .. } => {
+                    let world: Vec<Point3> = points.iter().filter_map(|p| display.point(*p).ok()).collect();
+                    if world.len() < 2 {
+                        continue;
+                    }
+                    // Evenly decimated, both ends kept.
+                    let n = world.len().min(PREVIEW_CURVE_POINTS);
+                    let step = (world.len() - 1) as f64 / (n - 1).max(1) as f64;
+                    out.push(PreviewShape::Curve((0..n).map(|i| world[((i as f64 * step).round() as usize).min(world.len() - 1)]).collect()));
+                }
+                RenderBuffers::Points { .. } | RenderBuffers::Mesh { .. } => {
+                    // The scene's cached local bounds, their 8 corners placed (no walk over
+                    // every vertex of 20 000 stones).
+                    let Some((a, b)) = object.buffers.local_bounds() else { continue };
+                    let corners: Vec<Point3> = (0..8)
+                        .map(|i| [if i & 1 == 0 { a[0] } else { b[0] }, if i & 2 == 0 { a[1] } else { b[1] }, if i & 4 == 0 { a[2] } else { b[2] }])
+                        .collect();
                     let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
-                    for p in points {
+                    for p in &corners {
                         if let Ok(w) = display.point(*p) {
                             for i in 0..3 {
                                 lo[i] = lo[i].min(w[i]);
@@ -1184,42 +1252,84 @@ impl Controller {
                             }
                         }
                     }
-                    if !lo[0].is_finite() {
-                        continue;
+                    if lo[0].is_finite() {
+                        out.push(PreviewShape::Box([lo, hi]));
                     }
-                    let c = |i: usize| -> Point3 {
-                        [
-                            if i & 1 == 0 { lo[0] } else { hi[0] },
-                            if i & 2 == 0 { lo[1] } else { hi[1] },
-                            if i & 4 == 0 { lo[2] } else { hi[2] },
-                        ]
-                    };
-                    for t in &transforms {
-                        for (a, b) in [
-                            (0, 1),
-                            (1, 3),
-                            (3, 2),
-                            (2, 0),
-                            (4, 5),
-                            (5, 7),
-                            (7, 6),
-                            (6, 4),
-                            (0, 4),
-                            (1, 5),
-                            (2, 6),
-                            (3, 7),
-                        ] {
-                            if let (Ok(p), Ok(q)) = (t.point(c(a)), t.point(c(b))) {
-                                lines.push([p, q]);
-                            }
-                        }
-                    }
-                    continue;
                 }
+            }
+        }
+        out
+    }
+
+    /// Lines (document units) of the selection under each transform, for Move/Rotate/Array
+    /// previews: curves by their points, other objects by their boxes, within
+    /// [`PREVIEW_SEGMENT_BUDGET`] (a large selection is drawn evenly sampled, and the box of
+    /// the whole selection is always drawn).
+    fn transformed_selection_lines(&self, matrices: &[[f64; 16]], k: f64) -> Vec<[Point3; 2]> {
+        let mut lines = Vec::new();
+        // Most commands preview no transform.
+        if matrices.is_empty() || self.selection.is_empty() {
+            return lines;
+        }
+        let Some(shapes) = self.addon_session.as_ref().and_then(|s| s.preview_shapes.as_ref()).map(|x| x.1.clone()) else {
+            return lines;
+        };
+        let transforms: Vec<Transform> = matrices
+            .iter()
+            .filter(|m| valid_preview_matrix(m))
+            .filter_map(|m| to_transform(m, k).ok())
+            .collect();
+        if transforms.is_empty() || shapes.is_empty() {
+            return lines;
+        }
+        let box_lines = |lo: Point3, hi: Point3, t: &Transform, out: &mut Vec<[Point3; 2]>| {
+            let c = |i: usize| -> Point3 {
+                [
+                    if i & 1 == 0 { lo[0] } else { hi[0] },
+                    if i & 2 == 0 { lo[1] } else { hi[1] },
+                    if i & 4 == 0 { lo[2] } else { hi[2] },
+                ]
             };
+            for (a, b) in [(0, 1), (1, 3), (3, 2), (2, 0), (4, 5), (5, 7), (7, 6), (6, 4), (0, 4), (1, 5), (2, 6), (3, 7)] {
+                if let (Ok(p), Ok(q)) = (t.point(c(a)), t.point(c(b))) {
+                    out.push([p, q]);
+                }
+            }
+        };
+        let cost = |sh: &PreviewShape| match sh {
+            PreviewShape::Curve(p) => p.len().saturating_sub(1),
+            PreviewShape::Box(_) => 12,
+        };
+        let total: usize = shapes.iter().map(cost).sum::<usize>() * transforms.len();
+        // Every object when it fits, else every n-th one plus the whole selection's box.
+        let stride = total.div_ceil(PREVIEW_SEGMENT_BUDGET).max(1);
+        if stride > 1 {
+            let (mut lo, mut hi) = ([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]);
+            for sh in shapes.iter() {
+                let pts: &[Point3] = match sh {
+                    PreviewShape::Curve(p) => p,
+                    PreviewShape::Box(b) => b,
+                };
+                for p in pts {
+                    for i in 0..3 {
+                        lo[i] = lo[i].min(p[i]);
+                        hi[i] = hi[i].max(p[i]);
+                    }
+                }
+            }
             for t in &transforms {
-                let pts: Vec<Point3> = world.iter().filter_map(|p| t.point(*p).ok()).collect();
-                lines.extend(pts.windows(2).map(|w| [w[0], w[1]]));
+                box_lines(lo, hi, t, &mut lines);
+            }
+        }
+        for sh in shapes.iter().step_by(stride) {
+            for t in &transforms {
+                match sh {
+                    PreviewShape::Curve(pts) => {
+                        let w: Vec<Point3> = pts.iter().filter_map(|p| t.point(*p).ok()).collect();
+                        lines.extend(w.windows(2).map(|x| [x[0], x[1]]));
+                    }
+                    PreviewShape::Box([lo, hi]) => box_lines(*lo, *hi, t, &mut lines),
+                }
             }
         }
         lines
@@ -1264,6 +1374,8 @@ impl Controller {
             brep_data,
             seen: Default::default(),
             pick: None,
+            sel_key: None,
+            preview_shapes: None,
         });
         self.events.emit(
             crate::command_events::EventKind::Started,
@@ -1315,16 +1427,28 @@ impl Controller {
         let Some(session) = self.addon_session.as_ref() else {
             return Err(Error::Missing("interactive command"));
         };
+        // The same selection the add-on keeps (a pointer move, a click, Enter …): no selection
+        // is sent again. With 20 000 stones that was most of the cost of every step.
+        let key = if self.addon_selection_reuse { self.selection_key(k, session.mesh_data, session.brep_data) } else { None };
+        let reuse = key.is_some() && session.sel_key == key;
+        let mut settings: std::collections::BTreeMap<String, Value> = settings;
+        if let Some(key) = key {
+            settings.insert(s::SELECTION_KEY.into(), Value::from(key));
+        }
         let event = Event {
             command: session.code.clone(),
-            input,
+            input: input.clone(),
             state: session.reply.state.clone(),
             plane: s::Plane {
                 origin: mm(plane.origin, k),
                 x: plane.x,
                 y: plane.y,
             },
-            selection: self.session_selection(k, session.mesh_data, session.brep_data),
+            selection: if reuse {
+                Vec::new()
+            } else {
+                self.session_selection(k, session.mesh_data, session.brep_data)
+            },
             pick: session.pick.map(|p| mm(p, k)),
             settings,
         };
@@ -1340,6 +1464,13 @@ impl Controller {
         let reply: Reply = match answer {
             Ok(bytes) => serde_json::from_slice(&bytes)
                 .map_err(|e| Error::Io(format!("{}: trả lời không hợp lệ: {e}", event.command)))?,
+            // The add-on no longer holds the selection: send it again.
+            Err(e) if reuse && e.contains(s::SELECTION_CACHE_MISS) => {
+                if let Some(session) = self.addon_session.as_mut() {
+                    session.sel_key = None;
+                }
+                return self.session_step(input);
+            }
             Err(e) => {
                 if !hover {
                     self.cancel_addon_session();
@@ -1347,6 +1478,14 @@ impl Controller {
                 return Err(Error::Io(e));
             }
         };
+        if let Some(session) = self.addon_session.as_mut() {
+            session.sel_key = if reply.selection_cached { key } else { None };
+        }
+        // Built at the click that leads to pointer moves (or at the first transform preview),
+        // so the first move does not pay for walking a large selection.
+        if !reply.preview_transforms.is_empty() || (!hover && matches!(reply.want, Want::Point | Want::Number) && !self.selection.is_empty()) {
+            self.ensure_preview_shapes(k, key);
+        }
         let limits = *self.coordinator.limits();
         if hover {
             let mut lines: Vec<[Point3; 2]> = reply
@@ -1428,9 +1567,10 @@ impl Controller {
 
     /// The cursor moved over a viewport.
     pub fn session_hover(&mut self, point: Point3) {
+        let k = self.document().page_unit.factor();
         if let Some(s) = self.addon_session.as_mut()
             && matches!(s.reply.want, Want::Point | Want::Number)
-            && s.hover_at != Some(point)
+            && s.hover_at.is_none_or(|h| s::dist(mm(h, k), mm(point, k)) >= HOVER_EPSILON_MM)
         {
             s.hover_at = Some(point);
             let k = self.document().page_unit.factor();
@@ -1438,6 +1578,12 @@ impl Controller {
                 point: mm(point, k),
             });
         }
+    }
+
+    /// Whether add-on steps reuse the selection the add-on keeps (default on). Off sends the
+    /// whole selection at every step, as before: for comparisons in tests and benchmarks.
+    pub fn set_addon_selection_reuse(&mut self, on: bool) {
+        self.addon_selection_reuse = on;
     }
 
     /// The add-on command right-click or an empty Enter would run again.

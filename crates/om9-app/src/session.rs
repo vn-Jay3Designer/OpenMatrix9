@@ -5563,6 +5563,9 @@ pub struct Controller {
     /// The last add-on command that ran to its end: right-click or an empty Enter with no
     /// command running starts it again (Rhino's repeat).
     addon_last: Option<String>,
+    /// Add-on steps send the selection only when it changed (on by default; off measures the
+    /// old path in tests and benchmarks).
+    addon_selection_reuse: bool,
     /// Interface language of the add-on commands (Tiếng Việt / English), from the enabled
     /// add-ons' `lang` tables and their `language` setting. English without add-ons.
     tr: om9_addons::i18n::Tr,
@@ -5978,6 +5981,7 @@ impl Controller {
             addon_builder: None,
             addon_session: None,
             addon_last: None,
+            addon_selection_reuse: true,
             tr: om9_addons::i18n::Tr::english(),
         })
     }
